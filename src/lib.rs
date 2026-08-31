@@ -6,6 +6,7 @@
 
 pub mod base;
 pub mod env;
+pub mod launch;
 pub mod layer;
 pub mod mount;
 pub mod paths;
@@ -58,4 +59,7 @@ pub enum Error {
 
     #[error("could not read the registry hive: {0}")]
     Hive(String),
+
+    #[error("no environment given and no default set; run `raven env default <name>`")]
+    NoDefaultEnvironment,
 }

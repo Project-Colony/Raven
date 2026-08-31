@@ -5,13 +5,28 @@
 //! rather than reimplementing it.
 
 use std::os::unix::process::CommandExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
+
+/// Prints a line, treating a closed pipe as a normal end.
+///
+/// Rust ignores `SIGPIPE`, so a plain `println!` into `head` or `less` fails its
+/// write and *panics* — a backtrace where every other Unix tool simply stops.
+/// A closed pipe is the reader saying "enough", which is an ordinary way for a
+/// command to finish, not a failure to report.
+macro_rules! out {
+    ($($arg:tt)*) => {{
+        use std::io::Write as _;
+        if writeln!(std::io::stdout(), $($arg)*).is_err() {
+            std::process::exit(0);
+        }
+    }};
+}
 use clap::{Args, Parser, Subcommand};
 use raven::mount::{MountBackend, OverlaySpec, UserNsOverlay};
-use raven::{base, env};
+use raven::{base, env, launch};
 
 #[derive(Parser)]
 #[command(name = "raven", version, about, long_about = None)]
@@ -32,6 +47,21 @@ enum Commands {
     /// Environments: a Wine layer over a base, plus somewhere to write.
     #[command(subcommand)]
     Env(EnvCmd),
+
+    /// Run a Windows program, resolving its environment automatically.
+    ///
+    /// This is what `binfmt_misc` invokes for a `.exe`, and what makes
+    /// `./program.exe` work. It can be run by hand too.
+    Launch {
+        /// The program. `binfmt_misc` passes this as the first argument.
+        exe: PathBuf,
+        /// Arguments for the program.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+
+    /// Show how `.exe` files are registered with the kernel.
+    Binfmt,
 
     /// Run a program inside an environment.
     Run {
@@ -102,14 +132,34 @@ enum EnvCmd {
     Destroy { name: String },
     /// Re-run the registry projection, after editing the environment's rules.
     Reproject { name: String },
+    /// Set the environment used for programs that are not inside one.
+    Default { name: Option<String> },
 }
 
 fn main() -> Result<()> {
-    match Cli::parse().command {
+    // binfmt_misc hands its interpreter a path where clap expects a verb, and
+    // offers no way to insert one. Reading the magic bytes settles which it is
+    // without guessing: `raven doctor` is not a file, and `./game.exe` is not a
+    // subcommand.
+    let mut args: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    if let Some(first) = args.get(1) {
+        if launch::looks_like_pe(Path::new(first)) {
+            args.insert(1, std::ffi::OsString::from("launch"));
+        }
+    }
+
+    match Cli::parse_from(args).command {
         Commands::Doctor => doctor(),
         Commands::Base(c) => base_cmd(c),
         Commands::Env(c) => env_cmd(c),
         Commands::Run { name, argv } => run(&name, argv),
+        Commands::Launch { exe, args } => {
+            let e = launch::resolve(&exe)?;
+            let mut argv = vec!["wine".to_string(), exe.display().to_string()];
+            argv.extend(args);
+            run(&e.name, argv)
+        }
+        Commands::Binfmt => binfmt(),
         Commands::Exec {
             lower,
             upper,
@@ -131,18 +181,18 @@ fn main() -> Result<()> {
 
 fn doctor() -> Result<()> {
     let userns = UserNsOverlay::is_available();
-    println!(
+    out!(
         "unprivileged user namespaces : {}",
         if userns { "yes" } else { "no" }
     );
     if !userns {
-        println!(
+        out!(
             "  This kernel restricts them, and Raven's only implemented mount\n  \
              backend needs them. linux-hardened and Ubuntu's AppArmor policy\n  \
              both do this."
         );
     }
-    println!(
+    out!(
         "wine                         : {}",
         if raven::prefix::wine_available() {
             "found"
@@ -150,7 +200,7 @@ fn doctor() -> Result<()> {
             "MISSING - Raven cannot run anything without it"
         }
     );
-    println!(
+    out!(
         "ntsync                       : {}",
         if PathBuf::from("/dev/ntsync").exists() {
             "present"
@@ -158,11 +208,11 @@ fn doctor() -> Result<()> {
             "absent - Wine falls back to wineserver for NT synchronization"
         }
     );
-    println!(
+    out!(
         "bases                        : {}",
         base::Base::list()?.len()
     );
-    println!(
+    out!(
         "environments                 : {}",
         env::Environment::list()?.len()
     );
@@ -174,7 +224,7 @@ fn base_cmd(cmd: BaseCmd) -> Result<()> {
         BaseCmd::List => {
             let bases = base::Base::list()?;
             if bases.is_empty() {
-                println!("No bases. Deploy one with `raven base deploy`.");
+                out!("No bases. Deploy one with `raven base deploy`.");
             }
             for b in bases {
                 let ok = if b.looks_like_windows() {
@@ -182,14 +232,14 @@ fn base_cmd(cmd: BaseCmd) -> Result<()> {
                 } else {
                     "  (does not look like Windows)"
                 };
-                println!("{}{ok}", b.id);
+                out!("{}{ok}", b.id);
             }
             Ok(())
         }
         BaseCmd::Editions(a) => {
             for e in base::editions(&a.image)? {
                 let build = e.build.as_deref().unwrap_or("-");
-                println!("{:>3}  {}  (build {build})", e.index, e.name);
+                out!("{:>3}  {}  (build {build})", e.index, e.name);
             }
             Ok(())
         }
@@ -198,11 +248,9 @@ fn base_cmd(cmd: BaseCmd) -> Result<()> {
             edition,
             name,
         } => {
-            println!(
-                "Applying edition {edition}. This writes tens of gigabytes and takes a while."
-            );
+            out!("Applying edition {edition}. This writes tens of gigabytes and takes a while.");
             let b = base::deploy(&image.image, edition, &name)?;
-            println!("Deployed {} to {}", b.id, b.path.display());
+            out!("Deployed {} to {}", b.id, b.path.display());
             Ok(())
         }
     }
@@ -213,26 +261,41 @@ fn env_cmd(cmd: EnvCmd) -> Result<()> {
         EnvCmd::List => {
             let envs = env::Environment::list()?;
             if envs.is_empty() {
-                println!("No environments. Create one with `raven env create`.");
+                out!("No environments. Create one with `raven env create`.");
             }
             for e in envs {
-                println!("{}  (base {})", e.name, e.manifest.base);
+                out!("{}  (base {})", e.name, e.manifest.base);
             }
             Ok(())
         }
         EnvCmd::Create { name, base } => {
             let e = env::create(&name, &base)?;
-            println!("Created {} against base {}", e.name, e.manifest.base);
-            println!(
+            out!("Created {} against base {}", e.name, e.manifest.base);
+            out!(
                 "Run something with: raven run {} -- wine <program.exe>",
                 e.name
             );
             Ok(())
         }
+        EnvCmd::Default { name } => {
+            match name {
+                Some(n) => {
+                    launch::set_default_environment(&n)?;
+                    out!("Programs outside an environment will run in {n}.");
+                }
+                None => match launch::default_environment()? {
+                    Some(n) => out!("{n}"),
+                    None => {
+                        out!("No default environment. Set one with `raven env default <name>`.")
+                    }
+                },
+            }
+            Ok(())
+        }
         EnvCmd::Reproject { name } => {
             let e = env::Environment::open(&name)?;
             let keys = e.project_registry()?;
-            println!(
+            out!(
                 "Projected {keys} keys into {name} using {}",
                 e.rules_file().display()
             );
@@ -240,10 +303,40 @@ fn env_cmd(cmd: EnvCmd) -> Result<()> {
         }
         EnvCmd::Destroy { name } => {
             env::Environment::destroy(&name)?;
-            println!("Destroyed {name}. The base is untouched.");
+            out!("Destroyed {name}. The base is untouched.");
             Ok(())
         }
     }
+}
+
+fn binfmt() -> Result<()> {
+    let me = std::env::current_exe().context("could not find this binary")?;
+    out!(
+        "registration : {}",
+        if launch::registered() {
+            "active"
+        } else {
+            "not registered - .exe files will not run on their own"
+        }
+    );
+    out!(
+        "mounted      : {}",
+        Path::new("/proc/sys/fs/binfmt_misc").exists()
+    );
+    out!();
+    out!("Registering needs root, once. It belongs to the package rather than");
+    out!("to Raven, so that nothing has to hold privilege while Raven runs:");
+    out!();
+    out!(
+        "  echo '{}' | sudo tee {}",
+        launch::binfmt_line(&me),
+        launch::conf_path().display()
+    );
+    out!("  sudo systemctl restart systemd-binfmt");
+    out!();
+    out!("The interpreter path above is this binary. A package would name its");
+    out!("installed location instead.");
+    Ok(())
 }
 
 fn run(name: &str, argv: Vec<String>) -> Result<()> {
