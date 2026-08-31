@@ -133,7 +133,7 @@ Measured against the real Windows 11 base:
   19 064-key registry, with every refusal holding and no `X:` anywhere.
 - `System32` merges to 4877 entries; `ntdll.dll` resolves to Wine's 770 139.
 
-**60 tests pass** and `clippy -D warnings` is clean. The ones carrying the design:
+**64 tests pass** and `clippy -D warnings` is clean. The ones carrying the design:
 base immutability under a real write (checked against a sabotaged mount, so it
 can fail), layer precedence with two read-only layers, the removal of a mounted
 environment that `remove_dir_all` cannot delete, and eight projection tests
