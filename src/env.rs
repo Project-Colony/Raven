@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::mount::OverlaySpec;
-use crate::{Error, base::Base, layer, paths, prefix};
+use crate::{Error, base::Base, layer, paths, prefix, registry};
 
 /// What an environment records about itself, on disk as `environment.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -39,6 +39,38 @@ impl Environment {
     }
     pub fn prefix(&self) -> PathBuf {
         self.root.join("prefix")
+    }
+    /// The rules governing what crosses from the base's registry.
+    ///
+    /// Written into the environment rather than compiled in, so it can be read
+    /// and changed by someone who does not read Rust — which is the point, since
+    /// what crosses is a correctness decision.
+    pub fn rules_file(&self) -> PathBuf {
+        self.root.join("registry-rules.toml")
+    }
+
+    pub fn rules(&self) -> Result<registry::Rules, Error> {
+        match std::fs::read_to_string(self.rules_file()) {
+            Ok(text) => registry::Rules::parse(&text)
+                .map_err(|e| Error::Manifest(self.rules_file(), e.to_string())),
+            Err(_) => Ok(registry::Rules::default()),
+        }
+    }
+
+    /// Reads the base's hives and merges what the rules permit into the prefix.
+    ///
+    /// Idempotent: same base, same rules, same result. That is what makes it
+    /// safe to run again after editing the rules, and it is why the output is
+    /// never edited by hand — a projection someone corrected is one nobody can
+    /// reproduce.
+    pub fn project_registry(&self) -> Result<usize, Error> {
+        let base = Base::find(&self.manifest.base)?;
+        let reg = registry::project_base(&base.path, &self.rules()?)?;
+        let keys = reg.matches("\r\n[").count();
+        let file = self.root.join("projected.reg");
+        std::fs::write(&file, &reg).map_err(|e| Error::Layer(file.clone(), e))?;
+        registry::import(&self.spec()?, &self.prefix(), &file)?;
+        Ok(keys)
     }
 
     /// The layer stack for this environment.
@@ -90,8 +122,47 @@ impl Environment {
         if !root.exists() {
             return Err(Error::NoSuchEnvironment(name.to_owned()));
         }
-        std::fs::remove_dir_all(&root).map_err(|e| Error::Layer(root, e))
+        remove_tree(&root)
     }
+}
+
+/// Removes a tree, restoring directory permissions on the way down.
+///
+/// A plain `remove_dir_all` cannot delete an environment that has ever been
+/// mounted: `overlayfs` creates `work/work` with no permissions at all, and the
+/// removal stops there — after having already deleted the upper layer. That
+/// leaves an environment that cannot be destroyed and cannot be recreated,
+/// which is the worst of both.
+fn remove_tree(root: &std::path::Path) -> Result<(), Error> {
+    use std::os::unix::fs::PermissionsExt;
+
+    fn descend(dir: &std::path::Path) -> Result<(), Error> {
+        // The directory must be writable and searchable before its contents can
+        // be listed or unlinked.
+        if let Ok(meta) = std::fs::metadata(dir) {
+            let mut perms = meta.permissions();
+            if perms.mode() & 0o700 != 0o700 {
+                perms.set_mode(perms.mode() | 0o700);
+                let _ = std::fs::set_permissions(dir, perms);
+            }
+        }
+        for entry in std::fs::read_dir(dir)
+            .map_err(|e| Error::Layer(dir.to_path_buf(), e))?
+            .filter_map(Result::ok)
+        {
+            let path = entry.path();
+            // Never follow a symlink out of the tree - a Windows layer contains
+            // them, and one pointing outside would take the target with it.
+            if path.is_dir() && !path.is_symlink() {
+                descend(&path)?;
+            } else {
+                std::fs::remove_file(&path).map_err(|e| Error::Layer(path, e))?;
+            }
+        }
+        std::fs::remove_dir(dir).map_err(|e| Error::Layer(dir.to_path_buf(), e))
+    }
+
+    descend(root)
 }
 
 /// Builds a new environment against an existing base.
@@ -138,6 +209,11 @@ pub fn create(name: &str, base_id: &str) -> Result<Environment, Error> {
         layer::normalise_case(&env.layer(), &base.path)?;
         prefix::point_c_drive(&env.prefix(), &paths::mount_point(name)?)?;
 
+        let rules = toml::to_string(&registry::Rules::default())
+            .map_err(|e| Error::Manifest(env.rules_file(), e.to_string()))?;
+        std::fs::write(env.rules_file(), rules).map_err(|e| Error::Layer(env.rules_file(), e))?;
+        env.project_registry()?;
+
         let manifest = toml::to_string(&env.manifest)
             .map_err(|e| Error::Manifest(root.join("environment.toml"), e.to_string()))?;
         std::fs::write(root.join("environment.toml"), manifest)
@@ -154,6 +230,47 @@ pub fn create(name: &str, base_id: &str) -> Result<Environment, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_directory_with_no_permissions_is_still_removed() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("raven-rm-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("work/work")).unwrap();
+        std::fs::write(root.join("keep.txt"), "x").unwrap();
+        // This is exactly what overlayfs leaves behind.
+        std::fs::set_permissions(
+            root.join("work/work"),
+            std::fs::Permissions::from_mode(0o000),
+        )
+        .unwrap();
+
+        assert!(
+            std::fs::remove_dir_all(&root).is_err(),
+            "if the plain removal starts working, this guard is no longer needed"
+        );
+        remove_tree(&root).expect("remove_tree must handle it");
+        assert!(!root.exists());
+    }
+
+    #[test]
+    fn removal_does_not_follow_a_symlink_out_of_the_tree() {
+        let root = std::env::temp_dir().join(format!("raven-rmlink-{}", std::process::id()));
+        let outside = std::env::temp_dir().join(format!("raven-rmlink-out-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("precious.txt"), "keep me").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
+
+        remove_tree(&root).unwrap();
+        assert!(
+            outside.join("precious.txt").exists(),
+            "the removal followed a symlink and deleted files outside the environment"
+        );
+        let _ = std::fs::remove_dir_all(&outside);
+    }
 
     #[test]
     fn a_manifest_round_trips() {

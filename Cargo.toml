@@ -10,7 +10,11 @@ rust-version = "1.85"
 [dependencies]
 anyhow = "1.0.104"
 clap = { version = "4.6.6", features = ["derive"] }
+nt-hive = "0.3.0"
 rustix = { version = "1.1.4", features = ["mount", "thread", "process"] }
 serde = { version = "1.0.229", features = ["derive"] }
 thiserror = "2.0.20"
 toml = "1.1.4"
+
+[dev-dependencies]
+regf = "0.1.0"

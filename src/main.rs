@@ -100,6 +100,8 @@ enum EnvCmd {
     },
     /// Delete an environment. The base it ran against is untouched.
     Destroy { name: String },
+    /// Re-run the registry projection, after editing the environment's rules.
+    Reproject { name: String },
 }
 
 fn main() -> Result<()> {
@@ -224,6 +226,15 @@ fn env_cmd(cmd: EnvCmd) -> Result<()> {
             println!(
                 "Run something with: raven run {} -- wine <program.exe>",
                 e.name
+            );
+            Ok(())
+        }
+        EnvCmd::Reproject { name } => {
+            let e = env::Environment::open(&name)?;
+            let keys = e.project_registry()?;
+            println!(
+                "Projected {keys} keys into {name} using {}",
+                e.rules_file().display()
             );
             Ok(())
         }

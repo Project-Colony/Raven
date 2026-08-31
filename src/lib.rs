@@ -10,6 +10,7 @@ pub mod layer;
 pub mod mount;
 pub mod paths;
 pub mod prefix;
+pub mod registry;
 
 /// Failures that are Raven's own, as opposed to the kernel's.
 #[derive(Debug, thiserror::Error)]
@@ -54,4 +55,7 @@ pub enum Error {
 
     #[error("{0} is not a readable manifest: {1}")]
     Manifest(std::path::PathBuf, String),
+
+    #[error("could not read the registry hive: {0}")]
+    Hive(String),
 }
