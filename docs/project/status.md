@@ -110,6 +110,40 @@ against Wine's synthetic prefix. The cause is measured, two plausible theories
 about it were falsified, and the whole investigation is in
 [../internals/performance.md](../internals/performance.md).
 
+## Built
+
+Three commands, and between them they reproduce the whole proven path.
+
+| | |
+|---|---|
+| `raven doctor` | reports whether the kernel allows unprivileged user namespaces, and whether `/dev/ntsync` is present |
+| `raven prepare-layer` | renames a layer's paths to a reference Windows's spelling, so the two actually merge |
+| `raven exec` | stacks ordered read-only layers under a writable overlay in a user namespace, then runs a command inside it |
+
+Run end to end against the real Windows 11 base using the binary alone: 338
+paths renamed, no case duplicates left, `System32` showing the union at 4877
+entries, `ntdll.dll` resolving to Wine's 770 139 bytes, and `forfiles.exe`
+loading as **native** — Microsoft's own PE out of the mounted base.
+
+**19 tests pass** and `clippy -D warnings` is clean. Two of them carry the
+design:
+
+- A write through the overlay leaves the base byte-identical, the new file never
+  reaches it, and it lands in the upper layer. Checked against a deliberately
+  sabotaged mount to confirm it can fail — a guarantee whose test cannot fail is
+  not a guarantee.
+- With two read-only layers, the first wins where both have a file and the second
+  shows through where the first has none. That is the shadow set, asserted
+  rather than described.
+
+## Not built
+
+The base deployment is driven by hand — `wimlib-imagex` and a Wine prefix copied
+into place. So are the environment model, the registry projection and `binfmt`
+registration. Everything in
+[../internals/registry-projection.md](../internals/registry-projection.md) is
+still a plan rather than a description.
+
 ## Open questions
 
 Ordered by how much damage a wrong assumption would do.
