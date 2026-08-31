@@ -105,11 +105,44 @@ them, and `choice.exe` has only a 2 KB `.rsrc` section, far too small for its ow
 help text. Traced with `WINEDEBUG=+file`: Wine opens **zero** `.mui` files. So
 `LoadString` finds nothing and the program prints nothing.
 
-**Wine walks 112 373 WinSxS manifests to launch one trivial program.** A real
-Windows carries a populated side-by-side store, and Wine's activation-context
-lookup iterates it. Wine's synthetic prefix has almost nothing there, so this
-cost simply does not exist today. It is the first performance consequence of
-using a real Windows, and it is large.
+**Launching a process costs about twice as much, and the cause is not what it
+looked like.** Measured, three runs each: 111–122 ms against Wine's synthetic
+prefix, 207–238 ms against the real Windows. Roughly **+95 ms per process**.
+
+The first suspect was WinSxS. A real Windows carries 28 006 manifests and 17 385
+assembly directories where Wine's prefix has 21, and a `+file` trace showed
+Wine scanning them with wildcard masks — 112 373 trace lines, to find the 8
+manifests that actually match. It was the obvious culprit and it was wrong:
+masking the entire store with an opaque overlay directory, so 1 directory and
+117 manifests remained visible, **changed the time not at all** (207–231 ms).
+
+The overlay is not the cost either. An overlay carrying only Wine's skeleton
+runs in 109–121 ms — identical to no overlay at all.
+
+What the operation counts actually show:
+
+| Wine operation | skeleton only | real Windows |
+|---|---|---|
+| `init_cached_dir_data` | 133 | **809** |
+| `get_nt_and_unix_names` | 179 | 841 |
+| `append_entry` | 1 027 | 5 802 |
+
+`init_cached_dir_data` is the case-insensitivity machinery. To resolve a Windows
+path on a case-sensitive filesystem, Wine reads the whole directory and builds a
+lookup cache. The merged `System32` holds 4 617 entries against Wine's 852, and
+Wine caches 809 directories per launch instead of 133.
+
+So the cost is not a pathology to be removed. It is the price of case-insensitive
+resolution over a Windows that is simply much larger, paid once per process.
+
+Whether a case-insensitive filesystem underneath — ext4's `casefold` — removes
+the need for that cache is the obvious question and is **untested**. It also may
+not be reachable: `casefold` is an ext4 feature, and a btrfs base cannot have it.
+
+**The methodological lesson, which cost two wrong hypotheses:** a trace line
+count is not a cost. Both WinSxS theories were plausible, measurable, and false,
+and only the control experiment — an overlay with nothing real in it — separated
+the variables.
 
 ## Built
 
@@ -139,7 +172,7 @@ Ordered by how much damage a wrong assumption would do.
 | | Question | Why it matters |
 |---|---|---|
 | 1 | Can Wine be made to resolve `.mui` resources? | Without it every real Windows console utility is mute, and any program that keeps its strings in MUI — which is the modern default — shows blank text. This is now the largest known gap. |
-| 2 | Can the WinSxS manifest walk be avoided or cached? | 112 373 lookups per launch is not a rounding error. Pruning the store, or caching the resolution per environment, are both untried. |
+| 2 | Does a case-insensitive filesystem remove Wine's directory-cache cost? | It is the only lever identified for the +95 ms per process. `casefold` is ext4-only, so a btrfs base cannot use it, and whether Wine even detects it is unknown. |
 | 3 | Which Wine files must be in the upper lower-layer? | The shadow set, now expressed as "which paths does the Wine layer need to contain". See [../internals/shadow-set.md](../internals/shadow-set.md). |
 | 3 | Does the projection's `X:` to `C:` rewrite cover everything, or is a never-booted hive missing more? | `SystemRoot` was found by looking. What else describes the setup environment is unknown until something reads the whole hive. |
 | 4 | What do hardened systems need? | `linux-hardened`, Ubuntu's AppArmor policy and SELinux-enforcing systems all change the mount story. Rootless Podman solves this with `fuse-overlayfs` and `context=` labelling, so the answers exist; which one Raven needs is unmeasured. |
