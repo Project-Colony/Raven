@@ -155,6 +155,18 @@ fn main() -> Result<()> {
         Commands::Run { name, argv } => run(&name, argv),
         Commands::Launch { exe, args } => {
             let e = launch::resolve(&exe)?;
+            // The kernel invokes this with no terminal of its own, so when a
+            // double-clicked program misbehaves there is nothing to look at.
+            // RAVEN_TRACE=1 says which environment was chosen and why it
+            // mattered - the one question worth asking first.
+            if std::env::var_os("RAVEN_TRACE").is_some() {
+                eprintln!(
+                    "[raven] exe={} environment={} prefix={}",
+                    exe.display(),
+                    e.name,
+                    e.prefix().display()
+                );
+            }
             let mut argv = vec!["wine".to_string(), exe.display().to_string()];
             argv.extend(args);
             run(&e.name, argv)
