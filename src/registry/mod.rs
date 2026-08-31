@@ -79,7 +79,17 @@ pub fn import(
         .arg("--target")
         .arg(&spec.target)
         .arg("--")
-        .args(["wine", "regedit", "/S"])
+        // `wineserver -w` waits for the server to exit, and the server writes
+        // the registry to disk on its way out. Without it the import lives only
+        // in a server that outlives this call: anything reading system.reg
+        // sooner sees nothing, and a server killed before it idles out loses
+        // the whole projection silently.
+        .args([
+            "/bin/sh",
+            "-c",
+            "wine regedit /S \"$1\" && wineserver -w",
+            "sh",
+        ])
         .arg(reg_file)
         .env("WINEPREFIX", prefix)
         .env("WINEDEBUG", "-all")
