@@ -16,6 +16,7 @@ milestone that a person can actually run.
 | [internals/mount-stack.md](internals/mount-stack.md) | how a real Windows becomes an immutable base with writable overlays |
 | [internals/registry-projection.md](internals/registry-projection.md) | reading binary hives, and why importing them wholesale destroys the prefix |
 | [internals/shadow-set.md](internals/shadow-set.md) | which libraries must be Wine's, which may be Microsoft's, and how we find out |
+| [internals/performance.md](internals/performance.md) | what a real Windows costs at launch, and the theories already ruled out |
 | [internals/system-dependencies.md](internals/system-dependencies.md) | what to install, and a log of what development has installed |
 | [internals/contributing.md](internals/contributing.md) | building, testing, and the conventions inherited from the org |
 
