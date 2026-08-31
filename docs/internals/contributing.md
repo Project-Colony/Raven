@@ -28,13 +28,28 @@ on. A change that gives any code path a writable handle to a base is wrong even
 if it passes every test, and the tests should be the ones that catch it — see
 [mount-stack.md](mount-stack.md).
 
-### The daemon takes named operations, never paths
+### Mounting goes through the backend interface
 
-A privileged service that mounts a caller-supplied source onto a caller-supplied
-target is a root-mount-anything service. The daemon validates names against its
-own registry of environments and constructs every path itself. This is not
-defensive coding to be simplified away later; it is the reason the daemon can
-exist at all — see [architecture.md](architecture.md).
+Raven's mount is unprivileged today — a user namespace and native `overlayfs` —
+and that is the only backend implemented. It is not the only one that will
+exist: hardened kernels disable unprivileged namespaces, and those systems need
+`fuse-overlayfs` or a privileged helper.
+
+So no code calls `unshare` and `mount` directly at the point it happens to need a
+filesystem. Acquiring a mount is one interface, and adding a backend must not
+require touching anything that consumes it — see
+[architecture.md](architecture.md).
+
+If a privileged helper is ever written, it takes **named operations, never
+caller-supplied paths**. "Activate the environment called `skyrim`" is
+validatable; "mount this onto that" is a service that mounts anything anywhere as
+root.
+
+### The library is the API, the CLI is a shell over it
+
+A GUI is a second caller of the same operations. Logic that ends up inside
+argument handlers has to be rewritten to add one. The rule costs a few function
+signatures now and saves the GUI later.
 
 ### Measurements come with their configuration
 
@@ -60,5 +75,7 @@ Two things that will be true from the first crate:
   without root and without a Windows base present. Tests that need either are
   gated behind a feature or a fixture, because a test command people learn to
   avoid is a test suite that stops running.
-- Anything requiring `CAP_SYS_ADMIN` is exercised against the daemon's interface,
-  not by running the suite as root.
+- The suite never needs root. The mount path is unprivileged by design, so a
+  test that requires `sudo` is a sign the design drifted rather than a
+  legitimate need. The one genuinely privileged step, `binfmt_misc`
+  registration, belongs to packaging and is tested there.

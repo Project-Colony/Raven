@@ -116,77 +116,109 @@ and shadow set.
 its own registration for years; Raven's differs only in pointing at a resolver
 rather than at `wine` directly.
 
-## The privilege boundary
+## Privilege, and the mount backend
 
-Mounting filesystems, loading kernel modules and writing to
-`/proc/sys/fs/binfmt_misc/register` all require `CAP_SYS_ADMIN`. Everything else
-Raven does — parsing hives, computing a shadow set, deploying a WIM into a
-user-owned directory, launching a program — requires nothing.
+The instinct is that mounting filesystems needs root, and therefore that Raven
+needs a privileged daemon. That was this design's original shape, and it was
+wrong. It is worth stating what was measured, because it removed a whole
+component:
 
-That asymmetry is the reason for a daemon, and it dictates the daemon's shape:
+| Operation | Needs root? |
+|---|---|
+| Mount the overlay | **No.** `unshare -Urm` puts it in a user namespace. |
+| Does that mount leak to the host? | No — invisible outside the namespace. |
+| Join the namespace later | **No.** `nsenter --preserve-credentials`. |
+| Register `binfmt_misc` | Yes — but once, at install time. |
 
-> **The daemon accepts named operations, never raw paths.** "Activate the
-> environment called `skyrim`" is a request it can validate against its own
-> registry of known environments. "Mount *this* over *that*" is a service that
-> mounts anything anywhere as root, which is a privilege escalation vector
-> wearing a project's name.
+So the runtime path is unprivileged end to end: `unshare`, mount the overlay,
+`exec` Wine. Child processes inherit the namespace, so a launcher starting a game
+works without special handling, and the mount dies with the process tree that
+owns it.
 
-The daemon is therefore deliberately small and deliberately boring: it owns the
-list of environments, and the only verbs are create, activate, deactivate and
-destroy. Path construction, hive parsing, PE inspection and every other
-interesting operation happen unprivileged, on the other side of the socket.
+`binfmt_misc` is the exception, and it is a **packaging** concern rather than a
+runtime one: a file in `/etc/binfmt.d/`, applied by `systemd-binfmt` at boot,
+installed by the package manager that already holds root legitimately. Nothing
+needs to hold privilege while Raven runs.
 
-This is an attack surface, so the repository warrants a `SECURITY.md` before it
-has users.
+### Where this breaks, and the seam that anticipates it
+
+Unprivileged user namespaces are exactly the feature hardened systems turn off.
+`linux-hardened` on Arch disables them. Ubuntu restricts them through AppArmor by
+default since 23.10. Debian did so for years. On SELinux-enforcing systems the
+namespace works but the mount is subject to policy, and overlayfs has real
+interactions with SELinux labelling.
+
+None of that is speculative and none of it is fatal — **rootless Podman does
+precisely this, on SELinux-enforcing systems, every day.** The known answers are
+`fuse-overlayfs` where native overlayfs in a namespace is refused, and the
+`context=` mount option for labelling.
+
+Raven therefore does not call `unshare` and `mount` from wherever it happens to
+need a filesystem. Acquiring a mounted C: is **one interface with room for three
+backings**:
+
+1. **native `overlayfs` in a user namespace** — the primary path, and the only
+   one Phase 1 implements
+2. **`fuse-overlayfs` in a user namespace** — where policy refuses the native one
+3. **a privileged helper** — where unprivileged namespaces are unavailable
+   entirely
+
+Only the first exists at first. The seam exists from the first commit, so the
+other two are additions rather than a rewrite — and the privileged helper, if it
+is ever built, inherits the rule that was going to govern the daemon: it accepts
+**named operations, never caller-supplied paths**, because a service that mounts
+an arbitrary source onto an arbitrary target as root is a privilege escalation
+vector wearing a project's name.
+
+Detection is at runtime, and the diagnostic matters. "This kernel restricts
+unprivileged user namespaces; Raven needs one of the following" is a useful
+error. A bare `mount: operation not permitted` is not.
 
 ## Crate layout
 
-Prefix `raven`, following
-[the org layout rules](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/design/repository-layout.md).
-A workspace is right here rather than a single crate, because the boundaries are
-real ones: a privileged daemon is a separate process, and the launch handler is
-on the hot path of every program start.
+Phase 1 is **one crate**, not a workspace.
 
-| Crate | `description` |
+[The org rule](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/design/repository-layout.md)
+is that a workspace is for a real boundary — a separate process, a different
+build target, a library something else genuinely consumes — and that splitting
+by layer buys nothing but a dependency graph. Once the privileged daemon
+disappeared, Raven became one program in one process, which is the case the rule
+answers with a single crate and subsystems as directories under `src/`.
+
+```
+src/
+├── main.rs        entry point
+├── cli.rs         argument parsing; a thin shell over the library below
+├── paths.rs       the Colony filesystem layout for Raven
+├── base/          deploying and describing a Windows base
+├── env/           the environment model: create, activate, destroy
+├── mount/         the mount backends, behind one interface
+├── hive/          registry hive reading and Wine .reg projection
+└── shadow.rs      the shadow set, loaded from data
+```
+
+A directory earns its existence by holding more than one file, which is why
+`shadow.rs` and `paths.rs` are files and `hive/` is not.
+
+### The constraint that keeps a GUI possible
+
+Everything above lives as a **library API**, and `cli.rs` is a thin shell over
+it. This is not architectural decoration: a GUI is a second caller of the same
+operations, and if the logic ends up inside argument handlers, adding one means
+rewriting it. The cost of the rule now is a few function signatures; the cost of
+skipping it is the GUI.
+
+### When this becomes a workspace
+
+| Split out | When |
 |---|---|
-| `raven-paths` | Colony filesystem layout for Raven's bases, environments and cache |
-| `raven-log` | Logging setup, shared so every Raven binary logs identically |
-| `raven-proto` | Wire types for the Raven CLI-to-daemon protocol |
-| `raven-core` | Environment model, shadow-set rules and configuration for Raven |
-| `raven-hive` | Windows registry hive reader and Wine registry projector |
-| `raven-daemon` | Privileged service performing Raven's mounts and binfmt registration |
-| `raven` | The Raven command-line interface |
+| `raven-gui` | there is a model worth showing — it consumes `colony-ui`, so it is cheap once the model exists |
+| `raven-daemon`, `raven-proto` | a privileged helper is needed for systems without unprivileged namespaces |
+| `raven-launch` | measurement shows CLI start-up cost matters on the `binfmt` path |
+| `raven-hive` | the hive corpus and its tests outgrow living alongside the binary |
 
-Seven crates, and each one earns it: `-paths` and `-log` are the two things every
-binary needs identically, `-proto` crosses a process boundary, `-hive` wraps an
-external format with its own test corpus, `-daemon` is the privileged process,
-`-core` is the domain logic with the fewest dependencies, and `raven` is the
-binary.
-
-### Deliberately deferred
-
-Each of these has a stated trigger, so adding it is a decision rather than a
-drift:
-
-| Crate | Added when |
-|---|---|
-| `raven-client` | a second consumer talks to the daemon; until then the CLI owns that code |
-| `raven-launch` | measurement shows the CLI's start-up cost matters on the `binfmt` path |
-| `raven-pe` | Raven needs to inspect a PE itself, rather than letting Wine decide |
-| `raven-gui` | there is something worth showing; it consumes `colony-ui` and is Phase 3 |
-
-### A note on `raven-paths`
-
-The org's canonical path helper is `colony_ui::paths`, and using it would be the
-correct instinct. It lives in `colony-ui`, which is an iced crate — so a
-privileged daemon with no user interface would pull a GUI toolkit to compute
-`~/.local/share/Colony/Raven/`.
-
-Eidos hit this and solved it with its own `eidos-paths`. Raven does the same,
-which means the ecosystem now has the helper duplicated twice. **The real fix is
-a `colony-paths` crate that `colony-ui` re-exports**, and that belongs upstream
-in Project-Colony-Resources rather than here. Recorded so it is a known
-duplication rather than an accidental one.
+Each has a trigger, so the split is a decision rather than a drift. None of them
+is speculative — they are the four things already known to be coming.
 
 ## Language
 

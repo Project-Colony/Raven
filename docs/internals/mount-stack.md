@@ -102,9 +102,44 @@ what to turn them into. What survives that translation, and what Wine
 synthesizes on its own regardless, is a question for the first spike rather than
 an assumption to build on.
 
+## Performing the mount
+
+The overlay is mounted **without root**, inside a user namespace:
+
+```
+unshare -Urm  →  mount -t overlay  →  exec wine
+```
+
+This was measured rather than assumed. The mount succeeds unprivileged, it is
+invisible from outside the namespace, `nsenter --preserve-credentials` can join
+it later without root, and the base is provably untouched — a write to a file
+that exists in the lower layer produces a modified copy in `upper/` while the
+original in the base is unchanged.
+
+Child processes inherit the namespace, so a launcher starting a game needs no
+special handling, and the mount is destroyed with the process tree that owns it.
+Nothing has to hold privilege while Raven runs.
+
+Two consequences worth stating:
+
+- **Concurrent independent launches into one environment are not supported at
+  first.** `overlayfs` does not support two live mounts sharing an `upperdir`,
+  and the simple path — mount, exec, exit — gives one mount per process tree.
+  If launching two unrelated programs into the same environment turns out to
+  matter, the fix is a keeper process holding the namespace with others joining
+  by `nsenter`, which is proven to work. It is not built until it is needed.
+- **`binfmt_misc` still needs root, once.** It is a file in `/etc/binfmt.d/`
+  applied by `systemd-binfmt` at boot — a packaging concern, handled by the
+  package manager, not a service that runs.
+
+Where unprivileged namespaces are unavailable — `linux-hardened`, Ubuntu's
+AppArmor policy, some enterprise configurations — the mount goes through a
+different backend behind the same interface. See
+[architecture.md](architecture.md).
+
 ## Environment lifecycle
 
-Four verbs, and they are the daemon's entire vocabulary:
+Four verbs, and they are Raven's entire vocabulary:
 
 | | |
 |---|---|
@@ -114,7 +149,9 @@ Four verbs, and they are the daemon's entire vocabulary:
 | **destroy** | unmount, then delete the environment directory; the base is untouched |
 
 Nothing in that list writes to a base. That is checkable, and it should be
-checked by a test rather than by reading the code.
+checked by a test rather than by reading the code — the test that a write through
+the overlay leaves the lower layer byte-identical is the one that guards the
+whole design.
 
 ## Where files live
 
