@@ -1,0 +1,16 @@
+[package]
+name = "raven"
+description = "Run Windows programs on Linux against a real Windows installation mounted as C:"
+version = "0.1.0" # x-release-please-version
+license = "GPL-3.0-or-later"
+repository = "https://github.com/Project-Colony/Raven"
+edition = "2024"
+rust-version = "1.85"
+
+[dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.6", features = ["derive"] }
+rustix = { version = "1.1.4", features = ["mount", "thread", "process"] }
+serde = { version = "1.0.229", features = ["derive"] }
+thiserror = "2.0.20"
+toml = "1.1.4"

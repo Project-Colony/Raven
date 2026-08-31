@@ -34,11 +34,22 @@ something from the design.
 The consequence of the first three together is that Phase 1 is a single crate
 rather than a seven-crate workspace with a privileged process in it.
 
-## Not done
+## Built
 
-**No code exists.** There is no crate, no binary, and nothing has been run. The
-layout in [../internals/architecture.md](../internals/architecture.md) is a plan,
-not a description.
+The crate exists and its first component is real: the mount backend.
+
+- `raven exec` mounts an overlay over a base in an unprivileged user namespace
+  and runs a command inside it. `raven doctor` reports what the running system
+  supports.
+- Five tests pass, and the one that matters asserts the central claim — a write
+  through the overlay leaves the base byte-identical, the new file is absent from
+  the base, and it is present in the upper layer.
+- That test was checked against a deliberately broken mount: with the overlay
+  disabled it fails. A guarantee whose test cannot fail is not a guarantee.
+
+Everything else in [../internals/architecture.md](../internals/architecture.md)
+— the base deployment, the registry projection, the shadow set, `binfmt`
+registration — is still a plan rather than a description.
 
 Also absent, and deliberately: `docs/guide/`. There is nothing to install and
 nothing to use, and writing those pages now would produce documentation that is
