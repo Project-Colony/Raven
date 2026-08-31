@@ -1,53 +1,51 @@
-//! Projects the deployed Windows base and checks the refusals held.
+//! Projects a deployed Windows base and checks that the refusals held.
 //!
 //! Not a test: it needs a real Windows, which the repository cannot carry. The
-//! tested equivalents run against synthetic data in `cargo test`.
+//! tested equivalents run against synthetic hives in `cargo test`.
+//!
+//! ```text
+//! cargo run --example project_real_base -- <path to a deployed base>
+//! ```
+
 fn main() {
-    let base =
-        std::path::Path::new("/home/mothersphere/.local/share/Colony/Raven/bases/win11-26200-pro");
-    let t = std::time::Instant::now();
-    let reg = raven::registry::project_base(base, &raven::registry::Rules::default()).unwrap();
-    let keys = reg.matches("\r\n[").count();
+    let Some(arg) = std::env::args().nth(1) else {
+        eprintln!("usage: project_real_base <path to a deployed base>");
+        eprintln!("       (see `raven base list` for what is deployed)");
+        std::process::exit(2);
+    };
+    let base = std::path::Path::new(&arg);
+
+    let started = std::time::Instant::now();
+    let reg = match raven::registry::project_base(base, &raven::registry::Rules::default()) {
+        Ok(reg) => reg,
+        Err(e) => {
+            eprintln!("could not project {}: {e}", base.display());
+            std::process::exit(1);
+        }
+    };
+
     println!(
-        "  {keys} clés, {} Ko, en {:?}",
+        "{} keys, {} KiB, in {:?}",
+        reg.matches("\r\n[").count(),
         reg.len() / 1024,
-        t.elapsed()
+        started.elapsed()
     );
+
     let low = reg.to_lowercase();
     let checks: [(&str, bool); 6] = [
-        (
-            "HKLM\\System refusé",
-            !low.contains("[hkey_local_machine\\system\\"),
-        ),
-        ("SAM refusé", !low.contains("\\sam\\")),
-        (
-            "Windows NT\\CurrentVersion refusé",
-            !low.contains("windows nt\\currentversion"),
-        ),
-        (
-            "Classes\\Installer refusé",
-            !low.contains("classes\\installer"),
-        ),
-        (
-            "Cryptography refusé",
-            !low.contains("microsoft\\cryptography"),
-        ),
-        ("plus aucun X:\\", !reg.contains("X:\\\\")),
+        ("HKLM\\System refused", !low.contains("[hkey_local_machine\\system\\")),
+        ("SAM refused", !low.contains("\\sam\\")),
+        ("Windows NT\\CurrentVersion refused", !low.contains("windows nt\\currentversion")),
+        ("Classes\\Installer refused", !low.contains("classes\\installer")),
+        ("Cryptography refused", !low.contains("microsoft\\cryptography")),
+        ("no X: left", !reg.contains("X:\\\\")),
     ];
+    let mut failed = false;
     for (name, ok) in checks {
-        println!("  {} {name}", if ok { "✓" } else { "✗ A FUITÉ" });
+        println!("  {} {name}", if ok { "ok" } else { "LEAKED" });
+        failed |= !ok;
     }
-    println!("\n  --- ce qui a traversé ---");
-    let mut roots: std::collections::BTreeMap<String, usize> = Default::default();
-    for l in reg.lines().filter(|l| l.starts_with('[')) {
-        let parts: Vec<&str> = l.trim_matches(['[', ']']).split('\\').collect();
-        *roots
-            .entry(parts.iter().take(3).cloned().collect::<Vec<_>>().join("\\"))
-            .or_default() += 1;
-    }
-    let mut v: Vec<_> = roots.into_iter().collect();
-    v.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
-    for (r, n) in v.iter().take(8) {
-        println!("    {n:>6}  {r}");
+    if failed {
+        std::process::exit(1);
     }
 }

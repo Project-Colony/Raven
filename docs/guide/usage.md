@@ -1,0 +1,98 @@
+# Using Raven
+
+From an installation image to a running program. Three commands, and then
+`./program.exe` works like anything else.
+
+## 1. Deploy a base
+
+A **base** is a real Windows, deployed once, mounted read-only, and shared by
+every environment. It is never written to.
+
+```bash
+raven base editions --image install.wim
+```
+
+```
+  1  Windows 11 Home  (build 26200)
+  6  Windows 11 Pro  (build 26200)
+```
+
+```bash
+raven base deploy --image install.wim --edition 6 --name win11-pro
+```
+
+This writes about 14 GB and takes a few minutes. No hypervisor is involved and
+Windows never boots — booting is what would bind the installation to hardware
+that is not there.
+
+## 2. Create an environment
+
+An **environment** is a Wine layer over a base, plus somewhere to put writes. It
+is cheap, and it is disposable.
+
+```bash
+raven env create games --base win11-pro
+```
+
+Twenty seconds, during which Raven builds a Wine prefix, turns its `drive_c`
+into a read-only layer above the base, renames that layer to match Windows'
+spelling so the two actually merge, points the prefix's C: at the runtime mount,
+and projects the real registry into it.
+
+## 3. Run something
+
+```bash
+raven run games -- wine 'C:\Windows\System32\notepad.exe'
+```
+
+Anything the program writes lands in the environment. The base finishes
+byte-identical.
+
+## Making `./program.exe` work
+
+```bash
+raven binfmt
+```
+
+prints what to install. It needs root once, and belongs to the package manager
+rather than to Raven:
+
+```bash
+echo ':raven-pe:M::MZ::/usr/bin/raven:F' | sudo tee /etc/binfmt.d/raven.conf
+```
+
+```bash
+sudo systemctl restart systemd-binfmt
+```
+
+Then tell Raven which environment to use for programs that are not inside one:
+
+```bash
+raven env default games
+```
+
+After that, `./setup.exe` runs like any other executable. A program **inside** an
+environment resolves to that environment on its own; the default covers
+everything else.
+
+## Starting over
+
+```bash
+raven env destroy games
+```
+
+Deletes one directory. The base is untouched, which is the point: a broken
+install costs twenty seconds, not a re-deployment.
+
+## Changing what the registry carries
+
+Each environment has a `registry-rules.toml` saying which parts of the real
+Windows registry cross into it. Edit it, then:
+
+```bash
+raven env reproject games
+```
+
+What the defaults do and why — including why the COM registry is deliberately
+switched off — is in
+[../internals/registry-projection.md](../internals/registry-projection.md).

@@ -2,11 +2,13 @@
 
 Sorted by who is reading, not by subject.
 
-Raven is at the design stage, so there is no `guide/` yet. Documenting an
-install procedure for software that does not run would be the exact failure
-[the org convention](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/design/documentation.md)
-warns about: a page that is trusted and wrong. `guide/` arrives with the first
-milestone that a person can actually run.
+## Using Raven
+
+| | |
+|---|---|
+| [guide/install.md](guide/install.md) | building it, and checking your machine can run it |
+| [guide/usage.md](guide/usage.md) | from an installation image to `./program.exe` |
+| [guide/troubleshooting.md](guide/troubleshooting.md) | failure modes that have actually happened, and what they mean |
 
 ## Reading the code
 

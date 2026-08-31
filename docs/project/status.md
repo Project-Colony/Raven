@@ -112,42 +112,43 @@ about it were falsified, and the whole investigation is in
 
 ## Built
 
-Nine commands. `raven env create` now builds a complete environment — layer,
-case normalisation, drive mapping and the registry projection — in twenty
-seconds.
+Eleven commands. The path from an installation image to `./program.exe` is
+complete.
 
 | | |
 |---|---|
 | `raven doctor` | namespaces, Wine, `ntsync`, and what is deployed |
 | `raven base editions` / `deploy` / `list` | the immutable Windows installations |
 | `raven env create` / `list` / `destroy` | environments, cheap and disposable |
-| `raven env reproject` | re-runs the registry projection after editing the rules |
-| `raven run` | mounts the stack and runs a program inside it |
-| `raven exec` | the primitive `run` is built on |
+| `raven env default` / `reproject` | which environment is used by default; re-run the projection |
+| `raven binfmt` | what to install so the kernel recognises `.exe` |
+| `raven launch` / `run` / `exec` | running a program, at three levels of explicitness |
 
 Measured against the real Windows 11 base:
 
-- Microsoft's `forfiles.exe` loads as **native** out of the mounted base.
+- `./program.exe` typed at a shell runs, and the loader reports Microsoft's PE
+  loading as **native**.
+- `raven env create` takes twenty seconds, including the registry projection.
+- The projection carries **1 894 keys** in 130 ms, every refusal holding through
+  to the prefix, and no `X:` left anywhere.
 - After a full cycle the base holds **143 886 files, none modified**.
-- The projection carries **1 894 keys** in 120 ms, merged into the prefix's
-  19 064-key registry, with every refusal holding and no `X:` anywhere.
-- `System32` merges to 4877 entries; `ntdll.dll` resolves to Wine's 770 139.
 
-**64 tests pass** and `clippy -D warnings` is clean. The ones carrying the design:
-base immutability under a real write (checked against a sabotaged mount, so it
-can fail), layer precedence with two read-only layers, the removal of a mounted
-environment that `remove_dir_all` cannot delete, and eight projection tests
-against hives built at test time by a **different** implementation from the
-reader — so a shared misunderstanding of the format cannot pass.
+**69 tests pass** and `clippy -D warnings` is clean. The ones carrying the
+design: base immutability under a real write (checked against a sabotaged mount,
+so it can fail), layer precedence with two read-only layers, removal of a mounted
+environment that `remove_dir_all` cannot delete, PE recognition by magic bytes
+rather than by extension, and eight projection tests against hives built by a
+**different implementation** from the reader.
 
 ## Not built
 
-`binfmt_misc` registration, so `./program.exe` does not yet run by itself;
-`raven run <env> -- wine program.exe` is the way in. It needs root once at
-install time — see [../internals/packaging.md](../internals/packaging.md).
+No package. `raven binfmt` prints what to install rather than installing it, and
+the `rvn` alias is decided but has nowhere to be installed from — see
+[../internals/packaging.md](../internals/packaging.md).
 
-The `rvn` alias is decided and documented, not yet shipped, because there is no
-package yet.
+No application has been installed into an environment, and no game has been run.
+Everything above is measured on Microsoft's own utilities, which is a much easier
+case than software that was never expecting any of this.
 
 ## Open questions
 

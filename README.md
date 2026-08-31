@@ -19,12 +19,17 @@ that you deploy, mount read-only, and write to through an overlay. The registry
 comes from real hives. The libraries are Microsoft's, except for the precise set
 that physically cannot be.
 
-> **Status:** design only. Nothing is implemented, nothing runs, and no code has
-> been written. This repository currently contains the architecture and the
-> reasoning behind it — see [docs/](docs/). The open questions that could still
-> change the design are listed in
-> [docs/project/status.md](docs/project/status.md), and they are real questions,
-> not formalities.
+> **Status:** it works, and it is early. A real Windows 11 Pro deploys from an
+> official ISO, mounts as C:, and runs Microsoft's own binaries — verified by the
+> loader trace, not by output that could have come from Wine's builtins. The
+> registry projection carries 1 894 keys from the real hives. `./program.exe`
+> runs once `binfmt_misc` is registered.
+>
+> What that does *not* mean: no game has been run, no application has been
+> installed into an environment, and the shadow set — which libraries can be
+> Microsoft's rather than Wine's — is unmeasured. There is no package yet. The
+> honest ledger, including two theories that measurement destroyed, is in
+> [docs/project/status.md](docs/project/status.md).
 
 ## Why Raven
 
@@ -75,10 +80,22 @@ Raven's position is the one nobody occupies:
 
 ## Installation
 
-Not released. There is no binary, no package, and no source to build yet.
+Not packaged yet — no Colony entry, no AUR package, no release binary. Building
+from source is the only route, and it is short:
 
-When there is, this section will lead with Colony, then the AUR, then a direct
-download, following [the org convention](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/design/documentation.md).
+```bash
+git clone https://github.com/Project-Colony/Raven
+cd Raven
+cargo build --release
+```
+
+Requires Rust 1.85 or newer, plus `wine` and `wimlib` at runtime. The full list,
+and what each is for, is in
+[docs/internals/system-dependencies.md](docs/internals/system-dependencies.md);
+`raven doctor` reports what is missing.
+
+Then [docs/guide/usage.md](docs/guide/usage.md) walks from an ISO to a running
+program.
 
 ## Documentation
 
