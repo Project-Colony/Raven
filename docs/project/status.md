@@ -34,6 +34,45 @@ something from the design.
 The consequence of the first three together is that Phase 1 is a single crate
 rather than a seven-crate workspace with a privileged process in it.
 
+### Deploying a real Windows
+
+A Windows 11 Pro, build 26200 (25H2), was applied from an official ISO with
+`wimlib-imagex` — 143 886 files, 14 GB on disk, no hypervisor and no boot.
+
+| Finding | Consequence |
+|---|---|
+| It applies cleanly to an ordinary Linux filesystem | the ISO path never touches NTFS, so the `ntfs3` question gates only the secondary path |
+| All five hives are present and `hivex` reads them | `SOFTWARE` is 76 MB and carries `Classes`, `WOW6432Node`, `Microsoft`, `OEM` and more — there is real material to project even before first boot |
+| `SystemRoot` reads `X:\Windows` and `InstallDate` is zero | a never-booted Windows describes the *setup* environment. The projection has to rewrite this, and that is now a known requirement rather than a surprise |
+| The legacy junctions are absent | `Documents and Settings` and `ProgramData\Application Data` are made at first boot. Software that still uses those paths will not find them |
+| Reparse points survive as **absolute** symlinks | `Users\All Users` points at `/ProgramData` — the *Linux* root. Only two exist in the whole tree, and deployment must rewrite them relative |
+| `wimlib` drops NT security descriptors (131 323 files), DOS attributes, 8.3 names (83 967 files) and xattrs (14 287 files) | whether any of that matters is unmeasured; `--unix-data` mode is the lever if it does |
+| Casing is genuinely mixed | `KernelBase.dll`, `Windows`, `Users`. Wine resolves Windows paths case-insensitively, but *overlayfs merges on the exact byte path* — see below |
+
+### Wine will not run against a bare real Windows
+
+The end-to-end attempt found the real obstacle, and it is not a DLL.
+
+Pointing `dosdevices/c:` at a plain deployed Windows makes Wine run `wineboot`
+instead of the requested program: finding a real `C:\windows` where its own
+belongs, Wine concludes the prefix needs rebuilding. The `+loaddll` trace shows
+`wineboot.exe` loading and the requested program never starting.
+
+**`overlayfs` stacks multiple lower layers, and the leftmost wins.** With
+`lowerdir=<wine-skeleton>:<real-windows>`, Wine's files take precedence where
+they exist and Microsoft's fill in everywhere else. Measured: `ntdll.dll` through
+such a mount is 770 139 bytes — Wine's — not Microsoft's 2 522 008.
+
+That is the shadow set expressed as a filesystem layer rather than as an
+environment variable, and it is a better mechanism than `WINEDLLOVERRIDES`
+because it is inspectable.
+
+**One thing blocks it today: case.** Wine's skeleton uses `windows` and `users`;
+Microsoft's uses `Windows` and `Users`. `overlayfs` merges byte-identical paths,
+so the two trees do not merge at all — the mount shows both. Wine's
+case-insensitivity operates a layer above and cannot help. Normalising the Wine
+skeleton to Microsoft's casing at deployment is the obvious fix and is untested.
+
 ## Built
 
 The crate exists and its first component is real: the mount backend.
@@ -61,12 +100,13 @@ Ordered by how much damage a wrong assumption would do.
 
 | | Question | Why it matters |
 |---|---|---|
-| 1 | Is a WIM-applied, never-booted Windows usable as a base? | Its hives are pre-`specialize` and no profile exists. This may be fine, or even preferable, but "may be" is not a foundation. |
-| 2 | What happens to reparse points when a WIM is applied to a POSIX filesystem? | Junctions hold a Windows profile together. If they do not survive and Wine does not synthesize them, paths break in ways that look like application bugs. |
-| 3 | How thin can the shadow set get? | The research question. See [../internals/shadow-set.md](../internals/shadow-set.md). |
+| 1 | Does normalising the Wine skeleton's casing make the two layers merge? | The immediate blocker. Everything else waits on it, and it is a rename rather than a redesign. |
+| 2 | Once merged, which Wine files must be in the upper lower-layer? | The shadow set, now expressed as "which paths does the Wine layer need to contain". See [../internals/shadow-set.md](../internals/shadow-set.md). |
+| 3 | Does the projection's `X:` to `C:` rewrite cover everything, or is a never-booted hive missing more? | `SystemRoot` was found by looking. What else describes the setup environment is unknown until something reads the whole hive. |
 | 4 | What do hardened systems need? | `linux-hardened`, Ubuntu's AppArmor policy and SELinux-enforcing systems all change the mount story. Rootless Podman solves this with `fuse-overlayfs` and `context=` labelling, so the answers exist; which one Raven needs is unmeasured. |
 | 5 | Does `overlayfs` accept an `ntfs3` lower layer? | Gates the "bring your own Windows partition" path only. The ISO path does not touch NTFS at all. |
 | 6 | Synthetic or locally-generated registry test corpus? | The repository cannot carry Microsoft's hives. Decide before the first test, not after. |
+| 7 | Do the dropped NTFS attributes matter? | 131 323 security descriptors, 83 967 short names and 14 287 xattr sets were discarded on deployment. Nothing is known to need them yet, and `--unix-data` is the lever if something does. |
 
 The question that used to sit at the top of this table — whether Wine would
 accept an `overlayfs` mount as its C: drive — is answered and has moved to

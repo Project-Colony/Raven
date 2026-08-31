@@ -74,6 +74,36 @@ Raven's contribution here is not making it work. It is that these arrive from a
 coherent Windows installation rather than from fifteen years of accumulated
 per-application workarounds.
 
+## The mechanism, revised by measurement
+
+The two mechanisms below were the plan. Running Wine against a real deployed
+Windows found a third, and it is better than either.
+
+Wine refuses to run against a bare real Windows at all: finding Microsoft's
+`C:\windows` where its own belongs, it decides the prefix needs rebuilding and
+runs `wineboot` instead of the program.
+
+`overlayfs` takes **multiple lower layers**, leftmost winning. So:
+
+```
+lowerdir=<wine-skeleton>:<real-windows>
+```
+
+gives Wine's files precedence wherever they exist and Microsoft's everywhere
+else — and that *is* the shadow set, expressed as a filesystem layer. Measured:
+`ntdll.dll` read through such a mount is Wine's 770 139 bytes rather than
+Microsoft's 2 522 008.
+
+This is better than an environment variable because it is inspectable: the
+shadow set becomes "what the Wine layer contains", which can be listed, diffed
+and reviewed, rather than a string that has to be believed.
+
+**It does not work yet.** Wine's skeleton uses `windows` and `users`; Microsoft's
+uses `Windows` and `Users`; `overlayfs` merges on the exact byte path, so the
+trees stay separate and the mount shows both. Wine's own case-insensitivity acts
+a layer above the filesystem and cannot help here. Normalising the skeleton's
+casing to Microsoft's is the obvious next step and is untested.
+
 ## The two mechanisms
 
 **`WINEDLLOVERRIDES`** asks Wine which implementation to prefer, per library:
