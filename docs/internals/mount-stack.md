@@ -110,11 +110,16 @@ The overlay is mounted **without root**, inside a user namespace:
 unshare -Urm  →  mount -t overlay  →  exec wine
 ```
 
-This was measured rather than assumed. The mount succeeds unprivileged, it is
-invisible from outside the namespace, `nsenter --preserve-credentials` can join
-it later without root, and the base is provably untouched — a write to a file
-that exists in the lower layer produces a modified copy in `upper/` while the
-original in the base is unchanged.
+This was measured rather than assumed, and measured end to end with Wine in the
+loop rather than with shell commands standing in for it. A prefix whose
+`dosdevices/c:` points at the mount gives Wine a working C: drive: `wine cmd`
+lists it, writes a file to it, and reads that file back. The write lands in
+`upper/`; the base — 1896 files — is unchanged and does not contain it.
+
+The mount succeeds unprivileged, it is invisible from outside the namespace,
+`nsenter --preserve-credentials` can join it later without root, and it is
+destroyed when the process tree that owns it exits, so a crash leaves no stale
+mount behind.
 
 Child processes inherit the namespace, so a launcher starting a game needs no
 special handling, and the mount is destroyed with the process tree that owns it.
