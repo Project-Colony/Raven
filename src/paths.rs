@@ -89,7 +89,7 @@ fn resolve(
 
 /// An environment name is joined into a path that later gets written to and
 /// removed, so it may not climb out of the directory it belongs in.
-fn check_name(name: &str) -> Result<&str, Error> {
+pub(crate) fn check_name(name: &str) -> Result<&str, Error> {
     if name.is_empty() || name == "." || name == ".." || name.contains('/') || name.contains('\0') {
         return Err(Error::BadName(name.to_owned()));
     }
