@@ -63,6 +63,35 @@ Nothing else on the machine was touched. The system upgrade in the same day's
 `pacman.log` — the 7.1 to 7.2 kernel jump and the rest — was not this project's,
 and is not claimed here.
 
+### 2026-08-31 — the Windows image for the base
+
+Not a package, but it is the largest thing this project has pulled onto a
+machine and it belongs in the same log.
+
+| | |
+|---|---|
+| Image | Windows 11, version 25H2, multi-edition x64 ISO, English (United States) |
+| File | `Win11_25H2_English_x64_v2.iso` |
+| Size | 8 471 603 200 bytes |
+| Source | `software.download.prss.microsoft.com`, reached from Microsoft's own download page |
+| SHA256 | `768984706B909479417B2368438909440F2967FF05C6A9195ED2667254E465E3`, matching the value Microsoft publishes |
+| Stored at | `<data>/Colony/Raven/iso/` |
+
+Windows 11 rather than Windows 10, and the reasoning is worth keeping because it
+is not the obvious choice: **Windows 10 reached end of support on 14 October
+2025**. The shadow set is keyed by Windows build, so a measurement taken against
+a build nobody can license fresh has a short shelf life. Windows 11 is also what
+a user supplying their own Windows will have.
+
+The consumer ISO was used rather than the Enterprise or LTSC evaluation, because
+the evaluation route requires submitting a form with a name, email address and
+company. The consumer download requires no account and no personal details —
+only a language and edition selection — and publishes a SHA256 for every
+language, which is what made verification possible.
+
+Raven does not ship this image and never will; see
+[../project/licensing.md](../project/licensing.md).
+
 ## What the dependencies revealed
 
 Two findings that came out of reading what the package manager pulled in, rather
