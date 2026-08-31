@@ -112,37 +112,44 @@ about it were falsified, and the whole investigation is in
 
 ## Built
 
-Three commands, and between them they reproduce the whole proven path.
+The command set now reproduces the whole proven path, and `raven run` does it in
+one line.
 
 | | |
 |---|---|
-| `raven doctor` | reports whether the kernel allows unprivileged user namespaces, and whether `/dev/ntsync` is present |
-| `raven prepare-layer` | renames a layer's paths to a reference Windows's spelling, so the two actually merge |
-| `raven exec` | stacks ordered read-only layers under a writable overlay in a user namespace, then runs a command inside it |
+| `raven doctor` | what this system supports: namespaces, Wine, `ntsync`, and what is deployed |
+| `raven base editions` | the editions inside an `install.wim` |
+| `raven base deploy` | applies one edition into a new, immutable base |
+| `raven base list` | the deployed bases |
+| `raven env create` | prefix, layer, case normalisation and drive mapping, in one step |
+| `raven env list` / `destroy` | the environments; destroying one never touches its base |
+| `raven run` | mounts the stack and runs a program inside it |
+| `raven exec` | the primitive `run` is built on, for trying a stack before committing it |
 
-Run end to end against the real Windows 11 base using the binary alone: 338
-paths renamed, no case duplicates left, `System32` showing the union at 4877
-entries, `ntdll.dll` resolving to Wine's 770 139 bytes, and `forfiles.exe`
-loading as **native** — Microsoft's own PE out of the mounted base.
+Measured against the real Windows 11 base:
 
-**19 tests pass** and `clippy -D warnings` is clean. Two of them carry the
-design:
+- `raven env create` takes **14 seconds**.
+- `raven run` then shows C: with no case duplicates, `System32` at 4877 entries,
+  `ntdll.dll` resolving to Wine's 770 139 bytes, and `forfiles.exe` loading as
+  **native** — Microsoft's own PE.
+- After a full cycle the base holds **143 886 files, none modified**. The 68
+  files the run produced all landed in the overlay.
 
-- A write through the overlay leaves the base byte-identical, the new file never
-  reaches it, and it lands in the upper layer. Checked against a deliberately
-  sabotaged mount to confirm it can fail — a guarantee whose test cannot fail is
-  not a guarantee.
-- With two read-only layers, the first wins where both have a file and the second
-  shows through where the first has none. That is the shadow set, asserted
-  rather than described.
+**25 tests pass** and `clippy -D warnings` is clean. Three carry the design:
+base immutability under a real write (checked against a sabotaged mount, so it
+can fail), layer precedence with two read-only layers, and the `wimlib` output
+parser including its trailing record.
 
 ## Not built
 
-The base deployment is driven by hand — `wimlib-imagex` and a Wine prefix copied
-into place. So are the environment model, the registry projection and `binfmt`
-registration. Everything in
+The registry projection. Everything in
 [../internals/registry-projection.md](../internals/registry-projection.md) is
-still a plan rather than a description.
+still a plan, which means an environment today runs against Wine's own registry
+rather than the real one — `SystemRoot` still reads `X:\Windows` in the base's
+hive and nothing rewrites it yet.
+
+`binfmt_misc` registration is also absent, so `./program.exe` does not yet run by
+itself; `raven run <env> -- wine program.exe` is the way in.
 
 ## Open questions
 
