@@ -112,44 +112,42 @@ about it were falsified, and the whole investigation is in
 
 ## Built
 
-The command set now reproduces the whole proven path, and `raven run` does it in
-one line.
+Nine commands. `raven env create` now builds a complete environment — layer,
+case normalisation, drive mapping and the registry projection — in twenty
+seconds.
 
 | | |
 |---|---|
-| `raven doctor` | what this system supports: namespaces, Wine, `ntsync`, and what is deployed |
-| `raven base editions` | the editions inside an `install.wim` |
-| `raven base deploy` | applies one edition into a new, immutable base |
-| `raven base list` | the deployed bases |
-| `raven env create` | prefix, layer, case normalisation and drive mapping, in one step |
-| `raven env list` / `destroy` | the environments; destroying one never touches its base |
+| `raven doctor` | namespaces, Wine, `ntsync`, and what is deployed |
+| `raven base editions` / `deploy` / `list` | the immutable Windows installations |
+| `raven env create` / `list` / `destroy` | environments, cheap and disposable |
+| `raven env reproject` | re-runs the registry projection after editing the rules |
 | `raven run` | mounts the stack and runs a program inside it |
-| `raven exec` | the primitive `run` is built on, for trying a stack before committing it |
+| `raven exec` | the primitive `run` is built on |
 
 Measured against the real Windows 11 base:
 
-- `raven env create` takes **14 seconds**.
-- `raven run` then shows C: with no case duplicates, `System32` at 4877 entries,
-  `ntdll.dll` resolving to Wine's 770 139 bytes, and `forfiles.exe` loading as
-  **native** — Microsoft's own PE.
-- After a full cycle the base holds **143 886 files, none modified**. The 68
-  files the run produced all landed in the overlay.
+- Microsoft's `forfiles.exe` loads as **native** out of the mounted base.
+- After a full cycle the base holds **143 886 files, none modified**.
+- The projection carries **1 894 keys** in 120 ms, merged into the prefix's
+  19 064-key registry, with every refusal holding and no `X:` anywhere.
+- `System32` merges to 4877 entries; `ntdll.dll` resolves to Wine's 770 139.
 
-**25 tests pass** and `clippy -D warnings` is clean. Three carry the design:
+**60 tests pass** and `clippy -D warnings` is clean. The ones carrying the design:
 base immutability under a real write (checked against a sabotaged mount, so it
-can fail), layer precedence with two read-only layers, and the `wimlib` output
-parser including its trailing record.
+can fail), layer precedence with two read-only layers, the removal of a mounted
+environment that `remove_dir_all` cannot delete, and eight projection tests
+against hives built at test time by a **different** implementation from the
+reader — so a shared misunderstanding of the format cannot pass.
 
 ## Not built
 
-The registry projection. Everything in
-[../internals/registry-projection.md](../internals/registry-projection.md) is
-still a plan, which means an environment today runs against Wine's own registry
-rather than the real one — `SystemRoot` still reads `X:\Windows` in the base's
-hive and nothing rewrites it yet.
+`binfmt_misc` registration, so `./program.exe` does not yet run by itself;
+`raven run <env> -- wine program.exe` is the way in. It needs root once at
+install time — see [../internals/packaging.md](../internals/packaging.md).
 
-`binfmt_misc` registration is also absent, so `./program.exe` does not yet run by
-itself; `raven run <env> -- wine program.exe` is the way in.
+The `rvn` alias is decided and documented, not yet shipped, because there is no
+package yet.
 
 ## Open questions
 

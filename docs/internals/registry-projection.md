@@ -83,6 +83,49 @@ project's private state.
 writes a hive, only reads one and emits `.reg` — and read-only pure-Rust hive
 parsers exist. That keeps the whole path free of C and free of FFI.
 
+## What the real hive taught the rules
+
+The engine was written against the design above and then run against a real
+76 MB `SOFTWARE` hive three times before it was right. Each pass found something
+no amount of reasoning had produced.
+
+**Blanket precedence cannot express the registry's shape.** The first design had
+deny always beat allow. That cannot say *all of `Software` except `Microsoft`,
+but `Microsoft\DirectX` after all* — and that is exactly the shape needed. **The
+most specific rule wins**, so each exception is one line in the rules file rather
+than a change to the engine.
+
+**`WOW6432Node` defeats every rule.** The 32-bit view mirrors the whole of
+`HKLM\Software`. Left alone, **10 524 of 10 596 projected keys were the 32-bit
+copy of subtrees the rules had just refused**. Matching folds the component away,
+so one rule covers both views; the key keeps its real path in the output, because
+a 32-bit program genuinely looks for it there.
+
+**Pruning must not consult the deny list.** The walk skipped any subtree with a
+denied ancestor, which silently dropped every allow rule nested inside one — the
+entire COM registry, 6 860 keys, never crossed. Whether a key is projected is the
+rules' decision; pruning only decides whether walking further could reach one.
+
+**The setup drive letter is not at the start of the string.** A never-booted
+Windows records itself on `X:`, and real values wrap it: `@X:\Program Files\…`,
+`"X:\Windows\System32\…"`. A check anchored at position zero misses all of them.
+
+## The COM registry is off by default
+
+`HKLM\Software\Classes\CLSID`, `Interface` and `TypeLib` are the most obviously
+valuable thing in the hive, and they are **not projected**.
+
+Measured, they add 121 256 keys and 21 MB. The concern is not size. A CLSID
+registration pointing at a Microsoft in-process server that Wine shadows turns a
+working builtin fallback into a hard failure — a program asks for a COM object,
+finds a registration, tries to load a library that cannot work, and errors
+instead of getting Wine's implementation.
+
+Nothing is known about how often that happens. The rule for widening the allow
+list is evidence, not plausibility, so it stays off until somebody measures it.
+Turning it on is one line per subtree in the environment's rules file, and
+measuring what it changes is the first experiment to run here.
+
 ## The rules are the artifact
 
 The allow list is a data file, reviewed like source, not a constant buried in
@@ -108,7 +151,14 @@ makes a cached projection safe to reuse.
 - **Idempotency.** Projecting twice produces identical output.
 - **Device paths do not survive.** No `\Device\` reference reaches the prefix.
 
-The corpus is the awkward part: hives are Microsoft's, and the repository cannot
-carry a real one. Either the corpus is generated synthetically, or it is produced
-locally from a deployed base and kept out of the repository — a choice to make
-before the first test is written, not after.
+The corpus was the awkward part, and it is settled: hives are Microsoft's and
+the repository cannot carry one, so the fixtures are **built at test time from a
+small `.reg` description**, by `regf` — a different implementation from the
+`nt-hive` reader Raven uses.
+
+That independence is the point rather than an accident of what was available. If
+Raven both wrote and read its fixtures, a shared misunderstanding of the hive
+format would pass every test and fail on a real Windows. One implementation
+writing and another reading is a genuine check on the format itself.
+
+`regf` is a **dev-dependency**: it builds fixtures and never ships.
