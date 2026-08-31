@@ -104,6 +104,46 @@ trees stay separate and the mount shows both. Wine's own case-insensitivity acts
 a layer above the filesystem and cannot help here. Normalising the skeleton's
 casing to Microsoft's is the obvious next step and is untested.
 
+## The first measured entry, and it is not a library
+
+Running a real Windows installer found the first thing the base must not
+provide, and it turned out to be an entire assembly store rather than a DLL.
+
+**`Windows\WinSxS` is shadowed.** A real Windows carries a populated
+side-by-side store. An installer whose manifest asks for
+`Microsoft.Windows.Common-Controls` version 6.0 — which Inno Setup, and a large
+share of Windows installers, do — gets Microsoft's `comctl32` out of it. That
+library loads, and then does not work against Wine's `user32`.
+
+The symptom is precise and thoroughly misleading:
+
+| | |
+|---|---|
+| The window | drawn, correct size, correct frame |
+| Its bitmaps | drawn correctly |
+| Every control | created, and positioned |
+| Text in any of them | **absent** |
+| Response to a click | **none at all** |
+
+Nothing errors. Nothing appears in a log. The installer simply sits there, whole
+and inert, and a person would reasonably conclude the fonts are broken.
+
+**`WINEDLLOVERRIDES` cannot fix this**, which is what makes it worth writing
+down. Forcing `comctl32=b` changes nothing, because side-by-side resolution goes
+through the activation context rather than the loader search path the override
+governs. The override was the obvious remedy and it was measured to be useless.
+
+Hiding the store fixes it completely: the wizard renders its text and its buttons
+answer clicks. The mask sits in the read-only layer, so an installer that
+registers its *own* assemblies into the environment is unaffected — only the
+base's store disappears.
+
+Two earlier findings turn out to have been the same thing seen from different
+angles. The 112 373 WinSxS manifest lookups measured during the performance
+investigation were Wine genuinely resolving activation contexts against the real
+store; and the reason a bare game exited while its dialog flashed was the same
+machinery failing earlier.
+
 ## The two mechanisms
 
 **`WINEDLLOVERRIDES`** asks Wine which implementation to prefer, per library:

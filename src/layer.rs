@@ -75,6 +75,50 @@ fn walk(layer: &Path, reference: &Path, renamed: &mut usize) -> Result<(), Error
     Ok(())
 }
 
+/// Hides a directory of the base behind an empty one in this layer.
+///
+/// `overlayfs` normally *merges* directories, so a layer can only add to what
+/// the base provides. An opaque marker makes it replace instead — everything the
+/// base has at that path becomes invisible.
+///
+/// This is the shadow set applied to a whole subtree rather than a single file,
+/// and there is one entry in it that measurement forced:
+///
+/// **`Windows\WinSxS`.** A real Windows carries a populated side-by-side
+/// assembly store. An installer whose manifest asks for
+/// `Microsoft.Windows.Common-Controls` 6.0 gets Microsoft's `comctl32` from it —
+/// which loads, and then does not work against Wine's `user32`. The symptom is
+/// precise and misleading: the window and its bitmaps draw, every control is
+/// created, and nothing has any text or answers a click.
+///
+/// `WINEDLLOVERRIDES` cannot fix it. Side-by-side resolution goes through the
+/// activation context, not the loader search path the override governs — which
+/// is why forcing `comctl32=b` changes nothing and hiding the store changes
+/// everything.
+///
+/// The mask sits in the read-only layer, so the writable overlay above it is
+/// unaffected: an installer that registers its own assemblies into the
+/// environment still works.
+pub fn shadow(layer: &Path, relative: &str) -> Result<(), Error> {
+    let target = layer.join(relative);
+    std::fs::create_dir_all(&target).map_err(|e| Error::Layer(target.clone(), e))?;
+    // `user.` rather than `trusted.`: Raven mounts with `userxattr` because it
+    // is unprivileged, and an unprivileged process cannot set trusted xattrs.
+    rustix::fs::setxattr(
+        &target,
+        "user.overlay.opaque",
+        b"y",
+        rustix::fs::XattrFlags::empty(),
+    )
+    .map_err(|e| Error::Layer(target, e.into()))
+}
+
+/// Subtrees of the base that a layer hides, and why.
+///
+/// Deliberately short. Each entry costs the environment something real, so one
+/// goes in only when a measurement says it must — see `shadow`.
+pub const SHADOWED: &[&str] = &["Windows/WinSxS"];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,6 +142,29 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn a_shadowed_directory_is_marked_opaque() {
+        let layer = Tmp::new("shadow");
+        shadow(&layer.0, "Windows/WinSxS").unwrap();
+        let mut buf = [0u8; 8];
+        let n = rustix::fs::getxattr(
+            layer.0.join("Windows/WinSxS"),
+            "user.overlay.opaque",
+            &mut buf,
+        )
+        .expect("the marker must be readable back, or overlayfs will not honour it");
+        assert_eq!(&buf[..n], b"y");
+    }
+
+    #[test]
+    fn shadowing_creates_the_directory_if_the_layer_lacks_it() {
+        let layer = Tmp::new("shadow2");
+        // Wine's skeleton has no WinSxS at all, so the common case is creating it.
+        assert!(!layer.0.join("Windows/WinSxS").exists());
+        shadow(&layer.0, "Windows/WinSxS").unwrap();
+        assert!(layer.0.join("Windows/WinSxS").is_dir());
     }
 
     #[test]

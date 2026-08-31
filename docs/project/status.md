@@ -150,6 +150,29 @@ No application has been installed into an environment, and no game has been run.
 Everything above is measured on Microsoft's own utilities, which is a much easier
 case than software that was never expecting any of this.
 
+## A real program, end to end
+
+The first third-party software run against Raven, and the chain completed:
+
+1. A real Windows 11 Pro, deployed from an official ISO, never booted.
+2. Mounted as C:, with Wine's layer above it.
+3. **A real Windows installer ran** — Inno Setup, 32-bit — and wrote 850 files
+   and 256 MB into `Program Files (x86)`, plus its own registry key at
+   `HKLM\Software\Wow6432Node\Enterbrain\RGSS3\RTP`.
+4. A 32-bit RPG Maker game then found its runtime and reached its title screen.
+
+**The base finished with 143 886 files and none modified.**
+
+Getting there required the first measured entry in the shadow set, and it was
+not a library: the base's `Windows\WinSxS` must be hidden, or installers render
+without text and ignore every click. The full account is in
+[../internals/shadow-set.md](../internals/shadow-set.md).
+
+Two things this does *not* show. The game is 2D and makes no 3D calls, so
+nothing here says anything about Direct3D. And one installer working is one data
+point — Inno Setup is common, but so are half a dozen other installer
+frameworks, and none has been tried.
+
 ## Open questions
 
 Ordered by how much damage a wrong assumption would do.

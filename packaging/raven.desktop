@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Raven
+GenericName=Windows program launcher
+Comment=Run a Windows program against a real Windows installation
+# %f rather than %F: Raven launches one program, and a file manager passing
+# several would otherwise hand them all to a single instance as arguments.
+Exec=raven launch %f
+Icon=raven
+Terminal=false
+NoDisplay=true
+Categories=System;Emulator;
+MimeType=application/x-ms-dos-executable;application/x-msdownload;application/vnd.microsoft.portable-executable;

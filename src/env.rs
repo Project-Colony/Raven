@@ -207,6 +207,9 @@ pub fn create(name: &str, base_id: &str) -> Result<Environment, Error> {
         std::fs::rename(&drive_c, env.layer()).map_err(|e| Error::Layer(drive_c, e))?;
 
         layer::normalise_case(&env.layer(), &base.path)?;
+        for rel in layer::SHADOWED {
+            layer::shadow(&env.layer(), rel)?;
+        }
         prefix::point_c_drive(&env.prefix(), &paths::mount_point(name)?)?;
 
         let rules = toml::to_string(&registry::Rules::default())
