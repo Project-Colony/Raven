@@ -54,16 +54,69 @@ impl Drop for Layout {
 }
 
 fn run_in_overlay(l: &Layout, shell: &str) -> std::process::Output {
-    Command::new(raven_bin())
-        .arg("exec")
-        .args(["--base", l.p("base").to_str().unwrap()])
-        .args(["--upper", l.p("upper").to_str().unwrap()])
+    run_layered(l, &[&l.p("base")], shell)
+}
+
+fn run_layered(l: &Layout, lower: &[&PathBuf], shell: &str) -> std::process::Output {
+    let mut cmd = Command::new(raven_bin());
+    cmd.arg("exec");
+    for p in lower {
+        cmd.args(["--lower", p.to_str().unwrap()]);
+    }
+    cmd.args(["--upper", l.p("upper").to_str().unwrap()])
         .args(["--work", l.p("work").to_str().unwrap()])
         .args(["--target", l.p("merged").to_str().unwrap()])
         .arg("--")
         .args(["/bin/sh", "-c", shell])
         .output()
         .expect("run raven exec")
+}
+
+/// The property the whole shadow-set design rests on: with two read-only layers,
+/// the first one wins wherever both have a file, and the second shows through
+/// wherever the first does not.
+#[test]
+fn the_first_layer_wins_and_the_second_fills_in() {
+    if !userns_available() {
+        eprintln!("skipped: this kernel restricts unprivileged user namespaces");
+        return;
+    }
+    let l = Layout::new("layers");
+    let high = l.p("high");
+    fs::create_dir_all(&high).unwrap();
+
+    // Present in both, with different contents - this is the shadow.
+    fs::write(l.p("base").join("shared.txt"), "from windows").unwrap();
+    fs::write(high.join("shared.txt"), "from wine").unwrap();
+    // Present only in the low layer - Microsoft's own files showing through.
+    fs::write(l.p("base").join("only-low.txt"), "microsoft only").unwrap();
+    // Present only in the high layer.
+    fs::write(high.join("only-high.txt"), "wine only").unwrap();
+
+    let m = l.p("merged");
+    let out = run_layered(
+        &l,
+        &[&high, &l.p("base")],
+        &format!(
+            "cat {m}/shared.txt; echo; cat {m}/only-low.txt; echo; cat {m}/only-high.txt",
+            m = m.display()
+        ),
+    );
+    assert!(
+        out.status.success(),
+        "raven exec failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        seen.contains("from wine") && !seen.contains("from windows"),
+        "the first layer must win where both have the file, got: {seen}"
+    );
+    assert!(
+        seen.contains("microsoft only"),
+        "the second layer must show through where the first has nothing, got: {seen}"
+    );
+    assert!(seen.contains("wine only"), "got: {seen}");
 }
 
 #[test]

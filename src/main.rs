@@ -29,8 +29,13 @@ enum Commands {
     /// The mount lives only for this process tree, so it needs no cleanup and
     /// leaves nothing behind if the program crashes.
     Exec {
-        #[arg(long)]
-        base: PathBuf,
+        /// A read-only layer. Repeat it; the FIRST wins where layers overlap.
+        ///
+        /// The usual stack is `--lower <wine-skeleton> --lower <windows-base>`,
+        /// which gives Wine's files precedence and lets Microsoft's show
+        /// through everywhere Wine has none.
+        #[arg(long = "lower", required = true)]
+        lower: Vec<PathBuf>,
         #[arg(long)]
         upper: PathBuf,
         #[arg(long)]
@@ -47,14 +52,14 @@ fn main() -> Result<()> {
     match Cli::parse().command {
         Commands::Doctor => doctor(),
         Commands::Exec {
-            base,
+            lower,
             upper,
             work,
             target,
             argv,
         } => exec(
             OverlaySpec {
-                base,
+                lower,
                 upper,
                 work,
                 target,
