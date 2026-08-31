@@ -33,11 +33,23 @@ fn main() {
 
     let low = reg.to_lowercase();
     let checks: [(&str, bool); 6] = [
-        ("HKLM\\System refused", !low.contains("[hkey_local_machine\\system\\")),
+        (
+            "HKLM\\System refused",
+            !low.contains("[hkey_local_machine\\system\\"),
+        ),
         ("SAM refused", !low.contains("\\sam\\")),
-        ("Windows NT\\CurrentVersion refused", !low.contains("windows nt\\currentversion")),
-        ("Classes\\Installer refused", !low.contains("classes\\installer")),
-        ("Cryptography refused", !low.contains("microsoft\\cryptography")),
+        (
+            "Windows NT\\CurrentVersion refused",
+            !low.contains("windows nt\\currentversion"),
+        ),
+        (
+            "Classes\\Installer refused",
+            !low.contains("classes\\installer"),
+        ),
+        (
+            "Cryptography refused",
+            !low.contains("microsoft\\cryptography"),
+        ),
         ("no X: left", !reg.contains("X:\\\\")),
     ];
     let mut failed = false;

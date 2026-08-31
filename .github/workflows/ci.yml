@@ -1,0 +1,66 @@
+name: CI
+
+# A newer push to the same PR obsoletes the running build: cancel it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    # Linux only, deliberately. Raven mounts overlayfs and registers
+    # binfmt_misc; neither concept exists on the other platforms the
+    # organisation targets, so a matrix here would be three jobs to prove that
+    # two of them cannot work.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable branch
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      # The mount tests skip themselves where unprivileged user namespaces are
+      # restricted, which is the default on recent Ubuntu. That is the right
+      # behaviour - a developer's machine should not fail a test for a kernel
+      # policy - but a suite that silently skips its most important tests looks
+      # green while proving nothing. So the state is printed, in the log, every
+      # run.
+      - name: Report what the runner allows
+        run: |
+          echo "max_user_namespaces: $(cat /proc/sys/user/max_user_namespaces 2>/dev/null || echo unavailable)"
+          echo "apparmor userns restriction: $(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo none)"
+          echo "If the first is 0 or the second is 1, the mount tests below skipped."
+
+      - name: Test
+        run: cargo test --verbose
+
+  # The org rule is that every dependency sits on its latest release. This makes
+  # drift visible in a diff rather than leaving it to be discovered later.
+  outdated:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable branch
+      - name: Show anything not on its latest release
+        run: |
+          cargo install cargo-outdated --locked
+          cargo outdated --root-deps-only --exit-code 0
