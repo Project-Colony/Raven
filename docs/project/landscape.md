@@ -117,13 +117,51 @@ engineering; this one is a question with no published answer.
 Stated here rather than discovered later.
 
 - **Kernel-mode drivers will never load.** A `.sys` file is code for the NT
-  kernel, and there is no NT kernel. This excludes kernel anti-cheat, driver-based
-  DRM, and hardware utilities that ship a driver. Using a real Windows
-  installation does not change this by even a little: the drivers are present as
-  files and remain unloadable.
+  kernel, and there is no NT kernel. This excludes driver-based DRM and hardware
+  utilities that ship a driver. Using a real Windows installation does not change
+  this by even a little: the drivers are present as files and remain unloadable.
+  What it means for anti-cheat specifically is more nuanced, and is below.
 - **`ntdll` and `win32u` stay Wine's.** They are where Windows issues syscalls.
   Microsoft's versions would issue NT syscall numbers into a Linux kernel. This
   is not a limitation to be engineered around; it is the definition of the
   boundary.
 - **Raven is Linux-only.** It mounts `overlayfs` and registers `binfmt_misc`.
   Neither concept exists on the other two platforms the org targets.
+
+## Anti-cheat: a compatibility target, not a problem to solve
+
+Worth stating carefully, because "anti-cheat does not work on Linux" is the
+common belief and it is wrong.
+
+**Easy Anti-Cheat has supported Linux and Proton since 2021, and BattlEye since
+2022.** Both work. Support is **opt-in per game**, enabled by the developer in
+their own dashboard. Where a developer has enabled it, the game runs under
+Proton today, and Raven's job is simply not to break that.
+
+Where a developer has *not* enabled it — PUBG, Fortnite, Valorant — the game does
+not run on Linux. **That is a business decision at the publisher, not a technical
+gap.** No amount of engineering below it changes the answer: not Wine, not
+Proton, not Raven, and not an NT kernel written from scratch. The lever is the
+publisher's switch.
+
+### The line Raven does not cross
+
+Making a game run anyway would mean convincing its anti-cheat that it is on a
+genuine Windows with its kernel driver loaded. That is anti-cheat circumvention —
+the same technique cheats use — and Raven will not implement it.
+
+The practical objection is as strong as the principled one: these systems ban on
+detecting tampering. A tool that did this would get the people using it banned.
+
+### What Raven does instead
+
+Anti-cheat is treated as a **compatibility target**. A real Windows base is a
+more coherent environment than a synthetic prefix — real registry, real system
+libraries, a populated side-by-side store — and a user-mode anti-cheat module
+performs environment consistency checks that have nothing to do with detecting
+Linux. Passing those better than Wine alone is a legitimate gain, on the games
+that already permit Linux.
+
+That gives a measurable milestone: take a game whose developer has enabled the
+Linux path, run it under Raven, and compare against Proton. Parity means nothing
+was broken. Better than parity is an argument worth publishing.
