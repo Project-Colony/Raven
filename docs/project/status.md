@@ -67,11 +67,49 @@ That is the shadow set expressed as a filesystem layer rather than as an
 environment variable, and it is a better mechanism than `WINEDLLOVERRIDES`
 because it is inspectable.
 
-**One thing blocks it today: case.** Wine's skeleton uses `windows` and `users`;
-Microsoft's uses `Windows` and `Users`. `overlayfs` merges byte-identical paths,
-so the two trees do not merge at all — the mount shows both. Wine's
-case-insensitivity operates a layer above and cannot help. Normalising the Wine
-skeleton to Microsoft's casing at deployment is the obvious fix and is untested.
+**Case blocked it, and normalising fixed it.** Wine's skeleton uses `windows` and
+`users`; Microsoft's uses `Windows` and `Users`; `overlayfs` merges byte-identical
+paths only, so the trees stayed separate and the mount showed both. Renaming 338
+paths in the skeleton to Microsoft's casing merged them: no duplicates,
+`System32` holds 4877 entries where Wine alone has 852 and Microsoft alone 4617,
+`ntdll.dll` reads as Wine's 770 139 bytes, and Microsoft-only files show through.
+
+### The premise is proven
+
+With that stack in place, Wine loads and executes genuine Microsoft binaries out
+of the mounted base:
+
+```
+Loaded L"C:\Windows\System32\choice.exe"   at 0000000140000000: native
+Loaded L"C:\Windows\System32\forfiles.exe" at 0000000140000000: native
+```
+
+`native` means the PE came from the base, not from Wine's own directory. A real
+Windows, deployed from an ISO without a hypervisor and without ever booting,
+mounted as C:, running its own binaries under Wine — with the base still
+byte-identical afterwards.
+
+**A caution that cost time and is worth writing down:** `whoami.exe` and
+`certutil.exe` appeared to work first, and both are Wine builtins. Wine ships
+several hundred `.exe` files, so a program producing correct output proves
+nothing about where it came from. **Only the `+loaddll` trace settles
+provenance**, and any future claim about a Microsoft binary running needs to cite
+it.
+
+### Two limits found by running it
+
+**Console utilities print nothing, and the cause is MUI.** `choice.exe` and
+`forfiles.exe` load, run, and exit zero with empty output. Modern Windows keeps
+program strings in separate `.mui` resource files — the base holds 10 416 of
+them, and `choice.exe` has only a 2 KB `.rsrc` section, far too small for its own
+help text. Traced with `WINEDEBUG=+file`: Wine opens **zero** `.mui` files. So
+`LoadString` finds nothing and the program prints nothing.
+
+**Wine walks 112 373 WinSxS manifests to launch one trivial program.** A real
+Windows carries a populated side-by-side store, and Wine's activation-context
+lookup iterates it. Wine's synthetic prefix has almost nothing there, so this
+cost simply does not exist today. It is the first performance consequence of
+using a real Windows, and it is large.
 
 ## Built
 
@@ -100,8 +138,9 @@ Ordered by how much damage a wrong assumption would do.
 
 | | Question | Why it matters |
 |---|---|---|
-| 1 | Does normalising the Wine skeleton's casing make the two layers merge? | The immediate blocker. Everything else waits on it, and it is a rename rather than a redesign. |
-| 2 | Once merged, which Wine files must be in the upper lower-layer? | The shadow set, now expressed as "which paths does the Wine layer need to contain". See [../internals/shadow-set.md](../internals/shadow-set.md). |
+| 1 | Can Wine be made to resolve `.mui` resources? | Without it every real Windows console utility is mute, and any program that keeps its strings in MUI — which is the modern default — shows blank text. This is now the largest known gap. |
+| 2 | Can the WinSxS manifest walk be avoided or cached? | 112 373 lookups per launch is not a rounding error. Pruning the store, or caching the resolution per environment, are both untried. |
+| 3 | Which Wine files must be in the upper lower-layer? | The shadow set, now expressed as "which paths does the Wine layer need to contain". See [../internals/shadow-set.md](../internals/shadow-set.md). |
 | 3 | Does the projection's `X:` to `C:` rewrite cover everything, or is a never-booted hive missing more? | `SystemRoot` was found by looking. What else describes the setup environment is unknown until something reads the whole hive. |
 | 4 | What do hardened systems need? | `linux-hardened`, Ubuntu's AppArmor policy and SELinux-enforcing systems all change the mount story. Rootless Podman solves this with `fuse-overlayfs` and `context=` labelling, so the answers exist; which one Raven needs is unmeasured. |
 | 5 | Does `overlayfs` accept an `ntfs3` lower layer? | Gates the "bring your own Windows partition" path only. The ISO path does not touch NTFS at all. |
