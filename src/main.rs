@@ -24,6 +24,20 @@ enum Commands {
     /// Report what this system can and cannot do.
     Doctor,
 
+    /// Rename a read-only layer's paths to match a reference Windows's spelling.
+    ///
+    /// overlayfs merges directories only when their paths match byte for byte,
+    /// and Wine spells things `windows` where Windows spells them `Windows`.
+    /// Without this the two trees never merge and the layer shadows nothing.
+    PrepareLayer {
+        /// The layer to rename in place - usually a copy of a Wine prefix's drive_c.
+        #[arg(long)]
+        layer: PathBuf,
+        /// The deployed Windows whose spelling is authoritative. Only read.
+        #[arg(long)]
+        reference: PathBuf,
+    },
+
     /// Mount an overlay over a base and run a command inside it.
     ///
     /// The mount lives only for this process tree, so it needs no cleanup and
@@ -51,6 +65,12 @@ enum Commands {
 fn main() -> Result<()> {
     match Cli::parse().command {
         Commands::Doctor => doctor(),
+        Commands::PrepareLayer { layer, reference } => {
+            let n = raven::layer::normalise_case(&layer, &reference)
+                .context("could not prepare the layer")?;
+            println!("{n} paths renamed to match {}", reference.display());
+            Ok(())
+        }
         Commands::Exec {
             lower,
             upper,

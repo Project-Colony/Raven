@@ -4,6 +4,7 @@
 //! `main.rs` is a shell over this API and holds no logic of its own, so that a
 //! graphical front end is a second caller rather than a rewrite.
 
+pub mod layer;
 pub mod mount;
 pub mod paths;
 
@@ -18,4 +19,7 @@ pub enum Error {
 
     #[error("{0:?} is not a usable environment name")]
     BadName(String),
+
+    #[error("preparing the layer failed at {0}")]
+    Layer(std::path::PathBuf, #[source] std::io::Error),
 }
