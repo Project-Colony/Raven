@@ -1,0 +1,28 @@
+post_install() {
+  cat <<'EOF'
+Raven now owns double-clicked .exe files:
+  - the kernel hands every .exe to raven      (usr/lib/binfmt.d/raven.conf)
+  - Wine's own registration is masked         (etc/binfmt.d/wine.conf)
+  - `wine program.exe` still works as before
+
+The registration was applied by the systemd-binfmt hook in this same
+transaction. Check it:   raven doctor
+Get started:             https://github.com/Project-Colony/Raven/blob/main/docs/guide/usage.md
+EOF
+}
+
+post_upgrade() {
+  # The F flag made the kernel hold the OLD binary open; re-register so
+  # .exe files run the binary this upgrade just installed.
+  systemctl try-restart systemd-binfmt 2>/dev/null || true
+}
+
+post_remove() {
+  cat <<'EOF'
+Raven's .exe registration is removed and the mask on Wine's is gone.
+Wine's own registration returns at the next:
+  systemctl restart systemd-binfmt
+(or at reboot). Bases and environments under ~/.local/share/Colony/Raven
+are yours and were not touched.
+EOF
+}

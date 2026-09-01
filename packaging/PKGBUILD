@@ -1,0 +1,55 @@
+# Maintainer: MotherSphere
+#
+# Installing this package changes what every .exe on the machine does: the
+# kernel hands them to raven (binfmt_misc), and Wine's own registration is
+# masked. `wine program.exe` keeps working; `./program.exe` stops meaning
+# "run against ~/.wine". Uninstalling reverses both.
+pkgname=raven-git
+pkgver=0.1.0.r70.g0000000
+pkgrel=1
+pkgdesc="Run Windows programs against a real Windows installation mounted as C:. Takes over the system .exe handler."
+arch=('x86_64')
+url="https://github.com/Project-Colony/Raven"
+license=('GPL-3.0-or-later')
+depends=('wine' 'wimlib')
+makedepends=('cargo' 'git')
+provides=('raven')
+conflicts=('raven')
+backup=('etc/binfmt.d/wine.conf')
+install=raven.install
+source=("git+$url.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd Raven
+  printf "0.1.0.r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+build() {
+  cd Raven
+  export RUSTUP_TOOLCHAIN=stable
+  cargo build --release --locked
+}
+
+check() {
+  cd Raven
+  export RUSTUP_TOOLCHAIN=stable
+  cargo test --release --locked
+}
+
+package() {
+  cd Raven
+  install -Dm755 target/release/raven "$pkgdir/usr/bin/raven"
+  ln -s raven "$pkgdir/usr/bin/rvn"
+
+  # The registration: the pacman hook applies it in the same transaction.
+  install -Dm644 packaging/raven.conf "$pkgdir/usr/lib/binfmt.d/raven.conf"
+
+  # The mask: an /etc file shadows Wine's /usr/lib/binfmt.d/wine.conf by
+  # name, without touching a file the wine package owns. Removing this
+  # package restores Wine's registration.
+  install -Dm644 packaging/wine-mask.conf "$pkgdir/etc/binfmt.d/wine.conf"
+
+  install -Dm644 packaging/raven.desktop "$pkgdir/usr/share/applications/raven.desktop"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

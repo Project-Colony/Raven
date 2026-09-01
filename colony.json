@@ -2,5 +2,6 @@
   "$schema": "https://raw.githubusercontent.com/Project-Colony/Project-Colony-Resources/main/generated/colony.schema.json",
   "name": "Raven",
   "category": "system",
-  "platforms": ["linux"]
+  "platforms": ["linux"],
+  "signed": true
 }

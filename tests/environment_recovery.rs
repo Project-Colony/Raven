@@ -49,7 +49,9 @@ fn a_process_left_in_the_namespace_is_found_and_stopped() {
     // depend only on the layout, and this test must not need Wine.
     let env = Environment {
         name: "recovery-test".into(),
-        manifest: Manifest { base: "none".into() },
+        manifest: Manifest {
+            base: "none".into(),
+        },
         root: root.clone(),
     };
 
@@ -101,10 +103,16 @@ fn an_environment_running_nothing_reports_no_holders() {
     fs::create_dir_all(root.join("upper")).unwrap();
     let env = Environment {
         name: "idle-test".into(),
-        manifest: Manifest { base: "none".into() },
+        manifest: Manifest {
+            base: "none".into(),
+        },
         root: root.clone(),
     };
     assert!(env.holders().is_empty());
-    assert!(env.stop().expect("stopping an idle environment is fine").is_empty());
+    assert!(
+        env.stop()
+            .expect("stopping an idle environment is fine")
+            .is_empty()
+    );
     let _ = fs::remove_dir_all(&root);
 }

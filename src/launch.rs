@@ -296,7 +296,10 @@ mod tests {
                 "enabled\ninterpreter /bin/true\nflags: POCF\noffset 2\nmagic 4d5a\n",
             ),
         ] {
-            assert!(parse_handler(name, text).is_none(), "{name} should not match");
+            assert!(
+                parse_handler(name, text).is_none(),
+                "{name} should not match"
+            );
         }
     }
 

@@ -280,7 +280,11 @@ fn report_exe_handlers() {
                 h.name,
                 if h.enabled { "enabled" } else { "disabled" },
                 h.interpreter.display(),
-                if std::ptr::eq(h, winner) { "  <- wins" } else { "" }
+                if std::ptr::eq(h, winner) {
+                    "  <- wins"
+                } else {
+                    ""
+                }
             );
         }
     }
