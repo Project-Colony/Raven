@@ -74,6 +74,7 @@ pacman -U raven-git-0.1.0.r41.06efc15-1-x86_64.pkg.tar.zst
 |---|---|---|
 | `raven-git` | 0.1.0.r41.06efc15-1 | built from `packaging/PKGBUILD` |
 | `raven-git` | 0.1.0.r50.638c0d2-1 | rebuilt so the installed binary has `env attach` |
+| `raven-git` | 0.1.0.r62.8d26822-1 | rebuilt for the working-directory fix; first build to install `hicolor` icons |
 
 Before the install, three hand-placed files from development were removed so
 the package's own copies own those paths: `/etc/binfmt.d/raven.conf` (which
