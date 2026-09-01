@@ -21,9 +21,14 @@ Wine's `mountmgr.sys` creates device *objects* from three inputs:
   and an auto-assigned letter. Fixed disks only ever become volumes.
 
 One genuinely useful trick falls out of the path resolution: a symlink
-`dosdevices/physicaldrive3 → /dev/sdX` makes `CreateFile("\\.\PhysicalDrive3")`
+`dosdevices/physicaldrive1 → /dev/sdX` makes `CreateFile("\\.\PhysicalDrive1")`
 open the **real block device** — actual raw I/O, bypassing mountmgr's fake
-disk object entirely.
+disk object entirely. The number is not free to choose: mountmgr allocates
+disk devices first-free-from-0 in creation order and pre-creates a stub
+`Harddisk0/PhysicalDrive0` at startup, so the first registry-configured disk
+is published as PhysicalDrive**1**. `attach` mirrors that allocation — rank
+in the Drives section, counting from 1 — so the name it wires and the number
+a program derives from Wine agree, and `detach` renumbers what remains.
 
 ## Why none of that is visible to Rufus
 

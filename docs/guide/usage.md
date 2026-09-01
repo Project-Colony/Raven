@@ -74,8 +74,10 @@ that opens `\\.\PhysicalDriveN`. Wire one in:
 raven env attach games /dev/sdc
 ```
 
-The device appears as `d:` and `\\.\PhysicalDrive3`, with **raw read and
-write access to its sectors** — attach a disk whose contents you are prepared
+The device appears as `d:` and `\\.\PhysicalDrive1` — the exact number is
+printed; Raven numbers disks the way Wine's own mountmgr does, counting from
+1 because PhysicalDrive0 is a stub Wine pre-creates — with **raw read and
+write access to its sectors**. Attach a disk whose contents you are prepared
 to lose to the program you are about to run. Raven never changes the device
 node's permissions; if you cannot open it, `attach` prints the `setfacl`
 command that grants it. `raven env detach games` undoes the whole thing, and

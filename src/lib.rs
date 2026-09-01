@@ -88,6 +88,15 @@ pub enum Error {
     #[error("drive {0}: already has a device attached; detach it first")]
     AlreadyAttached(char),
 
+    #[error(
+        "drive {0}: is already mapped in this environment - not by attach, \
+         so not Raven's to overwrite; pick a free letter with --letter"
+    )]
+    LetterTaken(char),
+
+    #[error("{0} is already attached as drive {1}:")]
+    DeviceAttached(std::path::PathBuf, char),
+
     #[error("drive {0}: has no device attached")]
     NotAttached(char),
 }

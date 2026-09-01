@@ -18,6 +18,14 @@
 //!   the real device instead of mountmgr's fake one, which cannot read or
 //!   write.
 //!
+//! The number `n` is not ours to invent: mountmgr allocates disk devices
+//! first-free-from-0 in creation order, and pre-creates a stub
+//! `Harddisk0/PhysicalDrive0` at startup, so the first registry-configured
+//! disk is PhysicalDrive**1**. Raven mirrors that allocation — the rank of
+//! the letter among the disk-producing entries of the Drives section — so
+//! the number a program derives from Wine and the name Raven wired agree.
+//! Detaching renumbers what remains, because mountmgr will too.
+//!
 //! What this deliberately does not do: make the device *enumerable*. Tools
 //! that discover disks through SetupDi (Rufus among them) stay blind — no
 //! configuration can register the device interface they query. And Raven
@@ -27,6 +35,8 @@
 use std::path::{Path, PathBuf};
 
 use crate::{Error, env::Environment};
+
+const HEADER: &str = "[Software\\\\Wine\\\\Drives]";
 
 /// A device wired into an environment.
 #[derive(Debug, PartialEq, Eq)]
@@ -40,20 +50,20 @@ impl Environment {
     /// The devices currently attached, read back from the prefix.
     pub fn attachments(&self) -> Vec<Attachment> {
         let dos = self.prefix().join("dosdevices");
+        let Ok(text) = std::fs::read_to_string(self.prefix().join("system.reg")) else {
+            return Vec::new();
+        };
         let mut found = Vec::new();
-        for l in 'a'..='z' {
-            let raw = dos.join(format!("{l}::"));
-            let Ok(device) = std::fs::read_link(&raw) else {
+        for (rank, &letter) in disk_letters(&text).iter().enumerate() {
+            // An entry without a raw link is not Raven's attachment, but it
+            // still consumes a mountmgr number, so the rank counts it.
+            let Ok(device) = std::fs::read_link(dos.join(format!("{letter}::"))) else {
                 continue;
             };
-            // The C: drive's own device link, if any, is not an attachment.
-            if l == 'c' {
-                continue;
-            }
             found.push(Attachment {
-                letter: l,
+                letter,
                 device,
-                number: letter_number(l),
+                number: rank as u32 + 1,
             });
         }
         found
@@ -62,36 +72,63 @@ impl Environment {
     /// Wires a block device into the environment under a drive letter.
     ///
     /// Refuses while the environment runs: `wineserver` holds the registry
-    /// in memory and would overwrite the edit on exit.
+    /// in memory and would overwrite the edit on exit. Refuses a letter that
+    /// already has any mapping — a drive the user set up by hand is theirs,
+    /// not Raven's to overwrite.
     pub fn attach(&self, device: &Path, letter: char) -> Result<Attachment, Error> {
         self.ensure_not_running()?;
         check_letter(letter)?;
-        check_block_device(device)?;
+        // The symlink target is resolved by the kernel against dosdevices/,
+        // not against our cwd — absolutize so the path that was checked is
+        // the path that gets wired. Symlinks are kept unresolved on purpose:
+        // /dev/disk/by-id names survive a reboot, /dev/sdX names do not.
+        let device =
+            std::path::absolute(device).map_err(|e| Error::Layer(device.to_path_buf(), e))?;
+        check_block_device(&device)?;
 
         let dos = self.prefix().join("dosdevices");
         let raw = dos.join(format!("{letter}::"));
-        if raw.exists() || std::fs::symlink_metadata(&raw).is_ok() {
+        if std::fs::symlink_metadata(&raw).is_ok() {
             return Err(Error::AlreadyAttached(letter));
         }
+        let reg = self.prefix().join("system.reg");
+        let text = std::fs::read_to_string(&reg).map_err(|e| Error::Layer(reg.clone(), e))?;
+        let letter_link = dos.join(format!("{letter}:"));
+        if std::fs::symlink_metadata(&letter_link).is_ok() || has_drive_entry(&text, letter) {
+            return Err(Error::LetterTaken(letter));
+        }
+        for l in ('a'..='z').filter(|&l| l != 'c' && l != letter) {
+            if let Ok(t) = std::fs::read_link(dos.join(format!("{l}::"))) {
+                if same_node(&t, &device) {
+                    return Err(Error::DeviceAttached(device, l));
+                }
+            }
+        }
 
-        let number = letter_number(letter);
+        let updated = edit_drives_section(&text, letter, Some("floppy"));
+        let number = disk_letters(&updated)
+            .iter()
+            .position(|&l| l == letter)
+            .map(|rank| rank as u32 + 1)
+            .expect("the entry was inserted one line above");
+
         let mount = self.root.join("attached").join(letter.to_string());
         std::fs::create_dir_all(&mount).map_err(|e| Error::Layer(mount.clone(), e))?;
-
-        std::os::unix::fs::symlink(device, &raw).map_err(|e| Error::Layer(raw.clone(), e))?;
-        let letter_link = dos.join(format!("{letter}:"));
-        let _ = std::fs::remove_file(&letter_link);
+        std::os::unix::fs::symlink(&device, &raw).map_err(|e| Error::Layer(raw.clone(), e))?;
         std::os::unix::fs::symlink(&mount, &letter_link)
             .map_err(|e| Error::Layer(letter_link, e))?;
         let phys = dos.join(format!("physicaldrive{number}"));
+        // Only a stale leftover can be here: live attachments hold every
+        // rank below ours, and a hand-made physicaldrive link is not a
+        // supported state to begin with.
         let _ = std::fs::remove_file(&phys);
-        std::os::unix::fs::symlink(device, &phys).map_err(|e| Error::Layer(phys, e))?;
+        std::os::unix::fs::symlink(&device, &phys).map_err(|e| Error::Layer(phys, e))?;
 
-        set_drive_type(&self.prefix().join("system.reg"), letter, Some("floppy"))?;
+        write_registry(&reg, &updated)?;
 
         Ok(Attachment {
             letter,
-            device: device.to_path_buf(),
+            device,
             number,
         })
     }
@@ -103,16 +140,56 @@ impl Environment {
 
         let dos = self.prefix().join("dosdevices");
         let raw = dos.join(format!("{letter}::"));
-        if std::fs::symlink_metadata(&raw).is_err() {
+        let reg = self.prefix().join("system.reg");
+        let text = std::fs::read_to_string(&reg).map_err(|e| Error::Layer(reg.clone(), e))?;
+
+        // Either half alone still counts: a detach that failed midway must
+        // be re-runnable until nothing is left.
+        let target = std::fs::read_link(&raw).ok();
+        if target.is_none() && !has_drive_entry(&text, letter) {
             return Err(Error::NotAttached(letter));
         }
-        std::fs::remove_file(&raw).map_err(|e| Error::Layer(raw, e))?;
+        let updated = edit_drives_section(&text, letter, None);
+
+        if target.is_some() {
+            std::fs::remove_file(&raw).map_err(|e| Error::Layer(raw, e))?;
+        }
         let _ = std::fs::remove_file(dos.join(format!("{letter}:")));
-        let _ = std::fs::remove_file(dos.join(format!("physicaldrive{}", letter_number(letter))));
+
+        // Rebuild the physicaldrive links from the ranks that remain:
+        // removing an entry shifts every later number, in mountmgr and
+        // therefore here. First drop every link that belongs to an
+        // attachment (or to the device just detached), then re-wire.
+        let mut owned: Vec<PathBuf> = target.into_iter().collect();
+        let survivors: Vec<(char, PathBuf)> = disk_letters(&updated)
+            .iter()
+            .filter_map(|&l| {
+                let t = std::fs::read_link(dos.join(format!("{l}::"))).ok()?;
+                Some((l, t))
+            })
+            .collect();
+        owned.extend(survivors.iter().map(|(_, t)| t.clone()));
+        if let Ok(entries) = std::fs::read_dir(&dos) {
+            for e in entries.flatten() {
+                if !e.file_name().to_string_lossy().starts_with("physicaldrive") {
+                    continue;
+                }
+                if let Ok(t) = std::fs::read_link(e.path()) {
+                    if owned.contains(&t) {
+                        let _ = std::fs::remove_file(e.path());
+                    }
+                }
+            }
+        }
+        for (rank, (_, t)) in survivors.iter().enumerate() {
+            let phys = dos.join(format!("physicaldrive{}", rank + 1));
+            std::os::unix::fs::symlink(t, &phys).map_err(|e| Error::Layer(phys, e))?;
+        }
+
+        write_registry(&reg, &updated)?;
+
         let _ = std::fs::remove_dir(self.root.join("attached").join(letter.to_string()));
         let _ = std::fs::remove_dir(self.root.join("attached"));
-
-        set_drive_type(&self.prefix().join("system.reg"), letter, None)?;
         Ok(())
     }
 }
@@ -127,8 +204,16 @@ pub fn accessible(device: &Path) -> bool {
     .is_ok()
 }
 
-fn letter_number(letter: char) -> u32 {
-    (letter as u32) - ('a' as u32)
+/// Path equality for the double-attachment guard, through symlinks, so
+/// /dev/disk/by-id/… and the /dev/sdX it points at count as the same device.
+fn same_node(a: &Path, b: &Path) -> bool {
+    if a == b {
+        return true;
+    }
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
 }
 
 /// C: is the mounted Windows; a: and b: are floppies by Wine convention, and
@@ -149,22 +234,86 @@ fn check_block_device(device: &Path) -> Result<(), Error> {
     Ok(())
 }
 
+/// Replaces `system.reg` atomically: the file is the environment's entire
+/// HKLM, and an in-place rewrite torn by ENOSPC or a crash would cost every
+/// registry key written since the environment was created. Same temp-file
+/// then rename dance wineserver itself uses to save it.
+fn write_registry(reg: &Path, updated: &str) -> Result<(), Error> {
+    let mut name = reg.file_name().unwrap_or_default().to_os_string();
+    name.push(".raven-tmp");
+    let tmp = reg.with_file_name(name);
+    let result = (|| {
+        use std::io::Write as _;
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(updated.as_bytes())?;
+        f.sync_all()?;
+        std::fs::rename(&tmp, reg)
+    })();
+    if let Err(e) = result {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(Error::Layer(reg.to_path_buf(), e));
+    }
+    Ok(())
+}
+
+/// The letters whose Drives entries mountmgr turns into `\Device\Harddisk`
+/// objects — `"floppy"` on a letter index ≥ 2 — in section order, which is
+/// the order mountmgr creates them in and therefore numbers them by.
+fn disk_letters(text: &str) -> Vec<char> {
+    let mut out = Vec::new();
+    let mut in_section = false;
+    for line in text.lines() {
+        if line.starts_with('[') {
+            in_section = line.starts_with(HEADER);
+            continue;
+        }
+        if !in_section {
+            continue;
+        }
+        let Some(body) = line.trim_end().strip_prefix('"') else {
+            continue;
+        };
+        let Some(letter) = body.strip_suffix(":\"=\"floppy\"").and_then(single_char) else {
+            continue;
+        };
+        if letter.is_ascii_lowercase() && letter > 'b' {
+            out.push(letter);
+        }
+    }
+    out
+}
+
+fn single_char(s: &str) -> Option<char> {
+    let mut chars = s.chars();
+    match (chars.next(), chars.next()) {
+        (Some(c), None) => Some(c),
+        _ => None,
+    }
+}
+
+/// Whether the Drives section maps the letter at all, whatever the type.
+fn has_drive_entry(text: &str, letter: char) -> bool {
+    let key = format!("\"{letter}:\"=");
+    let mut in_section = false;
+    for line in text.lines() {
+        if line.starts_with('[') {
+            in_section = line.starts_with(HEADER);
+            continue;
+        }
+        if in_section && line.starts_with(&key) {
+            return true;
+        }
+    }
+    false
+}
+
 /// Adds, replaces or removes the letter's entry in `[Software\\Wine\\Drives]`
 /// inside Wine's text-format `system.reg`, offline.
 ///
 /// Offline on purpose: it needs no Wine, no mount, and no wineserver — and it
 /// is only legal because `attach` refuses a running environment, where the
 /// server holds the registry in memory and rewrites the file on exit.
-fn set_drive_type(reg: &Path, letter: char, value: Option<&str>) -> Result<(), Error> {
-    let text = std::fs::read_to_string(reg).map_err(|e| Error::Layer(reg.to_path_buf(), e))?;
-    let updated = edit_drives_section(&text, letter, value);
-    std::fs::write(reg, updated).map_err(|e| Error::Layer(reg.to_path_buf(), e))
-}
-
-/// The pure edit, separated so the format handling is testable against
-/// fixture files rather than a live prefix.
 fn edit_drives_section(text: &str, letter: char, value: Option<&str>) -> String {
-    const HEADER: &str = "[Software\\\\Wine\\\\Drives]";
     let entry = |v: &str| format!("\"{letter}:\"=\"{v}\"");
     let key = format!("\"{letter}:\"=");
 
@@ -313,8 +462,40 @@ mod tests {
     }
 
     #[test]
-    fn the_physicaldrive_number_follows_the_letter() {
-        assert_eq!(letter_number('d'), 3);
-        assert_eq!(letter_number('z'), 25);
+    fn numbering_follows_mountmgr_rank_not_the_letter() {
+        // PhysicalDrive0 is a stub mountmgr pre-creates; registry disks are
+        // numbered by their order in the section, from 1. Only "floppy" on a
+        // letter ≥ c makes a disk: real floppies and other types do not.
+        let text = "[Software\\\\Wine\\\\Drives] 1\n\"a:\"=\"floppy\"\n\"e:\"=\"cdrom\"\n\"g:\"=\"floppy\"\n\"d:\"=\"floppy\"\n";
+        assert_eq!(disk_letters(text), vec!['g', 'd']);
+        assert_eq!(disk_letters("no section at all\n"), Vec::<char>::new());
+    }
+
+    #[test]
+    fn any_existing_mapping_counts_as_taken() {
+        assert!(
+            has_drive_entry(REG, 'd'),
+            "a cdrom mapping is still a mapping"
+        );
+        assert!(!has_drive_entry(REG, 'e'));
+        // The x=y value outside the Drives section must not match.
+        assert!(!has_drive_entry(REG, 'x'));
+    }
+
+    #[test]
+    fn the_registry_write_is_a_rename_and_leaves_no_droppings() {
+        let dir = std::env::temp_dir().join(format!("raven-regwrite-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let reg = dir.join("system.reg");
+        std::fs::write(&reg, "old").unwrap();
+        write_registry(&reg, "new contents\n").unwrap();
+        assert_eq!(std::fs::read_to_string(&reg).unwrap(), "new contents\n");
+        assert_eq!(
+            std::fs::read_dir(&dir).unwrap().count(),
+            1,
+            "no temp file may survive"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
