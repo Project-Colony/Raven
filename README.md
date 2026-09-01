@@ -51,8 +51,11 @@ What you would otherwise reach for, and where it stops:
   also a second computer: its own RAM, its own filesystem, its own GPU story, and
   a window that is a screen rather than an application. That is isolation, which
   is the opposite of what Raven is for.
-- **Bottles, Lutris, umu** — excellent at managing Wine prefixes. They manage the
-  synthetic Windows better; they do not replace it.
+- **Bottles, Lutris, umu** — the best tooling that exists around a Wine prefix:
+  runner and DXVK versions, dependency installers, store integration, and years
+  of accumulated per-title fixes. Raven has none of that and is not competing for
+  it. They make a synthetic Windows far easier to live with; they do not change
+  what it is.
 
 Raven's position is the one nobody occupies:
 
