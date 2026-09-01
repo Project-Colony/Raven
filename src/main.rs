@@ -518,6 +518,11 @@ fn env_cmd(cmd: EnvCmd) -> Result<()> {
                 if files.is_empty() {
                     out!("{name}: no DXVK installed");
                 } else {
+                    out!(
+                        "{name}: {}",
+                        e.dxvk_build()
+                            .unwrap_or_else(|| "DXVK, build unrecorded".into())
+                    );
                     for f in &files {
                         out!("  {:<10} {}", f.dll, f.arch);
                     }

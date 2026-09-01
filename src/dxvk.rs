@@ -161,8 +161,16 @@ impl Environment {
         }
         text::write_atomic(&reg, &text)?;
 
+        // The build's own directory name is the only version DXVK ships in a
+        // release, and "which DXVK do I have" is the first question after "is
+        // it installed" - so it is recorded rather than left to be guessed.
+        let version = root
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "unknown".into());
         let m = self.dxvk_manifest_path();
-        std::fs::write(&m, written.join("\n") + "\n").map_err(|e| Error::Layer(m, e))?;
+        let body = format!("#build {version}\n{}\n", written.join("\n"));
+        std::fs::write(&m, body).map_err(|e| Error::Layer(m, e))?;
         Ok(done)
     }
 
@@ -220,11 +228,23 @@ impl Environment {
         std::fs::read_to_string(self.dxvk_manifest_path())
             .map(|t| {
                 t.lines()
-                    .filter(|l| !l.trim().is_empty())
+                    .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
                     .map(String::from)
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// Which DXVK build is installed, as the release named itself.
+    ///
+    /// A release carries its version only in its directory name, so that is
+    /// what gets recorded - "which DXVK do I have" being the first question
+    /// after "is it installed", and the one an update needs answered.
+    pub fn dxvk_build(&self) -> Option<String> {
+        std::fs::read_to_string(self.dxvk_manifest_path())
+            .ok()?
+            .lines()
+            .find_map(|l| l.strip_prefix("#build ").map(|v| v.trim().to_string()))
     }
 
     /// The overrides currently in `user.reg` for DXVK's modules. Reported apart
