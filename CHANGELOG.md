@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/Project-Colony/Raven/compare/v0.1.0...v0.2.0) (2026-09-01)
+
+
+### Features
+
+* raven env attach wires a real block device into an environment ([6e695ac](https://github.com/Project-Colony/Raven/commit/6e695ac5d2857eaf25c6ee0cb662614bb974155a))
+
+
+### Bug Fixes
+
+* attach survives its adversarial review - four confirmed defects closed ([638c0d2](https://github.com/Project-Colony/Raven/commit/638c0d2f788d064d3f6d4bed3017f3a91870ea6c))
+
 ## 0.1.0 (2026-09-01)
 
 
