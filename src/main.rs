@@ -249,7 +249,17 @@ fn report_exe_handlers() {
     }
     let handlers = launch::exe_handlers();
     let Some(winner) = handlers.iter().find(|h| h.enabled) else {
-        out!("{LABEL}: none - a double-clicked .exe will not run; see `raven binfmt`");
+        if handlers.is_empty() {
+            out!("{LABEL}: none - a double-clicked .exe will not run; see `raven binfmt`");
+        } else {
+            // Disabled is not absent: the registration exists, someone turned
+            // it off, and re-registering as root is the wrong fix.
+            out!("{LABEL}: all disabled - a double-clicked .exe will not run");
+            for h in &handlers {
+                out!("    {:10} disabled  {}", h.name, h.interpreter.display());
+            }
+            out!("  Re-enable one: echo 1 | sudo tee /proc/sys/fs/binfmt_misc/<name>");
+        }
         return;
     };
 
