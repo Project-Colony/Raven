@@ -41,6 +41,7 @@ statement about a class of them.
 | `mui` | Strings live in `.mui` satellite files; the program runs mute | Known, unfixed |
 | `service` | Expects a Windows service to be running. None are | Open question |
 | `enumeration` | Discovers hardware through SetupDi device interfaces, which Wine never registers - Rufus is the type specimen | A Wine patch, not a Raven change |
+| `drm` | A copy-protection wrapper refuses before the program starts. Steam's is the common one: launched outside a running Steam client it aborts with `Application load error 5:0000065434` | Not Raven's to fix. Test a title without the wrapper, or run the store client itself |
 | `d3d` | A Direct3D problem: version unsupported, device creation fails, rendering wrong | Depends. D3D 8-11 is DXVK's; D3D12 needs vkd3d-proton, which Raven does not install |
 | `wine` | Fails identically under plain Wine - not Raven's doing | Upstream |
 | `raven` | Raven's own bug: the mount, the projection, the shadow set, the layer | **Yes - fix it** |
@@ -56,6 +57,7 @@ same investigation from being run twice.
 | *N.P.C. Dreams* v1.12 | RPG Maker VX Ace game | **Runs**, from a double-clicked `.exe` in a file manager to its title screen | — | The end-to-end proof: a real installer wrote 256 MB into the environment and the base finished byte-identical. Renders through `GDI32` only - it imports no Direct3D library, so it cannot exercise DXVK |
 | RPG Maker VX Ace RGSS3 runtime | Installer (Inno-style) | **Installs** | — | The one installer framework exercised so far |
 | Rufus 4.15 | Disk utility | **Runs and renders**, but finds no devices | `enumeration` | Also a datum in the other direction: it *crashes at startup under plain Wine* and runs under Raven. A real Windows sometimes fixes a program rather than breaking it |
+| Fallout New Vegas (Steam) | Game, Direct3D 9 | **Refuses to start**: `Application load error 5:0000065434` | `drm` | Steam's DRM wrapper, aborting before the engine exists. Says nothing about Raven or Direct3D - and is exactly why the corpus records categories: without one, this reads as "Raven cannot run Fallout" |
 | `dxdiag.exe` (Windows 11 26200) | Microsoft's DirectX diagnostic | **Runs**, drove DXVK to initialise and enumerate the GPU | — | How Direct3D-on-Vulkan was first shown to work at all against a real Windows. Its DirectDraw probe went through WineD3D and its D3D9 probe through DXVK, in one process |
 
 ## What the corpus does not yet contain
@@ -63,7 +65,10 @@ same investigation from being run twice.
 Named so the gaps are visible rather than merely absent:
 
 - **A game that renders a frame through Direct3D.** DXVK initialises; nothing
-  has drawn through it. This is the largest single unknown.
+  has drawn through it. This is the largest single unknown. The first two
+  attempts were defeated by the corpus itself: one game turned out to use GDI,
+  the next was wrapped in Steam DRM. Pick candidates by reading their imports
+  and checking for a DRM wrapper *before* running them.
 - **Anything using COM**, the category most likely to be broken by a design
   decision rather than a bug.
 - **A second installer framework.** NSIS, MSI, InstallShield - all untried.
