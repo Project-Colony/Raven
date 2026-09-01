@@ -183,6 +183,12 @@ fn the_mount_does_not_survive_the_process() {
 
 #[test]
 fn a_missing_layer_is_reported_by_name() {
+    if !userns_available() {
+        // On a restricted kernel the earlier "user namespaces unavailable"
+        // refusal wins, so the path validation this asserts never runs.
+        eprintln!("skipped: this kernel restricts unprivileged user namespaces");
+        return;
+    }
     let l = Layout::new("missing");
     fs::remove_dir(l.p("work")).unwrap();
     let out = run_in_overlay(&l, "true");
