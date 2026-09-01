@@ -18,3 +18,12 @@ toml = "1.1.4"
 
 [dev-dependencies]
 regf = "0.1.0"
+
+# raven runs once per .exe launch, so what matters is start-up and size, both
+# measured before and after (numbers in the commit that added this).
+# `panic = "abort"` is deliberately not set: it trades backtraces away for
+# little, and that decision is recorded in docs/project/consolidation.md.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "symbols"

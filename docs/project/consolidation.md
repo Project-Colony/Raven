@@ -126,21 +126,14 @@ Raven's own start-up is **1 ms** in release and 2 ms in debug. It runs once per
 
 ### 3.1 A release profile
 
-There is none. The release binary is 1.9 MB with cargo's defaults.
+**Done.** `lto = "fat"`, `codegen-units = 1`, `strip = "symbols"`. Measured:
+1.9 MB → 1.2 MB, start-up unchanged within noise (~1.7 ms before and after).
 
-```toml
-[profile.release]
-lto = "fat"
-codegen-units = 1
-strip = "symbols"
-```
-
-`panic = "abort"` is worth trying but is a behaviour change, not just a size
-one — decide it deliberately.
-
-**Done when:** binary size and `raven` start-up are measured before and after,
-and the numbers are in the commit message. A profile adopted without a
-measurement is cargo-culting.
+`panic = "abort"` was considered and **deliberately not set**: a panic in raven
+happens between the kernel's `binfmt` hand-off and Wine, where there is no
+terminal and no context — the backtrace is the only witness. The ~100 kB it
+would save does not buy that back. Revisit only if a measurement shows unwind
+tables costing something real.
 
 ### 3.2 The package itself
 
