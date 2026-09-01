@@ -51,5 +51,13 @@ package() {
   install -Dm644 packaging/wine-mask.conf "$pkgdir/etc/binfmt.d/wine.conf"
 
   install -Dm644 packaging/raven.desktop "$pkgdir/usr/share/applications/raven.desktop"
+
+  # Icon=raven in the desktop entry resolves through the icon theme, so the
+  # basename here, the desktop file name and Icon= must all agree or a panel
+  # silently shows a placeholder.
+  for s in 16 32 48 64 128 256 512; do
+    install -Dm644 "assets/brand/png/raven-icon-$s-on-dark.png" \
+      "$pkgdir/usr/share/icons/hicolor/${s}x${s}/apps/raven.png"
+  done
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

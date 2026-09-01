@@ -1,5 +1,10 @@
 <div align="center">
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/brand/png/raven-logo-512.png">
+  <img src="assets/brand/png/raven-logo-light-1024.png" alt="Raven" width="360">
+</picture>
+
 **A real Windows installation, mounted as C:, with its programs launched from Linux.**
 
 </div>
