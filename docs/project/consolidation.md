@@ -16,6 +16,9 @@ confidently, so this comes first.
   66% under plain Wine — said nothing about which was faster.
 - **A trace line count is not a cost.** 112 373 WinSxS lookups looked
   catastrophic and turned out to be free.
+- **A ratio between differently-sized workloads measures the workload.** The
+  6.6× enumeration gap decomposed into 6.0× more directory entries and ~11%
+  actual overhead. Divide by size before reading a ratio as a cost.
 - **A control run is not optional, and it goes first.** Both times a fault was
   actually located, it was the plain-Wine control that located it. Both times it
   was run after an hour of guessing.
@@ -77,12 +80,17 @@ handler pointing at a path that no longer exists.
 
 ### 2.1 Measure latency, not CPU
 
-The only honest statement today is that `wineserver` does **7.75× more work**
-under Raven (15.5% against 2.0% on the same game at the same screen). Whether
-that costs the player anything is unmeasured.
+**Partly done** — see [performance.md](../internals/performance.md). A fixed
+workload, identical in both conditions, wall-clock: process spawn is **2.0×**
+(113 → 228 ms), and directory enumeration is 6.6× — of which 6.0× is the real
+`System32` holding six times the entries, leaving **~11% per entry** as the
+overlay's share. The lesson joined the list above: a ratio between two
+differently-sized workloads measures the workload.
 
-**Done when:** there is a frame-time or input-to-response number for the same
-program under Raven and under plain Wine, on the same machine, in the same scene.
+**Still open:** a frame-time or input-to-response number for the same program
+under Raven and under plain Wine, on the same machine, in the same scene. The
+spawn and enumeration numbers are proxies; whether a *running* game feels
+anything is still unmeasured.
 
 ### 2.2 Test ext4 `casefold`
 

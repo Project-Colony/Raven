@@ -4,6 +4,49 @@ What running against a real Windows costs, what it does not cost, and what has
 been ruled out. Deferred by decision — the numbers are recorded so the work can
 start from measurement rather than from guesses.
 
+## The wall-clock benchmark
+
+An earlier comparison used CPU percentage — `wineserver` at 15.5% under Raven
+against 2.0% under plain Wine — and CPU percentage is not latency: a process
+blocked waiting burns *less* CPU while running *worse*. This benchmark replaces
+it. One fixed script, run identically in both conditions on a quiet machine,
+`WINEDEBUG=-all`, wineserver warmed up outside the measurement, wall-clock
+nanoseconds around each sample.
+
+**Process spawn** (`wine cmd /c exit`, eight samples each):
+
+|  | plain Wine | Raven | ratio |
+|---|---|---|---|
+| range | 108–115 ms | 218–240 ms | |
+| median | 113 ms | 228 ms | **2.0×** |
+
+About **+115 ms per process**, consistent with the +95 ms measured earlier by a
+cruder method. Invisible for a game launched once; twenty seconds of pure
+overhead for an installer that spawns two hundred processes.
+
+**Directory enumeration** (30 × `dir C:\windows\system32` inside one `cmd`,
+three samples each):
+
+|  | plain Wine | Raven | ratio |
+|---|---|---|---|
+| total | 1 491–1 519 ms | 9 739–10 174 ms | **6.6×** |
+| entries enumerated | 817 | 4 877 | 6.0× |
+| **cost per entry** | 61 µs | 68 µs | **1.11×** |
+
+The 6.6× would be alarming if it measured Raven. It mostly measures Windows:
+the merged `System32` holds six times the entries of Wine's synthetic one, and
+dividing by directory size leaves **~11% per entry** as the overlay's actual
+share. A ratio between two differently-sized workloads measures the workload.
+
+So the honest summary is: per-process launch cost is real and doubled, and the
+sustained filesystem path is only mildly slower. What this benchmark does *not*
+answer is whether a running game feels any of it — that needs a frame-time or
+input-to-response measurement in the same scene, which no one has made yet. The
+7.75× `wineserver` CPU observation also still lacks an attribution
+(`WINEDEBUG=+server` names every request; nobody has looked).
+
+## The launch cost, dissected
+
 **Launching a process costs about twice as much, and the cause is not what it
 looked like.** Measured, three runs each: 111–122 ms against Wine's synthetic
 prefix, 207–238 ms against the real Windows. Roughly **+95 ms per process**.
