@@ -1,9 +1,13 @@
-//! Installing DXVK into an environment.
+//! Installing a Direct3D-on-Vulkan runtime into an environment.
 //!
-//! DXVK is not a patch and not a fork of anything - it is a set of DLLs that
-//! reimplement Direct3D 8 through 11 on Vulkan. Installing it is two operations
-//! and no more: put the DLLs where the loader looks, and tell Wine to prefer
-//! them over its own builtins.
+//! Two of them exist and they do not overlap: **DXVK** reimplements Direct3D 8
+//! through 11, and **vkd3d-proton** reimplements Direct3D 12. Neither is a
+//! patch or a fork of anything - each is a set of DLLs, so installing one is
+//! two operations and no more: put the DLLs where the loader looks, and tell
+//! Wine to prefer them over its own builtins.
+//!
+//! They install side by side. A game wanting D3D11 and a game wanting D3D12
+//! are different games, and an environment can serve both.
 //!
 //! Raven's twist is the whole reason this module exists. C: is a **real**
 //! Windows, so `Windows/System32` already holds Microsoft's own `d3d11.dll` and
@@ -19,10 +23,16 @@
 //! configuration [`crate::attach`] writes. Do not assume the next setting
 //! follows either of them.
 //!
-//! Raven downloads nothing. Point it at a DXVK build you already have - the
-//! upstream release, the one inside a Proton, a distribution's package - the
-//! same way `base deploy` takes an ISO you already have. There is no bundled
-//! version to fall behind, and no opinion about whose build is right.
+//! Raven downloads nothing. Point it at a build you already have - the upstream
+//! release, the one inside a Proton, a distribution's package - the same way
+//! `base deploy` takes an ISO you already have. There is no bundled version to
+//! fall behind, and no opinion about whose build is right.
+//!
+//! That last part is not neutrality for its own sake. Both CachyOS's Proton and
+//! Valve's carry these two projects as **unpatched upstream submodules**;
+//! what a Proton distribution actually forks is Wine. There is no "the CachyOS
+//! DXVK" to prefer, so preferring one in code would be inventing a distinction
+//! that does not exist.
 
 use std::path::{Path, PathBuf};
 
@@ -31,21 +41,42 @@ use crate::{Error, env::Environment, registry::text};
 /// The section Wine reads DLL overrides from, as it appears in `user.reg`.
 const OVERRIDES: &str = "Software\\\\Wine\\\\DllOverrides";
 
-/// What DXVK provides. Which of these a given build ships varies by version -
-/// `d3d10.dll` and `d3d10_1.dll` were dropped upstream - so the install copies
-/// what it finds and reports it, rather than demanding a fixed set.
-pub const DLLS: &[&str] = &[
-    "d3d8",
-    "d3d9",
-    "d3d10core",
-    "d3d11",
-    "dxgi",
-    "d3d10",
-    "d3d10_1",
-];
+/// One of the two runtimes, and everything that differs between them.
+pub struct Runtime {
+    /// What the CLI calls it, and the stem of its manifest file.
+    pub key: &'static str,
+    /// The modules it provides. Which of these a given build ships varies by
+    /// version - DXVK dropped `d3d10.dll` and `d3d10_1.dll` upstream - so an
+    /// install copies what it finds and reports it, rather than demanding a
+    /// fixed set.
+    pub dlls: &'static [&'static str],
+    /// The directories inside a release, and where each lands on a real
+    /// Windows. The 32-bit one is **not** named the same by both projects:
+    /// DXVK ships `x32`, vkd3d-proton ships `x86`.
+    pub arches: &'static [(&'static str, &'static str)],
+}
 
-/// A DXVK build's two architectures, and where each lands on a real Windows.
-const ARCHES: &[(&str, &str)] = &[("x64", "Windows/System32"), ("x32", "Windows/SysWOW64")];
+/// Direct3D 8 through 11.
+pub const DXVK: Runtime = Runtime {
+    key: "dxvk",
+    dlls: &[
+        "d3d8",
+        "d3d9",
+        "d3d10core",
+        "d3d11",
+        "dxgi",
+        "d3d10",
+        "d3d10_1",
+    ],
+    arches: &[("x64", "Windows/System32"), ("x32", "Windows/SysWOW64")],
+};
+
+/// Direct3D 12, which DXVK does not implement at all.
+pub const VKD3D: Runtime = Runtime {
+    key: "vkd3d",
+    dlls: &["d3d12", "d3d12core"],
+    arches: &[("x64", "Windows/System32"), ("x86", "Windows/SysWOW64")],
+};
 
 /// One installed DLL: which module, and the Windows directory it shadows in.
 #[derive(Debug, PartialEq, Eq)]
@@ -62,7 +93,7 @@ impl Environment {
     /// and `x32/`) or a `.tar.gz` of one. Refuses while the environment runs:
     /// the overlay is mounted and `wineserver` would overwrite the registry
     /// edit on exit.
-    pub fn install_dxvk(&self, source: &Path) -> Result<Vec<Shadow>, Error> {
+    pub fn install_d3d(&self, rt: &Runtime, source: &Path) -> Result<Vec<Shadow>, Error> {
         self.ensure_not_running()?;
         let (dir, _keep) = unpack(source)?;
         let root = build_root(&dir)?;
@@ -71,16 +102,16 @@ impl Environment {
         // meant a refusal left the copies already made behind, and those then
         // blocked the next attempt - the failure mode taught us the rule:
         // decide first, write second.
-        let ours = self.dxvk_manifest();
+        let ours = self.d3d_manifest(rt);
         let mut plan: Vec<(PathBuf, PathBuf, String, &str, &'static str)> = Vec::new();
-        for (arch, windir) in ARCHES {
+        for (arch, windir) in rt.arches {
             let from_dir = root.join(arch);
             if !from_dir.is_dir() {
                 // A 64-bit-only build is legitimate; a missing x64 is not, and
                 // build_root has already refused that case.
                 continue;
             }
-            for dll in DLLS {
+            for dll in rt.dlls {
                 let from = from_dir.join(format!("{dll}.dll"));
                 if !from.is_file() {
                     continue;
@@ -91,13 +122,13 @@ impl Environment {
                 // belongs to whatever wrote it. Overwriting it would be silent
                 // damage, because removal would then delete it for good.
                 if to.exists() && !ours.contains(&rel) {
-                    return Err(Error::DxvkWouldOverwrite(to));
+                    return Err(Error::D3dWouldOverwrite(to));
                 }
                 plan.push((from, to, rel, dll, arch));
             }
         }
         if plan.is_empty() {
-            return Err(Error::NotADxvkBuild(root));
+            return Err(Error::NotAD3dBuild(rt.key, root));
         }
 
         let mut written: Vec<String> = Vec::new();
@@ -168,7 +199,7 @@ impl Environment {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| "unknown".into());
-        let m = self.dxvk_manifest_path();
+        let m = self.d3d_manifest_path(rt);
         let body = format!("#build {version}\n{}\n", written.join("\n"));
         std::fs::write(&m, body).map_err(|e| Error::Layer(m, e))?;
         Ok(done)
@@ -177,18 +208,18 @@ impl Environment {
     /// Removes what `install_dxvk` put in, restoring the real Windows by
     /// uncovering it. The base was never touched, so there is nothing to undo
     /// there.
-    pub fn remove_dxvk(&self) -> Result<usize, Error> {
+    pub fn remove_d3d(&self, rt: &Runtime) -> Result<usize, Error> {
         self.ensure_not_running()?;
         let mut gone = 0;
-        for rel in self.dxvk_manifest() {
+        for rel in self.d3d_manifest(rt) {
             if std::fs::remove_file(self.upper().join(&rel)).is_ok() {
                 gone += 1;
             }
         }
-        let _ = std::fs::remove_file(self.dxvk_manifest_path());
+        let _ = std::fs::remove_file(self.d3d_manifest_path(rt));
         let reg = self.prefix().join("user.reg");
         let mut text = std::fs::read_to_string(&reg).map_err(|e| Error::Layer(reg.clone(), e))?;
-        for dll in DLLS {
+        for dll in rt.dlls {
             text = text::set_value(&text, OVERRIDES, dll, None);
         }
         text::write_atomic(&reg, &text)?;
@@ -200,14 +231,15 @@ impl Environment {
     /// Read from the manifest rather than by scanning for known names: a
     /// `d3d9.dll` some installer dropped into the overlay is not ours to claim,
     /// and certainly not ours to delete.
-    pub fn dxvk(&self) -> Vec<Shadow> {
+    pub fn d3d(&self, rt: &Runtime) -> Vec<Shadow> {
         let mut found = Vec::new();
-        for rel in self.dxvk_manifest() {
+        for rel in self.d3d_manifest(rt) {
             let path = self.upper().join(&rel);
             if !path.is_file() {
                 continue;
             }
-            let arch = ARCHES
+            let arch = rt
+                .arches
                 .iter()
                 .find(|(_, windir)| rel.starts_with(windir))
                 .map(|(a, _)| *a)
@@ -219,13 +251,15 @@ impl Environment {
     }
 
     /// Where the record of what Raven installed lives.
-    fn dxvk_manifest_path(&self) -> PathBuf {
-        self.root.join("dxvk.files")
+    fn d3d_manifest_path(&self, rt: &Runtime) -> PathBuf {
+        // One manifest per runtime, so removing DXVK cannot take vkd3d's
+        // libraries with it.
+        self.root.join(format!("{}.files", rt.key))
     }
 
     /// The upper-layer paths Raven installed, relative to the upper layer.
-    fn dxvk_manifest(&self) -> Vec<String> {
-        std::fs::read_to_string(self.dxvk_manifest_path())
+    fn d3d_manifest(&self, rt: &Runtime) -> Vec<String> {
+        std::fs::read_to_string(self.d3d_manifest_path(rt))
             .map(|t| {
                 t.lines()
                     .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
@@ -240,8 +274,8 @@ impl Environment {
     /// A release carries its version only in its directory name, so that is
     /// what gets recorded - "which DXVK do I have" being the first question
     /// after "is it installed", and the one an update needs answered.
-    pub fn dxvk_build(&self) -> Option<String> {
-        std::fs::read_to_string(self.dxvk_manifest_path())
+    pub fn d3d_build(&self, rt: &Runtime) -> Option<String> {
+        std::fs::read_to_string(self.d3d_manifest_path(rt))
             .ok()?
             .lines()
             .find_map(|l| l.strip_prefix("#build ").map(|v| v.trim().to_string()))
@@ -251,13 +285,13 @@ impl Environment {
     /// from the files, because the two halves can disagree - a hand-edited
     /// prefix, or an install that failed between the copy and the registry -
     /// and a status that hides that is worse than no status.
-    pub fn dxvk_overrides(&self) -> Vec<(String, String)> {
+    pub fn d3d_overrides(&self, rt: &Runtime) -> Vec<(String, String)> {
         let Ok(text) = std::fs::read_to_string(self.prefix().join("user.reg")) else {
             return Vec::new();
         };
         text::values(&text, OVERRIDES)
             .into_iter()
-            .filter(|(name, _)| DLLS.contains(&name.as_str()))
+            .filter(|(name, _)| rt.dlls.contains(&name.as_str()))
             .collect()
     }
 }
@@ -289,7 +323,7 @@ fn unpack(source: &Path) -> Result<(PathBuf, Option<TempDir>), Error> {
             std::io::Error::from(std::io::ErrorKind::NotFound),
         ));
     }
-    let dir = std::env::temp_dir().join(format!("raven-dxvk-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("raven-d3d-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).map_err(|e| Error::Layer(dir.clone(), e))?;
     let out = std::process::Command::new("tar")
@@ -325,7 +359,7 @@ fn build_root(dir: &Path) -> Result<PathBuf, Error> {
             }
         }
     }
-    Err(Error::NotADxvkBuild(dir.to_path_buf()))
+    Err(Error::NotAD3dBuild("", dir.to_path_buf()))
 }
 
 struct TempDir(PathBuf);
@@ -359,17 +393,33 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("raven-dxvkbad-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("lib")).unwrap();
-        assert!(matches!(build_root(&dir), Err(Error::NotADxvkBuild(_))));
+        assert!(matches!(build_root(&dir), Err(Error::NotAD3dBuild(_, _))));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn the_override_list_covers_what_dxvk_actually_ships() {
-        // The five modules every current build provides, plus the two dropped
-        // upstream but still present in older releases people pin.
+    fn each_runtime_covers_what_it_actually_ships() {
         for must in ["d3d9", "d3d11", "dxgi", "d3d10core", "d3d8"] {
-            assert!(DLLS.contains(&must), "{must} missing from DLLS");
+            assert!(DXVK.dlls.contains(&must), "{must} missing from DXVK");
         }
+        for must in ["d3d12", "d3d12core"] {
+            assert!(VKD3D.dlls.contains(&must), "{must} missing from VKD3D");
+        }
+        // The two must not overlap, or removing one would strip the other's
+        // overrides out of user.reg.
+        for d in DXVK.dlls {
+            assert!(!VKD3D.dlls.contains(d), "{d} claimed by both runtimes");
+        }
+        // Their manifests must differ for the same reason.
+        assert_ne!(DXVK.key, VKD3D.key);
+    }
+
+    #[test]
+    fn the_thirty_two_bit_directory_is_not_named_the_same_by_both() {
+        // The trap this descriptor exists for: DXVK ships x32, vkd3d-proton
+        // ships x86, and a hard-coded name silently installs nothing 32-bit.
+        assert!(DXVK.arches.iter().any(|(a, _)| *a == "x32"));
+        assert!(VKD3D.arches.iter().any(|(a, _)| *a == "x86"));
     }
 
     #[test]

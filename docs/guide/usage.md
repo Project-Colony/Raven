@@ -119,12 +119,40 @@ Microsoft's own `dxdiag.exe` drove it and DXVK enumerated the card. No game has
 rendered a frame through it yet, and nothing is benchmarked; see
 [../project/status.md](../project/status.md) for exactly how far that goes.
 
+### Direct3D 12
+
+DXVK stops at Direct3D 11. Twelve is a different project, **vkd3d-proton**, and
+it installs beside DXVK rather than instead of it:
+
+```bash
+raven env vkd3d games --from ~/Downloads/vkd3d-proton-3.0.1.tar.zst
+```
+
+A game wanting D3D11 and a game wanting D3D12 are different games, and one
+environment serves both. Removing either leaves the other alone.
+
+Neither command has an opinion about whose build you use, and that is not
+politeness: CachyOS's Proton and Valve's both carry these two projects as
+**unpatched upstream submodules**. What a Proton distribution forks is Wine.
+There is no distinct "CachyOS DXVK" to prefer.
+
 ## Why the second launch is instant
 
 The first program you run in an environment starts a **session**: Raven mounts
 C: once and keeps it, so every later launch joins what is already there instead
 of building a world of its own. The first launch of the day costs about two
 seconds; the ones after it cost about a sixth of one.
+
+You can also bring an environment up before you need it, so nothing waits at
+all:
+
+```bash
+raven env start games
+```
+
+Mounting costs four hundredths of a second; Wine's services cost about 1.7 and
+then serve every launch. `start` pays that up front - after it, even the first
+double-click is immediate.
 
 The session holds C: until you release it:
 

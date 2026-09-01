@@ -138,6 +138,11 @@ enum EnvCmd {
     Status { name: String },
     /// Release an environment: terminate every process holding its mount.
     Stop { name: String },
+    /// Bring an environment up before you need it, so nothing waits later.
+    ///
+    /// Mounting costs 0.04s; Wine's services cost about 1.7s and then serve
+    /// every launch. Paying that here means the first double-click does not.
+    Start { name: String },
     /// Attach a block device to an environment as a raw drive.
     ///
     /// Dangerous by design: a program in the environment can then read and
@@ -151,14 +156,28 @@ enum EnvCmd {
         #[arg(long, default_value = "d")]
         letter: char,
     },
-    /// Install, remove or report DXVK in an environment.
+    /// Install, remove or report DXVK - Direct3D 8 through 11 on Vulkan.
     ///
-    /// Raven fetches nothing: point `--from` at a DXVK build you already have,
-    /// the way `base deploy` takes an ISO you already have. With no flag, this
+    /// Raven fetches nothing: point `--from` at a build you already have, the
+    /// way `base deploy` takes an ISO you already have. With no flag, this
     /// reports what is installed.
     Dxvk {
         name: String,
-        /// An extracted DXVK release, or a release archive of one.
+        /// An extracted release, or a release archive of one.
+        #[arg(long, value_name = "PATH", conflicts_with = "remove")]
+        from: Option<PathBuf>,
+        /// Uncover the real Windows again by deleting what was installed.
+        #[arg(long)]
+        remove: bool,
+    },
+
+    /// Install, remove or report vkd3d-proton - Direct3D 12 on Vulkan.
+    ///
+    /// A separate runtime from DXVK, not a newer one: DXVK does not implement
+    /// Direct3D 12 at all. They install side by side.
+    Vkd3d {
+        name: String,
+        /// An extracted release, or a release archive of one.
         #[arg(long, value_name = "PATH", conflicts_with = "remove")]
         from: Option<PathBuf>,
         /// Uncover the real Windows again by deleting what was installed.
@@ -500,59 +519,43 @@ fn env_cmd(cmd: EnvCmd) -> Result<()> {
             }
             Ok(())
         }
-        EnvCmd::Dxvk { name, from, remove } => {
-            let e = env::Environment::open(&name)?;
-            if let Some(src) = from {
-                let done = e.install_dxvk(&src)?;
-                let mut dlls: Vec<&str> = done.iter().map(|s| s.dll.as_str()).collect();
-                dlls.sort();
-                dlls.dedup();
-                // plural() appends an "s"; "library" does not take one.
-                let word = if done.len() == 1 {
-                    "library"
-                } else {
-                    "libraries"
-                };
-                out!(
-                    "Installed {} DXVK {word} into {name}: {}",
-                    done.len(),
-                    dlls.join(", ")
-                );
-                out!("They shadow the real Windows through the overlay; the base is untouched.");
-                out!("Undo it: raven env dxvk {name} --remove");
-            } else if remove {
-                let gone = e.remove_dxvk()?;
-                let word = if gone == 1 { "library" } else { "libraries" };
-                out!("Removed {gone} DXVK {word} from {name}; the real Windows is uncovered.");
-            } else {
-                let files = e.dxvk();
-                if files.is_empty() {
-                    out!("{name}: no DXVK installed");
-                } else {
-                    out!(
-                        "{name}: {}",
-                        e.dxvk_build()
-                            .unwrap_or_else(|| "DXVK, build unrecorded".into())
-                    );
-                    for f in &files {
-                        out!("  {:<10} {}", f.dll, f.arch);
-                    }
-                    let over = e.dxvk_overrides();
-                    // The two halves are reported apart on purpose: a file with
-                    // no override is a library Wine will ignore.
-                    for f in &files {
-                        if !over.iter().any(|(n, _)| n == &f.dll) {
-                            out!("warning: {} is installed but has no DLL override", f.dll);
-                        }
-                    }
-                }
-            }
-            Ok(())
-        }
+        EnvCmd::Dxvk { name, from, remove } => d3d_cmd(&raven::d3d::DXVK, &name, from, remove),
+        EnvCmd::Vkd3d { name, from, remove } => d3d_cmd(&raven::d3d::VKD3D, &name, from, remove),
         EnvCmd::Detach { name, letter } => {
             let e = env::Environment::open(&name)?;
             e.detach(letter)?;
             out!("Detached {letter}: from {name}. The device itself is untouched.");
+            Ok(())
+        }
+        EnvCmd::Start { name } => {
+            let e = env::Environment::open(&name)?;
+            if e.session().is_some() {
+                out!("{name} is already up.");
+                return Ok(());
+            }
+            let anchor = e.ensure_session()?;
+            out!("Mounted {name} (session {anchor}).");
+            // The mount is the cheap half. Wine's services are the two seconds
+            // a first launch pays, and they are brought up here by running the
+            // smallest possible program: what matters is that wineserver,
+            // services.exe and the rest are standing when the user arrives.
+            out!("Starting Wine's services so the first launch does not wait...");
+            let started = std::time::Instant::now();
+            match std::process::Command::new(std::env::current_exe()?)
+                .args(["run", &name, "--", "wine", "cmd", "/c", "exit"])
+                .env("WINEDEBUG", "-all")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+            {
+                Ok(s) if s.success() => out!(
+                    "{name} is ready in {:.1}s. Launches will be immediate.",
+                    started.elapsed().as_secs_f32()
+                ),
+                // The mount is up either way, so this is a warning and not a
+                // failure: the next launch simply pays what this would have.
+                _ => out!("{name} is mounted, but Wine did not start; the first launch will."),
+            }
             Ok(())
         }
         EnvCmd::Stop { name } => {
@@ -620,6 +623,66 @@ fn run(name: &str, argv: Vec<String>, cwd: Option<PathBuf>) -> Result<()> {
         cmd.current_dir(d);
     }
     Err(cmd.exec()).with_context(|| format!("could not run {}", argv[0]))
+}
+
+/// Install, remove or report one Direct3D-on-Vulkan runtime.
+fn d3d_cmd(
+    rt: &raven::d3d::Runtime,
+    name: &str,
+    from: Option<PathBuf>,
+    remove: bool,
+) -> Result<()> {
+    let e = env::Environment::open(name)?;
+    if let Some(src) = from {
+        let done = e.install_d3d(rt, &src)?;
+        let mut dlls: Vec<&str> = done.iter().map(|s| s.dll.as_str()).collect();
+        dlls.sort();
+        dlls.dedup();
+        // plural() appends an "s"; "library" does not take one.
+        let word = if done.len() == 1 {
+            "library"
+        } else {
+            "libraries"
+        };
+        out!(
+            "Installed {} {} {word} into {name}: {}",
+            done.len(),
+            rt.key,
+            dlls.join(", ")
+        );
+        out!("They shadow the real Windows through the overlay; the base is untouched.");
+        out!("Undo it: raven env {} {name} --remove", rt.key);
+    } else if remove {
+        let gone = e.remove_d3d(rt)?;
+        let word = if gone == 1 { "library" } else { "libraries" };
+        out!(
+            "Removed {gone} {} {word} from {name}; the real Windows is uncovered.",
+            rt.key
+        );
+    } else {
+        let files = e.d3d(rt);
+        if files.is_empty() {
+            out!("{name}: no {} installed", rt.key);
+        } else {
+            out!(
+                "{name}: {}",
+                e.d3d_build(rt)
+                    .unwrap_or_else(|| format!("{}, build unrecorded", rt.key))
+            );
+            for f in &files {
+                out!("  {:<10} {}", f.dll, f.arch);
+            }
+            let over = e.d3d_overrides(rt);
+            // The two halves are reported apart on purpose: a file with no
+            // override is a library Wine will ignore.
+            for f in &files {
+                if !over.iter().any(|(n, _)| n == &f.dll) {
+                    out!("warning: {} is installed but has no DLL override", f.dll);
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Holds a namespace open so later launches can join it.

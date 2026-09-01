@@ -6,7 +6,7 @@
 
 pub mod attach;
 pub mod base;
-pub mod dxvk;
+pub mod d3d;
 pub mod env;
 pub mod launch;
 pub mod layer;
@@ -103,10 +103,10 @@ pub enum Error {
     NotAttached(char),
 
     #[error(
-        "{0} does not look like a DXVK build - expected a directory holding \
-         x64/ (and usually x32/), or a release archive of one"
+        "{1} does not look like a {0} build - expected a directory holding \
+         x64/ (and a 32-bit directory beside it), or a release archive of one"
     )]
-    NotADxvkBuild(std::path::PathBuf),
+    NotAD3dBuild(&'static str, std::path::PathBuf),
 
     #[error("could not start a session for the environment: {0}")]
     SessionFailed(String),
@@ -121,7 +121,7 @@ pub enum Error {
     #[error(
         "{0} is already in this environment and Raven did not put it there - \
          installing would overwrite it and removing would delete it; move it \
-         aside first if you want DXVK to take over"
+         aside first if you want this runtime to take over"
     )]
-    DxvkWouldOverwrite(std::path::PathBuf),
+    D3dWouldOverwrite(std::path::PathBuf),
 }
