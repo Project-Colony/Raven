@@ -63,6 +63,24 @@ Nothing else on the machine was touched. The system upgrade in the same day's
 `pacman.log` — the 7.1 to 7.2 kernel jump and the rest — was not this project's,
 and is not claimed here.
 
+### 2026-09-01 — Raven itself
+
+```
+makepkg -f            # in packaging/, from the published repo
+pacman -U raven-git-0.1.0.r41.06efc15-1-x86_64.pkg.tar.zst
+```
+
+| Package | Version | How it arrived |
+|---|---|---|
+| `raven-git` | 0.1.0.r41.06efc15-1 | built from `packaging/PKGBUILD` |
+
+Before the install, three hand-placed files from development were removed so
+the package's own copies own those paths: `/etc/binfmt.d/raven.conf` (which
+pointed at a debug binary inside the repository — the exact hazard the package
+exists to end), `/etc/binfmt.d/wine.conf`, and
+`/usr/share/applications/raven.desktop`. `raven doctor` confirms the kernel
+now hands `.exe` files to `/usr/bin/raven`.
+
 ### 2026-08-31 — the Windows image for the base
 
 Not a package, but it is the largest thing this project has pulled onto a

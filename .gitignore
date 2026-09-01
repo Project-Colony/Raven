@@ -1,6 +1,12 @@
 /target
 **/*.rs.bk
 
+# makepkg build artifacts - the PKGBUILD clones and builds in place.
+/packaging/src
+/packaging/pkg
+/packaging/Raven
+/packaging/*.pkg.tar.zst
+
 # Windows bases and environments never belong in the repository.
 # They live under <data>/Colony/Raven/ — see docs/internals/mount-stack.md.
 /bases
