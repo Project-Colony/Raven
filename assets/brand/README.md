@@ -79,7 +79,7 @@ and `bg_primary` should be these, so the mark and the program agree.
   areas are ground showing through, not a second colour.
 - **Do not put the pale-ink icon on a light ground.** The bands vanish and the
   bird disappears with them. Use the light-ink file or the `-on-dark` export.
-- Keep clear space of one band-height (54 units) on every side.
+- Keep clear space of one band-height (64 units) on every side.
 - Geometry, for anyone editing the paths: the frame is 208 units square inside a
   24-unit margin; three bands 64 units deep, separated by 8-unit seams; the eye
   is an 18-unit square at (96, 104); the bill runs from the brow at x=130 out to
