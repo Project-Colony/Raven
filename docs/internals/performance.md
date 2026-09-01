@@ -221,6 +221,28 @@ they join it. Operations that genuinely need exclusivity - `dxvk`, `attach`,
 `raven env stop` as the way out. The three-to-six second wait survives only
 directly after an explicit stop, where it is expected.
 
+### Where the first launch's two seconds actually go
+
+Not into the disk, which is the intuition worth killing early. Measured with
+the mount timed apart from Wine:
+
+| | |
+|---|---|
+| `overlayfs` mount of the base - 14 GB, 143 886 files | **0.04 s** |
+| Wine's cold start inside the session | **1.67 s** |
+| every run after that | 0.17 s |
+
+`overlayfs` never reads the tree it stacks; its cost is in the number of
+layers, not the number of files, so a 500 GB base would mount in the same
+0.04 s. The two seconds are `wineserver`, `services.exe`, `plugplay.exe`,
+`explorer.exe` and `rpcss.exe` coming up - and once up they serve every later
+launch, which is what the session made possible.
+
+The obvious lever is therefore to bring those services up *before* the user
+asks for a program: a session started at login, or by hand, would leave
+nothing for the first double-click to pay. Nothing in the design prevents it -
+the anchor already exists and does nothing after mounting.
+
 ### What a game's start-up actually costs, and how little of it is Raven
 
 The session made launches fast and a user still waited several seconds for a
