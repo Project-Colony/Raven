@@ -253,9 +253,19 @@ fontconfig. Three things are nevertheless lost.
   a layout tuned to the real ones will shift. Proton bundles `liberation-fonts`
   precisely to supply metric-compatible substitutes, which Raven does not.
 
-**The trade deserves re-deciding, because sessions changed its price.** The
-92 ms was decisive when every launch paid a full cold start of about two
-seconds; a launch now costs 0.16 s, and the same 92 ms would take it to roughly
-0.25 s - still an order of magnitude better than before sessions existed.
-Buying Microsoft's actual fonts back for that is a different bargain from the
-one originally struck, and it has not been re-measured.
+**It was re-decided, and the fonts are back.** The 92 ms was decisive when
+every launch paid a full cold start of about two seconds. Re-measured with
+sessions in place: a launch costs **0.16 s masked and 0.257 s unmasked** - the
+same 92 ms, now a fraction of a much smaller number and still eight times
+better than the two seconds that preceded sessions.
+
+The argument that settled it was not the arithmetic, though. Raven's premise is
+that a program runs against a *real* Windows; an installation whose fonts are
+hidden is not one, and the registry declaring 961 faces whose files do not
+exist is an incoherence no measurement justifies. `SHADOWED` is one entry
+again.
+
+Environments created while the mask existed are healed rather than abandoned:
+`layer::reconcile` runs before every session mount and removes markers the
+shadow set no longer wants, so nobody has to rebuild an environment to receive
+a fix they never opted into.

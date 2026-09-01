@@ -730,6 +730,13 @@ fn session_anchor(name: &str) -> Result<()> {
             spec.target.display()
         ));
     }
+    // Bring the layer's opaque markers in line with the current shadow set
+    // before mounting. An environment created when Windows/Fonts was masked
+    // would otherwise stay masked for ever, and a user should not have to
+    // rebuild to receive a fix.
+    if let Err(err) = raven::layer::reconcile(&e.layer()) {
+        report(format_args!("could not reconcile the layer: {err}"));
+    }
     if !UserNsOverlay::is_available() {
         report(format_args!(
             "this kernel restricts unprivileged user namespaces; run `raven doctor`"

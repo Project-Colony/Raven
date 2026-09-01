@@ -193,12 +193,14 @@ namespace is what admits it to the mount namespace.
 | | before | after |
 |---|---|---|
 | trivial program, first launch | 2.07 s | 2.05 s |
-| trivial program, every later launch | 2.07 s | **0.16 s** |
+| trivial program, every later launch | 2.07 s | **0.26 s** |
 | *ShineHill* to its first GPU device | 2.71 s | **0.92 s** |
 | plain Wine, for comparison | 1.54 s cold, 0.12 s warm | unchanged |
 
-**Twelve to thirteen times faster after the first launch of the day**, which is
-the launch nobody counts. The remaining 0.04 s over plain Wine's warm figure is
+**Eight times faster after the first launch of the day**, which is the launch
+nobody counts. (0.16 s of that measurement was taken while `Windows/Fonts` was
+masked; the mask has since been removed on correctness grounds and the figure
+is 0.26 s - see [shadow-set.md](shadow-set.md).) The remaining 0.04 s over plain Wine's warm figure is
 `setns` plus the real Windows being larger than a Wine prefix, and is not worth
 chasing.
 

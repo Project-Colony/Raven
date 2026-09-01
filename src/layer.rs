@@ -120,14 +120,61 @@ pub fn shadow(layer: &Path, relative: &str) -> Result<(), Error> {
 ///
 /// `WinSxS`: unmasked, installers render without text and ignore clicks.
 ///
-/// `Fonts`: win32u re-enumerates and re-checks every font file at every
-/// process start — 676 path lookups against the real base's ~340 fonts,
-/// measured at 92 ms of the 105 ms per-process overhead (227 → 135 ms with
-/// the mask). Text still renders through the host's fontconfig, exactly as it
-/// does under plain Wine, whose own Fonts directory is empty. The cost of
-/// this entry is that programs wanting Microsoft's font *files* (not just
-/// faces) will not see them; revisit when the corpus turns one up.
-pub const SHADOWED: &[&str] = &["Windows/WinSxS", "Windows/Fonts"];
+/// `Fonts` **used to be here and is not any more.** Masking it was worth 92 ms
+/// of per-process spawn (227 → 135 ms) because `win32u` re-checks every font
+/// file at every process start, and that was decisive when every launch paid a
+/// full cold start. It bought that with an incoherence: the projected registry
+/// declared 961 fonts while `C:\Windows\Fonts` held none, so the registry
+/// named files that did not exist, a program enumerating the directory saw
+/// nothing where a real Windows shows 338, and every face was substituted
+/// through fontconfig - Arial becoming Noto Sans, Segoe UI becoming Adwaita
+/// Sans. Sessions changed the price: a launch costs 0.16 s now rather than two
+/// seconds, so the same 92 ms is a fraction of a much smaller number. A real
+/// Windows whose fonts are hidden is not a real Windows, which is the whole
+/// premise, so the fonts are back.
+pub const SHADOWED: &[&str] = &["Windows/WinSxS"];
+
+/// Subtrees that *used* to be shadowed and no longer are.
+///
+/// The markers are written once, when an environment is created, so dropping
+/// an entry from `SHADOWED` would leave every existing environment masked for
+/// ever - and the user would have to destroy and rebuild to get a fix they
+/// never asked to opt into. Reconciling against this list at session start
+/// heals them in place.
+///
+/// An entry stays here indefinitely: it costs one `removexattr` on a directory
+/// that usually does not carry the marker, and removing it would silently
+/// strand anyone who had not started that environment since.
+const FORMERLY_SHADOWED: &[&str] = &["Windows/Fonts"];
+
+/// Removes an opaque marker, letting the base's version of a subtree show
+/// through again.
+pub fn unshadow(layer: &Path, relative: &str) -> Result<(), Error> {
+    let target = layer.join(relative);
+    match rustix::fs::removexattr(&target, "user.overlay.opaque") {
+        Ok(()) => Ok(()),
+        // Absent marker or absent directory: nothing to undo, which is the
+        // ordinary case and not a failure.
+        Err(rustix::io::Errno::NODATA | rustix::io::Errno::NOENT) => Ok(()),
+        Err(e) => Err(Error::Layer(target, e.into())),
+    }
+}
+
+/// Brings a layer's markers in line with the current shadow set.
+///
+/// Idempotent and cheap, so it can run before every mount rather than needing
+/// a migration the user has to know about.
+pub fn reconcile(layer: &Path) -> Result<(), Error> {
+    for rel in FORMERLY_SHADOWED {
+        unshadow(layer, rel)?;
+    }
+    for rel in SHADOWED {
+        if layer.join(rel).is_dir() {
+            shadow(layer, rel)?;
+        }
+    }
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
@@ -152,6 +199,40 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn reconciling_removes_a_marker_the_shadow_set_no_longer_wants() {
+        let tmp = Tmp::new("reconcile");
+        let layer = &tmp.0;
+        // An environment created before Fonts left the shadow set.
+        fs::create_dir_all(layer.join("Windows/Fonts")).unwrap();
+        fs::create_dir_all(layer.join("Windows/WinSxS")).unwrap();
+        shadow(layer, "Windows/Fonts").unwrap();
+        shadow(layer, "Windows/WinSxS").unwrap();
+
+        reconcile(layer).unwrap();
+
+        assert!(
+            rustix::fs::getxattr(
+                layer.join("Windows/Fonts"),
+                "user.overlay.opaque",
+                &mut [0u8; 8]
+            )
+            .is_err(),
+            "the base's fonts must show through again"
+        );
+        assert!(
+            rustix::fs::getxattr(
+                layer.join("Windows/WinSxS"),
+                "user.overlay.opaque",
+                &mut [0u8; 8]
+            )
+            .is_ok(),
+            "WinSxS is still shadowed and must stay so"
+        );
+        // Running it twice must not fail on the marker that is already gone.
+        reconcile(layer).unwrap();
     }
 
     #[test]
