@@ -221,6 +221,27 @@ they join it. Operations that genuinely need exclusivity - `dxvk`, `attach`,
 `raven env stop` as the way out. The three-to-six second wait survives only
 directly after an explicit stop, where it is expected.
 
+### What a game's start-up actually costs, and how little of it is Raven
+
+The session made launches fast and a user still waited several seconds for a
+game window. Measured rather than assumed, warm on both sides, same DXVK 3.1,
+same game:
+
+| | Raven | plain Wine |
+|---|---|---|
+| launch to DXVK's first GPU device | 0.92 s | 0.78 s |
+| launch to a **visible window** | 7.7-9.5 s | 7.9 s |
+
+**Raven costs about 0.14 s. The other seven seconds are the game**, and plain
+Wine pays them identically - GameMaker loading `data.win`, DXVK building
+pipelines, the engine reaching its first frame. There is nothing here to
+optimise on Raven's side, and the measurement is worth keeping precisely
+because the wait *feels* like the launcher's fault.
+
+DXVK 3.x has no state cache to warm either: the old `.dxvk-cache` went away
+with the move to graphics pipeline libraries, so repeat launches cannot be
+made cheaper that way.
+
 ### The refusal window, which was a bug
 
 Wine's background services - `wineserver`, `services.exe`, `plugplay.exe`,
