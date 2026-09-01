@@ -311,3 +311,24 @@ the real Windows's version of it entirely — verified by reducing a 17 385-entr
 
 That is a general tool for shaping what a program sees of the base, and it needs
 no root. It will be useful for something; it was simply not useful for this.
+
+## Where the remaining milliseconds are not
+
+Recorded so nobody spends an afternoon on the wrong thing. The release profile
+is already `lto = "fat"`, `codegen-units = 1`, `strip = "symbols"`, and the
+package builds `--release --locked`. That is worth keeping, but it is not where
+anything left to win lives:
+
+- **A launch costs 0.26 s and almost none of it is Raven's code.** Argument
+  parsing, a few dozen `stat` calls, one `setns` and an `exec`. The time is
+  Wine's services and the kernel's mount.
+- **The one place Raven does real work is the registry projection** - a
+  hand-written parser over a 76 MB binary hive, 1 894 keys in 130 ms - and it
+  runs at environment creation and on `reproject`, not per launch.
+- **The measurable wins so far were architectural, not compiler flags.**
+  Sessions took a launch from 2.07 s to 0.26 s; masking fonts was worth 92 ms
+  and was reverted anyway on correctness grounds.
+
+If the projection ever becomes the thing people wait on - a much larger hive, a
+base with far more installed software - that is where profiling should start.
+Not before.
