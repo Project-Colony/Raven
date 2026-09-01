@@ -105,21 +105,25 @@ them, and `choice.exe` has only a 2 KB `.rsrc` section, far too small for its ow
 help text. Traced with `WINEDEBUG=+file`: Wine opens **zero** `.mui` files. So
 `LoadString` finds nothing and the program prints nothing.
 
-Launching a process against the real Windows costs about **+95 ms** more than
-against Wine's synthetic prefix. The cause is measured, two plausible theories
-about it were falsified, and the whole investigation is in
-[../internals/performance.md](../internals/performance.md).
+Launching a process against the real Windows cost about **+95 ms** at first.
+The cause was measured — win32u re-checking ~340 real font files at every
+process start — and masking the base's `Windows\Fonts` brought it to **135 ms
+against plain Wine's 113 (1.19×)**. Four plausible theories were falsified on
+the way, the `wineserver` excess turned out not to exist at all, and the whole
+investigation is in [../internals/performance.md](../internals/performance.md).
 
 ## Built
 
-Eleven commands. The path from an installation image to `./program.exe` is
-complete.
+Fifteen commands, counting each leaf subcommand once. The path from an
+installation image to `./program.exe` is complete, and so is recovery when
+something is left holding an environment.
 
 | | |
 |---|---|
-| `raven doctor` | namespaces, Wine, `ntsync`, and what is deployed |
+| `raven doctor` | namespaces, Wine, `ntsync`, what is deployed — and which handler the kernel gives `.exe` files to, with the fix when it is not Raven's |
 | `raven base editions` / `deploy` / `list` | the immutable Windows installations |
 | `raven env create` / `list` / `destroy` | environments, cheap and disposable |
+| `raven env status` / `stop` | who holds a running environment's mount, and releasing it |
 | `raven env default` / `reproject` | which environment is used by default; re-run the projection |
 | `raven binfmt` | what to install so the kernel recognises `.exe` |
 | `raven launch` / `run` / `exec` | running a program, at three levels of explicitness |
@@ -133,22 +137,22 @@ Measured against the real Windows 11 base:
   to the prefix, and no `X:` left anywhere.
 - After a full cycle the base holds **143 886 files, none modified**.
 
-**69 tests pass** and `clippy -D warnings` is clean. The ones carrying the
+**82 tests pass** and `clippy -D warnings` is clean. The ones carrying the
 design: base immutability under a real write (checked against a sabotaged mount,
-so it can fail), layer precedence with two read-only layers, removal of a mounted
+so it can fail), layer precedence with two read-only layers, finding and
+stopping the processes that hold a live mount — through an upper path
+containing every character the kernel escapes — removal of a mounted
 environment that `remove_dir_all` cannot delete, PE recognition by magic bytes
 rather than by extension, and eight projection tests against hives built by a
 **different implementation** from the reader.
 
 ## Not built
 
-No package. `raven binfmt` prints what to install rather than installing it, and
-the `rvn` alias is decided but has nowhere to be installed from — see
-[../internals/packaging.md](../internals/packaging.md).
-
-No application has been installed into an environment, and no game has been run.
-Everything above is measured on Microsoft's own utilities, which is a much easier
-case than software that was never expecting any of this.
+Coverage, more than mechanism. One installer framework has been exercised and
+one 2D game runs; NSIS, InstallShield, MSI, Squirrel, and anything touching
+Direct3D are all unexplored. Concurrent launches into one environment refuse
+cleanly instead of joining the running namespace. And a release has yet to
+produce its first signed asset — the machinery is wired, the proof is not.
 
 ## A real program, end to end
 
@@ -180,7 +184,7 @@ Ordered by how much damage a wrong assumption would do.
 | | Question | Why it matters |
 |---|---|---|
 | 1 | Can Wine be made to resolve `.mui` resources? | Without it every real Windows console utility is mute, and any program that keeps its strings in MUI — which is the modern default — shows blank text. This is now the largest known gap. |
-| 2 | Does a case-insensitive filesystem remove Wine's directory-cache cost? | It is the only lever identified for the +95 ms per process. `casefold` is ext4-only, so a btrfs base cannot use it, and whether Wine even detects it is unknown. |
+| 2 | Does the residual ~20 ms per process matter to a running game? | The fonts cost is fixed and `casefold` is tested and closed (Wine detects it on any filesystem and gains nothing). What remains needs a frame-time or input-to-response number in a real scene before it deserves an owner. |
 | 3 | Which Wine files must be in the upper lower-layer? | The shadow set, now expressed as "which paths does the Wine layer need to contain". See [../internals/shadow-set.md](../internals/shadow-set.md). |
 | 3 | Does the projection's `X:` to `C:` rewrite cover everything, or is a never-booted hive missing more? | `SystemRoot` was found by looking. What else describes the setup environment is unknown until something reads the whole hive. |
 | 4 | What do hardened systems need? | `linux-hardened`, Ubuntu's AppArmor policy and SELinux-enforcing systems all change the mount story. Rootless Podman solves this with `fuse-overlayfs` and `context=` labelling, so the answers exist; which one Raven needs is unmeasured. |

@@ -6,7 +6,7 @@ Sorted by who is reading, not by subject.
 
 | | |
 |---|---|
-| [guide/install.md](guide/install.md) | building it, and checking your machine can run it |
+| [guide/install.md](guide/install.md) | installing or building it, and checking your machine can run it |
 | [guide/usage.md](guide/usage.md) | from an installation image to `./program.exe` |
 | [guide/troubleshooting.md](guide/troubleshooting.md) | failure modes that have actually happened, and what they mean |
 

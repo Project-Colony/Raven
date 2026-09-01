@@ -98,11 +98,14 @@ This is better than an environment variable because it is inspectable: the
 shadow set becomes "what the Wine layer contains", which can be listed, diffed
 and reviewed, rather than a string that has to be believed.
 
-**It does not work yet.** Wine's skeleton uses `windows` and `users`; Microsoft's
-uses `Windows` and `Users`; `overlayfs` merges on the exact byte path, so the
-trees stay separate and the mount shows both. Wine's own case-insensitivity acts
-a layer above the filesystem and cannot help here. Normalising the skeleton's
-casing to Microsoft's is the obvious next step and is untested.
+**The casing mismatch was real, and the fix ships.** Wine's skeleton uses
+`windows` and `users`; Microsoft's uses `Windows` and `Users`; `overlayfs`
+merges on the exact byte path, so the trees stayed separate and the mount
+showed both. Wine's own case-insensitivity acts a layer above the filesystem
+and could not help. `env create` now renames the Wine layer to the base's
+spelling — `normalise_case` in `src/layer.rs`, 338 renames against a real
+Windows 11 base — after which the trees merge, and the merged mount is what
+carried a real installer and a running game end to end.
 
 ## The first measured entry, and it is not a library
 
@@ -168,7 +171,7 @@ WINEDLLOVERRIDES="ole32,oleaut32=n,b;comctl32=b"
 builtin. `n,b` means try native and fall back. This is Wine's own supported
 interface and it is the right tool for everything above the floor.
 
-**Physically shadowing the file** in the overlay's upper layer replaces the file
+**Physically shadowing the file** in the read-only Wine layer replaces the file
 Wine would find at all. It is heavier, it is visible in the filesystem rather
 than in an environment variable, and it is the fallback for cases where the
 override is not respected.

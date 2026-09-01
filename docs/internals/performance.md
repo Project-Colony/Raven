@@ -1,8 +1,9 @@
 # Performance
 
-What running against a real Windows costs, what it does not cost, and what has
-been ruled out. Deferred by decision — the numbers are recorded so the work can
-start from measurement rather than from guesses.
+What running against a real Windows costs, what it does not cost, what has
+been ruled out — and what has been fixed. The spawn overhead is attributed and
+mostly removed (fonts, masked); what stays deferred is the ~20 ms residual and
+an in-game frame-time measurement.
 
 ## The wall-clock benchmark
 
@@ -13,16 +14,18 @@ it. One fixed script, run identically in both conditions on a quiet machine,
 `WINEDEBUG=-all`, wineserver warmed up outside the measurement, wall-clock
 nanoseconds around each sample.
 
-**Process spawn** (`wine cmd /c exit`, eight samples each):
+**Process spawn** (`wine cmd /c exit`, eight samples each — measured *before*
+the fonts mask; the fix it motivated is further down):
 
 |  | plain Wine | Raven | ratio |
 |---|---|---|---|
 | range | 108–115 ms | 218–240 ms | |
 | median | 113 ms | 228 ms | **2.0×** |
 
-About **+115 ms per process**, consistent with the +95 ms measured earlier by a
-cruder method. Invisible for a game launched once; twenty seconds of pure
-overhead for an installer that spawns two hundred processes.
+About **+115 ms per process** at the time, consistent with the +95 ms measured
+earlier by a cruder method — twenty seconds of pure overhead for an installer
+spawning two hundred processes. With `Windows/Fonts` masked it is **~135 ms
+(1.19×), about +22 ms per process** — some four seconds for the same installer.
 
 **Directory enumeration** (30 × `dir C:\windows\system32` inside one `cmd`,
 three samples each):
@@ -46,8 +49,9 @@ contamination is asymmetric: the fixed cost spreads over 6× more entries under
 Raven, so leaving it in *flatters the overlay* (it read ~11% before the
 correction). Review caught it; the direction survived, the number did not.
 
-So the honest summary is: per-process launch cost is real and doubled, and the
-sustained filesystem path is modestly slower. What this benchmark does *not*
+So the honest summary is: per-process launch cost was doubled until the fonts
+mask and is now ~19% (113 → 135 ms), and the sustained filesystem path is
+modestly slower. What this benchmark does *not*
 answer is whether a running game feels any of it — that needs a frame-time or
 input-to-response measurement in the same scene, which no one has made yet.
 
@@ -81,11 +85,11 @@ while the request streams stayed identical. An instantaneous `wineserver` CPU
 percentage tracks the game's frame pacing at the moment of the glance, not the
 server's workload; it now joins the list of measurements this project does not
 trust. There is no wineserver pathology to fix, and the whole launch overhead
-lives client-side, in the directory cache above.
+lives client-side — in fonts, dissected below.
 
 ## The launch cost, dissected
 
-**Launching a process costs about twice as much, and the cause is not what it
+**Launching a process cost about twice as much, and the cause was not what it
 looked like.** Measured, three runs each: 111–122 ms against Wine's synthetic
 prefix, 207–238 ms against the real Windows. Roughly **+95 ms per process**.
 
@@ -153,24 +157,13 @@ single directory name.
 
 ## Built
 
-The crate exists and its first component is real: the mount backend.
-
-- `raven exec` mounts an overlay over a base in an unprivileged user namespace
-  and runs a command inside it. `raven doctor` reports what the running system
-  supports.
-- Five tests pass, and the one that matters asserts the central claim — a write
-  through the overlay leaves the base byte-identical, the new file is absent from
-  the base, and it is present in the upper layer.
-- That test was checked against a deliberately broken mount: with the overlay
-  disabled it fails. A guarantee whose test cannot fail is not a guarantee.
-
-Everything else in [../internals/architecture.md](../internals/architecture.md)
-— the base deployment, the registry projection, the shadow set, `binfmt`
-registration — is still a plan rather than a description.
-
-Also absent, and deliberately: `docs/guide/`. There is nothing to install and
-nothing to use, and writing those pages now would produce documentation that is
-trusted and wrong.
+Everything in [architecture.md](architecture.md) is now a description rather
+than a plan: base deployment, environments, the registry projection, the
+shadow set as a filesystem layer, `binfmt` registration, and recovery of a
+held environment. 82 tests pass, and the one that matters still asserts the
+central claim — a write through the overlay leaves the base byte-identical —
+and was checked against a deliberately broken mount: with the overlay disabled
+it fails. A guarantee whose test cannot fail is not a guarantee.
 
 ## Where to start when this is picked up
 

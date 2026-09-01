@@ -105,8 +105,10 @@ synchronization primitives to be available, and Raven has no business managing
 that. It should **detect** `/dev/ntsync` and report whether Wine is getting it,
 not load modules on a user's behalf.
 
-The module is not loaded on this machine yet: `modules-load.d` is applied at
-boot, and the package was installed after the last one.
+On the day of installation the module was not yet loaded — `modules-load.d`
+is applied at boot. After the next boot `/dev/ntsync` appeared, and Wine
+demonstrably uses it: nine open ntsync handles were counted on a running game
+during the wineserver investigation.
 
 **The NTFS tooling arrived for free.** `wimlib` depends on `ntfsprogs`, so the
 secondary path — mounting an existing Windows partition — has its dependencies

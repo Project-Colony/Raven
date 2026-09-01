@@ -50,20 +50,10 @@ byte-identical.
 
 ## Making `./program.exe` work
 
-```bash
-raven binfmt
-```
-
-prints what to install. It needs root once, and belongs to the package manager
-rather than to Raven:
-
-```bash
-echo ':raven-pe:M::MZ::/usr/bin/raven:F' | sudo tee /etc/binfmt.d/raven.conf
-```
-
-```bash
-sudo systemctl restart systemd-binfmt
-```
+The package already did this: it registered `.exe` with the kernel and masked
+Wine's own registration, which otherwise silently wins the same `MZ` magic. On
+a source build, `raven binfmt` prints exactly what to install; either way,
+`raven doctor` shows who gets a double-clicked `.exe` right now.
 
 Then tell Raven which environment to use for programs that are not inside one:
 

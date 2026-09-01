@@ -60,18 +60,23 @@ the repository — see [shadow-set.md](shadow-set.md).
 
 ### Generated things are never hand-edited
 
-The registry projection and the shadow set are both derived artifacts with
-hand-edited rules behind them. Correcting the output by hand produces something
-nobody can reproduce. Fix the rules and regenerate.
+The registry projection is a derived artifact with a hand-edited rules file
+behind it, and the measured shadow-set table will be the same shape.
+Correcting the output by hand produces something nobody can reproduce. Fix the
+rules and regenerate.
 
 ## Building and testing
 
-There is no workspace yet, so there is nothing to build. When there is, this
-section says how — and it will say it in a form someone can paste, not in prose.
+```bash
+cargo build --release
+cargo test
+```
 
-Two things that will be true from the first crate:
+82 tests, no root required, no Windows base required.
 
-- `cargo test` at the workspace root must work on a plain developer machine,
+Two things that are true, and stay true:
+
+- `cargo test` at the crate root must work on a plain developer machine,
   without root and without a Windows base present. Tests that need either are
   gated behind a feature or a fixture, because a test command people learn to
   avoid is a test suite that stops running.

@@ -99,8 +99,9 @@ handler pointing at a path that no longer exists.
 ### 2.1 Measure latency, not CPU
 
 **Partly done** — see [performance.md](../internals/performance.md). A fixed
-workload, identical in both conditions, wall-clock: process spawn is **2.0×**
-(113 → 228 ms), and directory enumeration is 6.6× — of which 6.0× is the real
+workload, identical in both conditions, wall-clock: process spawn was **2.0×**
+(113 → 228 ms) before the fonts mask and is **1.19×** (113 → 135 ms) since —
+see 2.2 and 4 — and directory enumeration is 6.6× — of which 6.0× is the real
 `System32` holding six times the entries, leaving **~17% per entry** as the
 overlay's share. The lesson joined the list above: a ratio between two
 differently-sized workloads measures the workload.
@@ -140,13 +141,14 @@ identical to the key). File I/O on C: is in-process in ntdll and never reaches
 the server; sync is `ntsync`; steady state is the message pump. The 7.75× was
 an instantaneous CPU% glance, and on capture day the same glance pointed the
 other way while the request streams stayed identical. A whole line of attack is
-closed: the launch overhead is entirely client-side, in the directory cache.
-Details in [performance.md](../internals/performance.md).
+closed: the launch overhead is entirely client-side — and it turned out to be
+the per-process font re-check, which became the shadow set's second measured
+entry (see 4). Details in [performance.md](../internals/performance.md).
 
 ### 2.4 Not the problem, so nobody re-checks it
 
 Raven's own start-up is **1 ms** in release and 2 ms in debug. It runs once per
-`.exe` launch and is not where the 95 ms goes.
+`.exe` launch and is not where the launch overhead goes.
 
 ---
 
@@ -165,30 +167,30 @@ tables costing something real.
 
 ### 3.2 The package itself
 
-`packaging/` holds the pieces and nothing installs them:
+**Done.** The `PKGBUILD` in `packaging/` installs all four pieces and its
+description states that installing changes what every `.exe` does:
 
 | File | Goes to |
 |---|---|
-| `raven.conf` | `/etc/binfmt.d/raven.conf` |
-| `wine-mask.conf` | `/etc/binfmt.d/wine.conf` — disables Wine's |
+| `raven.conf` | `/usr/lib/binfmt.d/raven.conf` — applied by pacman's own `systemd-binfmt` hook in the same transaction |
+| `wine-mask.conf` | `/etc/binfmt.d/wine.conf` — masks Wine's, restored on uninstall |
 | `raven.desktop` | `/usr/share/applications/` |
 | the binary | `/usr/bin/raven`, plus `rvn` beside it |
 
-The interpreter path in `raven.conf` must be the installed one. Today the
-machine points at a debug binary inside the repository — a `cargo clean` breaks
-every `.exe` on the system.
-
-**Done when:** a PKGBUILD installs all four, uninstall reverses them, and the
-package description states that installing changes what every `.exe` does.
+Uninstall reverses everything: the registration dies with the package instead
+of dangling, and the mask's removal hands `.exe` files back to Wine. A
+development machine registered by hand against `target/debug/` remains one
+`cargo clean` away from breaking every `.exe` — which is exactly why the
+registration belongs to the package, and why `doctor` diagnoses that state.
 
 ### 3.3 Releases
 
-The org supplies the machinery and none of it is wired: release-please for
-tagging, the release workflow for the four platform assets, `colony.json`
-`releaseFiles` for the launcher to find them. Raven is Linux-only, so the asset
-matrix is one row, not four.
+The org machinery is wired: release-please for tagging, the release workflow
+for the one signed Linux asset Raven's platform story allows, `colony.json`
+marked `signed` for the launcher.
 
-**Done when:** a tag produces a signed asset that Colony can install.
+**Still done when:** a tag has actually produced a signed asset that Colony
+can install — the machinery has yet to run once.
 
 ---
 

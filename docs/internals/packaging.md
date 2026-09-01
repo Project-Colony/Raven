@@ -3,8 +3,9 @@
 How Raven is installed, and the two things installation has to arrange that the
 program cannot do for itself.
 
-Nothing here is built yet. It is written down because both items need root, and
-deciding when they run is a packaging decision rather than a runtime one.
+The files a package installs live in [packaging/](../../packaging/) and its
+`PKGBUILD` wires them together; this page records the reasoning. Both
+root-requiring items are arranged at install time, never at runtime.
 
 ## The command is `raven`, with `rvn` beside it
 
@@ -31,8 +32,9 @@ adding a privileged service to do at runtime what a config file does at boot
 would be trading a file for an attack surface.
 
 Uninstalling removes the file. A registration left behind pointing at a deleted
-binary would make every `.exe` on the machine fail in a way nobody would connect
-to Raven.
+binary would keep working on the kernel's open handle until the next reboot
+(the `F` flag) and then make every `.exe` on the machine fail in a way nobody
+would connect to Raven; `raven doctor` detects and reports both states.
 
 ## `ntsync` is not Raven's business
 

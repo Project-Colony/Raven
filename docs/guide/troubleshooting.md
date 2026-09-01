@@ -37,20 +37,54 @@ WINEDEBUG=+loaddll raven run games -- wine 'C:\Windows\System32\where.exe'
 `native` means the binary came from your Windows base. `builtin` means it was
 Wine's own.
 
+## Every `.exe` runs against `~/.wine` instead of your environment
+
+Wine's package registers a handler for the same `MZ` magic, and when both are
+present the kernel picks one silently — the failure looks like Raven losing
+your prefix, and it once cost an hour. The package prevents it by masking
+Wine's registration; if you assembled things by hand:
+
+```bash
+raven doctor
+```
+
+lists every registration claiming a `.exe`, names the one the kernel will
+pick, and prints the masking fix when it is not Raven's.
+
+## A second launch fails, or a program will not start again
+
+Closing a program's window can leave `wineserver` and a handful of Wine
+services alive inside the mount namespace, holding the environment busy.
+
+```bash
+raven env status games
+```
+
+names the processes holding it, and
+
+```bash
+raven env stop games
+```
+
+terminates them and releases the environment. Launches into a held environment
+refuse with exactly these two commands rather than a bare
+`Device or resource busy`.
+
 ## Launching feels slower than Proton
 
-It is, by about 95 ms per process. That is the price of case-insensitive path
-resolution over a Windows roughly six times larger than Wine's synthetic prefix,
-paid once per process.
-
-Invisible for a game started once; twenty seconds for an installer spawning two
-hundred processes. Two plausible explanations were measured and destroyed before
-the real one was found — [../internals/performance.md](../internals/performance.md)
-has the numbers, so nobody repeats them.
+Slightly — about 20 ms per process over plain Wine (135 ms against 113,
+measured). It used to be 2× worse until the cause was found: Wine re-checks
+every font file in the base's `C:\windows\fonts` at every process start, and
+masking that directory removed 92 of the 105 milliseconds. Four plausible
+explanations were measured and destroyed before that one —
+[../internals/performance.md](../internals/performance.md) has the numbers, so
+nobody repeats them.
 
 ## An environment will not delete
 
-It should. `overlayfs` leaves a `work/work` directory with no permissions at all,
+If `destroy` refused because the environment is running, that is deliberate —
+it named the processes holding the mount, and `raven env stop <name>` releases
+it. For anything else: `overlayfs` leaves a `work/work` directory with no permissions at all,
 which a plain recursive delete cannot enter — and it stops *after* removing the
 upper layer, leaving something that can neither be destroyed nor recreated.
 

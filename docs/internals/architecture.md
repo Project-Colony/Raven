@@ -99,11 +99,14 @@ nobody can regenerate. See
 The prefix must resolve the bottom two bands to Wine's implementations even
 though Microsoft's are physically present in the mounted base. Wine's
 `WINEDLLOVERRIDES` mechanism selects builtin-versus-native per library, and the
-overlay's upper layer can shadow a file outright where the override is not
-enough.
+read-only Wine layer can shadow a file or directory outright where the
+override is not enough.
 
-The shadow set is a data file, not a constant in the source. It is the thing the
-project exists to shrink. See [shadow-set.md](shadow-set.md).
+Today the shadow set is a short, measurement-justified constant in
+`src/layer.rs` — two directory masks, `Windows/WinSxS` and `Windows/Fonts`;
+the per-library table the corpus will produce is planned as a data file keyed
+by Windows build. It is the thing the project exists to shrink. See
+[shadow-set.md](shadow-set.md).
 
 ### 5. Launch — the kernel recognises `.exe`
 
@@ -187,22 +190,24 @@ answers with a single crate and subsystems as directories under `src/`.
 
 ```
 src/
-├── main.rs        entry point
-├── cli.rs         argument parsing; a thin shell over the library below
+├── main.rs        the CLI; a thin shell over the library below
+├── lib.rs         the library root and error type
 ├── paths.rs       the Colony filesystem layout for Raven
-├── base/          deploying and describing a Windows base
-├── env/           the environment model: create, activate, destroy
+├── base.rs        deploying and describing a Windows base
+├── env.rs         the environment model: create, run, recover, destroy
+├── launch.rs      binfmt registration and environment resolution
+├── layer.rs       case normalisation, and the shadow masks
+├── prefix.rs      the Wine prefix pieces an environment keeps
 ├── mount/         the mount backends, behind one interface
-├── hive/          registry hive reading and Wine .reg projection
-└── shadow.rs      the shadow set, loaded from data
+└── registry/      registry hive reading and Wine .reg projection
 ```
 
 A directory earns its existence by holding more than one file, which is why
-`shadow.rs` and `paths.rs` are files and `hive/` is not.
+`layer.rs` and `paths.rs` are files and `registry/` is not.
 
 ### The constraint that keeps a GUI possible
 
-Everything above lives as a **library API**, and `cli.rs` is a thin shell over
+Everything above lives as a **library API**, and `main.rs` is a thin shell over
 it. This is not architectural decoration: a GUI is a second caller of the same
 operations, and if the logic ends up inside argument handlers, adding one means
 rewriting it. The cost of the rule now is a few function signatures; the cost of

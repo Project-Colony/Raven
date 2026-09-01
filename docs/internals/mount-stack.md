@@ -87,9 +87,14 @@ its file layer resolves a Windows path against a case-sensitive directory by
 matching case-insensitively. Every Wine prefix on ext4 in the world depends on
 this working.
 
-Raven inherits that solution and adds nothing. Where the lookup cost shows up in
-profiling, ext4's `casefold` feature is the lever to reach for, applied to the
-base at deployment time.
+Raven inherits that solution and adds one rename pass: the Wine layer is
+renamed to the base's spelling at `env create` so the two trees merge at all.
+The lookup cost was profiled and attributed — to fonts, not to case
+resolution — and `casefold` was tested and closed: Wine detects it on any
+filesystem and gains nothing (see
+[performance.md](performance.md)). Its one real benefit is that the
+lowercase-shadow hazard becomes impossible, worth remembering if base
+deployment ever chooses a filesystem.
 
 ## Reparse points
 
@@ -98,9 +103,10 @@ points at `C:\Users`, and `Application Data` inside a profile points at
 `AppData\Roaming`. Software still follows these paths.
 
 A WIM stores reparse points, and applying one to a POSIX filesystem has to decide
-what to turn them into. What survives that translation, and what Wine
-synthesizes on its own regardless, is a question for the first spike rather than
-an assumption to build on.
+what to turn them into. The translation at least suffices for what has run —
+a deployed base carried a real installer and a running game end to end —
+and whether an edge of it bites a future program is a corpus question, not an
+assumption to build on.
 
 ## Performing the mount
 
@@ -114,7 +120,10 @@ This was measured rather than assumed, and measured end to end with Wine in the
 loop rather than with shell commands standing in for it. A prefix whose
 `dosdevices/c:` points at the mount gives Wine a working C: drive: `wine cmd`
 lists it, writes a file to it, and reads that file back. The write lands in
-`upper/`; the base — 1896 files — is unchanged and does not contain it.
+`upper/`; the spike's base — 1896 files — was unchanged and did not contain
+it. The full-scale version of the same proof now exists: a real installer
+wrote 256 MB plus registry keys through the overlay, and 0 of the deployed
+base's 143 886 files were modified.
 
 The mount succeeds unprivileged, it is invisible from outside the namespace,
 `nsenter --preserve-credentials` can join it later without root, and it is
@@ -144,14 +153,14 @@ different backend behind the same interface. See
 
 ## Environment lifecycle
 
-Four verbs, and they are Raven's entire vocabulary:
+Four conceptual verbs, and how they map onto the real commands:
 
-| | |
-|---|---|
-| **create** | allocate `upper/` and `work/`, build the Wine prefix, project the registry |
-| **activate** | mount the overlay at the runtime path |
-| **deactivate** | unmount; the environment persists, nothing is lost |
-| **destroy** | unmount, then delete the environment directory; the base is untouched |
+| | | |
+|---|---|---|
+| **create** | `raven env create` | allocate `upper/` and `work/`, build the Wine prefix, normalise the layer's casing, set the shadow masks, project the registry |
+| **activate** | implicit in `run` / `launch` | the overlay mounts when a program starts, in that program's namespace |
+| **deactivate** | the program exiting — or `raven env stop` | the mount dies with the process tree; `env status` names anything still holding it |
+| **destroy** | `raven env destroy` | refuse if held, then delete the environment directory; the base is untouched |
 
 Nothing in that list writes to a base. That is checkable, and it should be
 checked by a test rather than by reading the code — the test that a write through
@@ -166,17 +175,19 @@ everything sits under `Colony/Raven/`:
 
 ```
 ~/.config/Colony/Raven/          what the user chose
-└── preferences/
+└── default-environment          where a .exe outside any environment runs
 
 ~/.local/share/Colony/Raven/     what Raven produced and cannot re-derive
 ├── bases/<id>/                  a deployed Windows
 └── environments/<name>/
+    ├── environment.toml         which base it runs against
+    ├── registry-rules.toml      what crosses from the base's registry
+    ├── layer/                   the Wine layer, casing normalised, masks set
     ├── upper/                   the writable layer
     ├── work/
     └── prefix/                  the Wine prefix; dosdevices/c: → the mount
 
-~/.cache/Colony/Raven/           re-derivable; deleting it costs only time
-└── projections/                 cached registry projections, keyed by rules hash
+~/.cache/Colony/Raven/           reserved; nothing is cached yet
 
 $XDG_RUNTIME_DIR/raven/<name>/c  the active mount; never survives a reboot
 ```
