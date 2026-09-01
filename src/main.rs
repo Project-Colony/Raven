@@ -130,6 +130,10 @@ enum EnvCmd {
     },
     /// Delete an environment. The base it ran against is untouched.
     Destroy { name: String },
+    /// Report whether an environment is running and what holds it.
+    Status { name: String },
+    /// Release an environment: terminate every process holding its mount.
+    Stop { name: String },
     /// Re-run the registry projection, after editing the environment's rules.
     Reproject { name: String },
     /// Set the environment used for programs that are not inside one.
@@ -391,7 +395,37 @@ fn env_cmd(cmd: EnvCmd) -> Result<()> {
             out!("Destroyed {name}. The base is untouched.");
             Ok(())
         }
+        EnvCmd::Status { name } => {
+            let e = env::Environment::open(&name)?;
+            let holders = e.holders();
+            if holders.is_empty() {
+                out!("{name}: not running");
+            } else {
+                let (n, s) = plural(holders.len());
+                out!("{name}: running - {n} process{s} holding its C:");
+                for h in &holders {
+                    out!("  {:>7}  {}", h.pid, h.comm);
+                }
+                out!("Release it: raven env stop {name}");
+            }
+            Ok(())
+        }
+        EnvCmd::Stop { name } => {
+            let e = env::Environment::open(&name)?;
+            let stopped = e.stop()?;
+            if stopped.is_empty() {
+                out!("{name} was not running.");
+            } else {
+                let (n, s) = plural(stopped.len());
+                out!("Stopped {name}: {n} process{s} terminated.");
+            }
+            Ok(())
+        }
     }
+}
+
+fn plural(n: usize) -> (usize, &'static str) {
+    (n, if n == 1 { "" } else { "es" })
 }
 
 fn binfmt() -> Result<()> {
@@ -427,6 +461,11 @@ fn binfmt() -> Result<()> {
 
 fn run(name: &str, argv: Vec<String>) -> Result<()> {
     let e = env::Environment::open(name)?;
+    // Checked before mounting: overlayfs would refuse the held upper layer
+    // anyway, but with an EBUSY naming neither the environment nor the
+    // processes. Until launches can join a running namespace, refusing
+    // clearly is the honest behaviour.
+    e.ensure_not_running()?;
     let spec = e.spec()?;
     std::fs::create_dir_all(&spec.target)
         .with_context(|| format!("could not create the mount point {}", spec.target.display()))?;

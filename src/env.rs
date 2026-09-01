@@ -64,6 +64,8 @@ impl Environment {
     /// never edited by hand — a projection someone corrected is one nobody can
     /// reproduce.
     pub fn project_registry(&self) -> Result<usize, Error> {
+        // The import mounts the overlay, and a running environment holds it.
+        self.ensure_not_running()?;
         let base = Base::find(&self.manifest.base)?;
         let reg = registry::project_base(&base.path, &self.rules()?)?;
         let keys = reg.matches("\r\n[").count();
@@ -122,8 +124,150 @@ impl Environment {
         if !root.exists() {
             return Err(Error::NoSuchEnvironment(name.to_owned()));
         }
+        // Deleting the layers under a live mount would not stop the programs
+        // using them - it would hand them a C: that dissolves as they run.
+        let holders = holders_of(&root.join("upper"));
+        if !holders.is_empty() {
+            return Err(Error::EnvironmentBusy {
+                name: name.to_owned(),
+                holders: describe(&holders),
+            });
+        }
         remove_tree(&root)
     }
+
+    /// The processes still holding this environment's C: mounted.
+    ///
+    /// The mount lives in a private mount namespace and is invisible from
+    /// outside — but each process's own view is in `/proc/<pid>/mountinfo`,
+    /// and one that names this environment's upper layer is inside. Killing a
+    /// program's window often leaves `wineserver` and a handful of Wine
+    /// services alive this way, and they keep the upper layer busy.
+    pub fn holders(&self) -> Vec<Holder> {
+        holders_of(&self.upper())
+    }
+
+    /// Refuses while the environment is held by live processes.
+    ///
+    /// overlayfs will not mount the same upper layer twice, so a second
+    /// launch can only fail — and the raw failure is `EBUSY`, which names
+    /// neither the environment nor the processes. This names both.
+    pub fn ensure_not_running(&self) -> Result<(), Error> {
+        let holders = self.holders();
+        if holders.is_empty() {
+            return Ok(());
+        }
+        Err(Error::EnvironmentBusy {
+            name: self.name.clone(),
+            holders: describe(&holders),
+        })
+    }
+
+    /// Releases the environment: asks every holder to exit, then insists.
+    ///
+    /// Returns the processes that were terminated. `wineserver -k` from
+    /// outside cannot do this — the server inside the namespace is a
+    /// different one — so the holders are signalled directly.
+    pub fn stop(&self) -> Result<Vec<Holder>, Error> {
+        let holders = self.holders();
+        if holders.is_empty() {
+            return Ok(holders);
+        }
+        signal_all(&holders, rustix::process::Signal::TERM);
+        if wait_released(&self.upper(), 2000) {
+            return Ok(holders);
+        }
+        // Re-scanned rather than reusing the list: some exited on SIGTERM,
+        // and killing a reused PID is the bug worth this second read.
+        signal_all(&self.holders(), rustix::process::Signal::KILL);
+        if wait_released(&self.upper(), 2000) {
+            return Ok(holders);
+        }
+        Err(Error::StillHeld(
+            self.name.clone(),
+            describe(&self.holders()),
+        ))
+    }
+}
+
+/// A process keeping an environment's C: mounted.
+#[derive(Debug)]
+pub struct Holder {
+    pub pid: u32,
+    pub comm: String,
+}
+
+fn describe(holders: &[Holder]) -> String {
+    let names: Vec<String> = holders
+        .iter()
+        .map(|h| format!("{} ({})", h.pid, h.comm))
+        .collect();
+    names.join(", ")
+}
+
+fn signal_all(holders: &[Holder], sig: rustix::process::Signal) {
+    for h in holders {
+        if let Some(pid) = rustix::process::Pid::from_raw(h.pid as i32) {
+            // A holder may have exited on its own; that is success, not error.
+            let _ = rustix::process::kill_process(pid, sig);
+        }
+    }
+}
+
+fn wait_released(upper: &std::path::Path, budget_ms: u64) -> bool {
+    for _ in 0..budget_ms / 100 {
+        if holders_of(upper).is_empty() {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    holders_of(upper).is_empty()
+}
+
+fn holders_of(upper: &std::path::Path) -> Vec<Holder> {
+    let needle = mountinfo_needle(upper);
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+    let mut held = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(pid) = name.to_str().and_then(|s| s.parse::<u32>().ok()) else {
+            continue;
+        };
+        // A process that exits mid-scan simply stops matching.
+        let Ok(mi) = std::fs::read_to_string(entry.path().join("mountinfo")) else {
+            continue;
+        };
+        if mi.contains(&needle) {
+            let comm = std::fs::read_to_string(entry.path().join("comm"))
+                .map(|s| s.trim().to_owned())
+                .unwrap_or_else(|_| "?".to_owned());
+            held.push(Holder { pid, comm });
+        }
+    }
+    held
+}
+
+/// What this upper directory looks like inside `/proc/<pid>/mountinfo`.
+///
+/// The kernel octal-escapes space, tab, newline and backslash in mount
+/// options, and an environment name may legally contain a space. The trailing
+/// comma is overlayfs always printing `workdir=` next, and it keeps a path
+/// from matching another that merely starts the same.
+fn mountinfo_needle(upper: &std::path::Path) -> String {
+    let mut needle = String::from("upperdir=");
+    for c in upper.to_string_lossy().chars() {
+        match c {
+            ' ' => needle.push_str("\\040"),
+            '\t' => needle.push_str("\\011"),
+            '\n' => needle.push_str("\\012"),
+            '\\' => needle.push_str("\\134"),
+            _ => needle.push(c),
+        }
+    }
+    needle.push(',');
+    needle
 }
 
 /// Removes a tree, restoring directory permissions on the way down.
@@ -273,6 +417,28 @@ mod tests {
             "the removal followed a symlink and deleted files outside the environment"
         );
         let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    // Captured from a real mount rather than written from memory: an overlay
+    // whose upper layer path contains a space, seen from inside the namespace.
+    const MOUNTINFO: &str = "457 407 0:89 / /tmp/x/holdertest/merged rw,relatime - overlay overlay rw,lowerdir=/tmp/x/holdertest/base,upperdir=/tmp/x/holdertest/up\\040per,workdir=/tmp/x/holdertest/work,redirect_dir=nofollow,index=off,metacopy=off,userxattr\n";
+
+    #[test]
+    fn a_spaced_upper_path_is_found_in_mountinfo() {
+        let needle = mountinfo_needle(std::path::Path::new("/tmp/x/holdertest/up per"));
+        assert!(
+            MOUNTINFO.contains(&needle),
+            "the kernel escapes a space as \\040 and the needle must match it: {needle}"
+        );
+    }
+
+    #[test]
+    fn a_path_that_merely_starts_the_same_does_not_match() {
+        let needle = mountinfo_needle(std::path::Path::new("/tmp/x/holdertest/up"));
+        assert!(
+            !MOUNTINFO.contains(&needle),
+            "\"up\" must not claim the mount belonging to \"up per\""
+        );
     }
 
     #[test]

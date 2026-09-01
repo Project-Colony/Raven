@@ -62,4 +62,17 @@ pub enum Error {
 
     #[error("no environment given and no default set; run `raven env default <name>`")]
     NoDefaultEnvironment,
+
+    #[error(
+        "environment {name:?} is still running - held by {holders}\n  \
+         see them: raven env status {name}\n  \
+         stop them: raven env stop {name}"
+    )]
+    EnvironmentBusy { name: String, holders: String },
+
+    #[error(
+        "environment {0:?} is still held even after SIGKILL, by {1} - \
+         a process in uninterruptible sleep cannot be killed; check `ps`"
+    )]
+    StillHeld(String, String),
 }

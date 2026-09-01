@@ -58,8 +58,16 @@ nor the processes holding it.
 `wineserver -k` from outside does not help: the server inside the namespace is a
 different one.
 
-**Done when:** `raven env status <name>` reports whether it is mounted and what
-holds it, `raven env stop <name>` releases it, and the busy error points at both.
+**Done.** The mount is invisible from outside its namespace, but every process
+inside carries it in its own `/proc/<pid>/mountinfo`, and one naming the
+environment's upper layer is a holder. `raven env status` lists them by pid and
+name, `raven env stop` terminates them (SIGTERM, then SIGKILL for survivors,
+re-scanned between the two so an exited pid is never killed reused), and a
+launch into a held environment now refuses *before* mounting, naming the
+environment, the holders, and both commands — where it used to say
+`Device or resource busy`. `destroy` and `reproject` got the same guard:
+deleting layers under a live mount hands the program a dissolving C:.
+Verified against a real mount by an integration test and by hand on `demo`.
 
 ### 1.3 Concurrent launches into one environment
 
