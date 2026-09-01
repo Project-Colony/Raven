@@ -15,16 +15,22 @@ use crate::Error;
 /// The Mono and Gecko installers are suppressed: they open dialogs, they need
 /// the network, and nothing Raven does at this stage depends on them.
 pub fn create(prefix: &Path) -> Result<(), Error> {
-    let status = Command::new("wineboot")
+    // `wine wineboot` rather than a bare `wineboot`: the latter is a wrapper
+    // script that a distribution's wine package happens to ship, and several
+    // Wine builds - Proton's among them - provide only `wine` and `wineserver`
+    // in their bin directory. Going through `wine` works with every one of
+    // them and asks nothing of the packaging.
+    let status = Command::new("wine")
+        .arg("wineboot")
         .arg("-u")
         .env("WINEPREFIX", prefix)
         .env("WINEDLLOVERRIDES", "mscoree,mshtml=")
         .env("WINEDEBUG", "-all")
         .status()
-        .map_err(|e| Error::Tool("wineboot", e))?;
+        .map_err(|e| Error::Tool("wine wineboot", e))?;
     if !status.success() {
         return Err(Error::ToolFailed(
-            "wineboot",
+            "wine wineboot",
             format!("exited with {status}"),
         ));
     }

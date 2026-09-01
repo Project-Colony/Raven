@@ -63,6 +63,47 @@ same investigation from being run twice.
 | *ShineHill*, second run onward | Game, Direct3D 11 | **Runs**, and a relaunch immediately after closing now works | — | What sessions bought: before them a relaunch inside three to six seconds was refused outright. The remaining several-second wait is the game's own start-up - plain Wine takes 7.9 s to the same window |
 | `dxdiag.exe` (Windows 11 26200) | Microsoft's DirectX diagnostic | **Runs**, drove DXVK to initialise and enumerate the GPU | — | How Direct3D-on-Vulkan was first shown to work at all against a real Windows. Its DirectDraw probe went through WineD3D and its D3D9 probe through DXVK, in one process |
 
+## Experiment: Proton's Wine against a real Windows
+
+Run 2026-09-01 on the branch `experiment/proton-wine`. The hypothesis was
+appealing: keep Raven and the real Windows, gain Proton's Wine patches.
+
+**It works.** Proton Experimental's `wine` runs standalone outside the Steam
+runtime with no missing libraries, builds a prefix, and Raven creates and runs
+an environment with it against the same real Windows base. One change was
+needed and is worth keeping regardless: Raven invoked a bare `wineboot`, which
+is a wrapper script a distribution's package happens to ship - Proton's `bin/`
+has only `wine` and `wineserver`. Going through `wine wineboot` works with
+every build.
+
+**It brings nothing here.** Same game, same base, same DXVK 3.1, both using
+ntsync:
+
+| | session ready | *ShineHill* to a window |
+|---|---|---|
+| system Wine 11.16 | **1.8 s** | **10.06 s, 9.90 s** |
+| Proton Experimental (branch 11.0, build 20260826) | 10.5 s | 11.18 s, 11.51 s |
+
+Slower to a window, and nearly six times slower to bring a session up. No
+behaviour differed.
+
+**Why that is not surprising, in hindsight.** Proton's patches are dominated by
+per-title hacks for games it ships with, plus work that compensates for a
+*synthetic* Windows being incomplete - forcing builtin DLLs, spoofing Steam
+input, faking what a real installation would have provided. Raven has the real
+installation, so most of that is either irrelevant or actively opposed to the
+premise. What would genuinely transfer - a more mature Media Foundation - this
+workload never exercised.
+
+**One constraint the experiment exposed**, unrelated to Proton and true in
+general: a session pins its `wineserver`, so whichever Wine starts a session is
+the Wine every later launch in it must use. Mixing gives
+`wine client error: version mismatch 961/931`. That is inherent to how sessions
+work and worth knowing before anyone tries to switch Wine under a live one.
+
+**Verdict: not adopted.** Kept as a documented negative result so nobody spends
+an evening rediscovering it.
+
 ## What the corpus does not yet contain
 
 Named so the gaps are visible rather than merely absent:
