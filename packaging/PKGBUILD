@@ -5,7 +5,7 @@
 # masked. `wine program.exe` keeps working; `./program.exe` stops meaning
 # "run against ~/.wine". Uninstalling reverses both.
 pkgname=raven-git
-pkgver=0.1.0.r62.8d26822
+pkgver=0.1.0.r66.d3117e6
 pkgrel=1
 pkgdesc="Run Windows programs against a real Windows installation mounted as C:. Takes over the system .exe handler."
 arch=('x86_64')

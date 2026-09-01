@@ -25,7 +25,7 @@
 //! namespace. Hence the order below - user first, mount second - which is not
 //! interchangeable.
 
-use std::io::{BufRead, BufReader};
+use std::io::Read;
 use std::os::fd::AsFd;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -103,34 +103,35 @@ impl Environment {
             .stdout
             .take()
             .ok_or_else(|| Error::SessionFailed("the anchor produced no output".into()))?;
-        let (tx, rx) = std::sync::mpsc::channel();
-        // Read on a thread so a wedged anchor cannot hang the launch for ever.
-        std::thread::spawn(move || {
-            let mut line = String::new();
-            let _ = BufReader::new(stdout).read_line(&mut line);
-            let _ = tx.send(line);
-        });
 
-        match rx.recv_timeout(READY_TIMEOUT) {
-            Ok(line) => match line.trim().strip_prefix("ready ") {
-                Some(pid) => pid
-                    .parse()
-                    .map_err(|_| Error::SessionFailed(format!("unreadable anchor reply {line:?}"))),
-                None if line.trim().is_empty() => {
-                    let _ = child.wait();
-                    Err(Error::SessionFailed(
-                        "the anchor exited before mounting; run the same command with \
-                         `raven env status` to see whether something still holds the layer"
-                            .into(),
-                    ))
-                }
-                None => Err(Error::SessionFailed(line.trim().to_string())),
-            },
-            Err(_) => {
+        // Read the readiness line WITHOUT a helper thread. This process is
+        // about to `setns` into the anchor's user namespace, and the kernel
+        // refuses `setns(CLONE_NEWUSER)` from a multi-threaded process with
+        // EINVAL. A reader thread made that a race - it usually finished
+        // exiting first, and when it did not the launch failed with a bare
+        // "Invalid argument" that named nothing. Non-blocking reads and a
+        // deadline keep the process single-threaded and still bounded.
+        let line = read_line_before(&stdout, READY_TIMEOUT);
+        drop(stdout);
+
+        match line.trim().strip_prefix("ready ") {
+            Some(pid) => pid
+                .parse()
+                .map_err(|_| Error::SessionFailed(format!("unreadable anchor reply {line:?}"))),
+            None if line.trim().is_empty() => {
+                // Either it died, or it never spoke. Reap it so it cannot
+                // linger as a zombie, and let the caller see which.
                 let _ = child.kill();
+                let _ = child.wait();
                 Err(Error::SessionFailed(
-                    "the anchor did not finish mounting in time".into(),
+                    "the anchor did not report a mounted overlay; \
+                     `raven doctor` reports whether this kernel allows the mount at all"
+                        .into(),
                 ))
+            }
+            None => {
+                let _ = child.wait();
+                Err(Error::SessionFailed(line.trim().to_string()))
             }
         }
     }
@@ -160,6 +161,44 @@ impl Environment {
     pub fn clear_session(&self) {
         let _ = std::fs::remove_file(self.session_file());
     }
+}
+
+/// Reads one line from a pipe, giving up after `limit`, without a thread.
+///
+/// The fd is put in non-blocking mode and polled. A helper thread would make
+/// this process multi-threaded, and `setns(CLONE_NEWUSER)` - which the caller
+/// performs moments later - is refused outright to a multi-threaded process
+/// with EINVAL. That was a race the first time this was written: the thread
+/// usually finished exiting before the join, and when it did not the launch
+/// failed with a bare "Invalid argument" that named nothing.
+fn read_line_before(pipe: &std::process::ChildStdout, limit: std::time::Duration) -> String {
+    use std::os::fd::AsFd as _;
+    let _ = rustix::io::ioctl_fionbio(pipe.as_fd(), true);
+    let deadline = std::time::Instant::now() + limit;
+    let mut out = String::new();
+    let mut buf = [0u8; 256];
+    // SAFETY: the File is wrapped in ManuallyDrop, so it never closes the fd
+    // it borrows - ownership stays with the ChildStdout the caller holds.
+    let mut fd = unsafe {
+        use std::os::fd::{AsRawFd as _, FromRawFd as _};
+        std::mem::ManuallyDrop::new(std::fs::File::from_raw_fd(pipe.as_raw_fd()))
+    };
+    while std::time::Instant::now() < deadline {
+        match fd.read(&mut buf) {
+            Ok(0) => break, // the anchor exited and closed the pipe
+            Ok(n) => {
+                out.push_str(&String::from_utf8_lossy(&buf[..n]));
+                if out.contains('\n') {
+                    break;
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(_) => break,
+        }
+    }
+    out
 }
 
 #[cfg(test)]
