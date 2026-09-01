@@ -17,8 +17,11 @@ confidently, so this comes first.
 - **A trace line count is not a cost.** 112 373 WinSxS lookups looked
   catastrophic and turned out to be free.
 - **A ratio between differently-sized workloads measures the workload.** The
-  6.6× enumeration gap decomposed into 6.0× more directory entries and ~11%
-  actual overhead. Divide by size before reading a ratio as a cost.
+  6.6× enumeration gap decomposed into 6.0× more directory entries and ~17%
+  actual overhead. Divide by size before reading a ratio as a cost — and
+  subtract the fixed costs you already measured first: leaving the known
+  per-process spawn inside the division read as ~11% and flattered the
+  overlay, because a fixed cost spread over 6× more entries shrinks 6× more.
 - **A control run is not optional, and it goes first.** Both times a fault was
   actually located, it was the plain-Wine control that located it. Both times it
   was run after an hour of guessing.
@@ -98,7 +101,7 @@ handler pointing at a path that no longer exists.
 **Partly done** — see [performance.md](../internals/performance.md). A fixed
 workload, identical in both conditions, wall-clock: process spawn is **2.0×**
 (113 → 228 ms), and directory enumeration is 6.6× — of which 6.0× is the real
-`System32` holding six times the entries, leaving **~11% per entry** as the
+`System32` holding six times the entries, leaving **~17% per entry** as the
 overlay's share. The lesson joined the list above: a ratio between two
 differently-sized workloads measures the workload.
 

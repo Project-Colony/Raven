@@ -30,16 +30,24 @@ three samples each):
 |  | plain Wine | Raven | ratio |
 |---|---|---|---|
 | total | 1 491–1 519 ms | 9 739–10 174 ms | **6.6×** |
+| minus one process spawn | ~1 392 ms | ~9 763 ms | 7.0× |
 | entries enumerated | 817 | 4 877 | 6.0× |
-| **cost per entry** | 61 µs | 68 µs | **1.11×** |
+| **cost per entry** | 57 µs | 67 µs | **~1.17×** |
 
 The 6.6× would be alarming if it measured Raven. It mostly measures Windows:
 the merged `System32` holds six times the entries of Wine's synthetic one, and
-dividing by directory size leaves **~11% per entry** as the overlay's actual
-share. A ratio between two differently-sized workloads measures the workload.
+dividing by directory size leaves **~17% per entry** (13–21% across the sample
+ranges) as the overlay's actual share. A ratio between two differently-sized
+workloads measures the workload.
+
+The spawn subtraction is not pedantry. Each ENUM sample is one `wine cmd`
+invocation, which the spawn table above prices at 113 ms and 228 ms — and the
+contamination is asymmetric: the fixed cost spreads over 6× more entries under
+Raven, so leaving it in *flatters the overlay* (it read ~11% before the
+correction). Review caught it; the direction survived, the number did not.
 
 So the honest summary is: per-process launch cost is real and doubled, and the
-sustained filesystem path is only mildly slower. What this benchmark does *not*
+sustained filesystem path is modestly slower. What this benchmark does *not*
 answer is whether a running game feels any of it — that needs a frame-time or
 input-to-response measurement in the same scene, which no one has made yet. The
 7.75× `wineserver` CPU observation also still lacks an attribution
