@@ -206,6 +206,14 @@ The crash property that motivated the old design is intact: the mount is still
 owned by the anchor's process tree, and killing the anchor was verified to take
 the mount with it and leave nothing visible on the host.
 
+One thing had to change underneath to make a long-lived namespace safe. The
+mount was made `MS_PRIVATE`, which stops propagation in **both** directions -
+harmless when the namespace lasted one launch and took a fresh snapshot of the
+host's mount table each time, and a bug the moment it lasted all day: a USB
+drive plugged in after the first launch, a LUKS volume unlocked, a library
+share mounted, were invisible to every later program. It is `MS_SLAVE` now,
+which still sends nothing back to the host and keeps receiving from it.
+
 The refusal window went with it. Launches no longer refuse a busy environment -
 they join it. Operations that genuinely need exclusivity - `dxvk`, `attach`,
 `reproject`, `destroy` - still refuse, and now say so in terms of the session:

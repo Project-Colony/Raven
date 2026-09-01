@@ -85,11 +85,18 @@ impl MountBackend for UserNsOverlay {
         write_once("/proc/self/uid_map", &format!("0 {uid} 1"))?;
         write_once("/proc/self/gid_map", &format!("0 {gid} 1"))?;
 
-        // Without this, the mount could propagate back to the host namespace,
-        // which would defeat the point of doing it in a namespace at all.
+        // Downstream (MS_SLAVE), not private. Both stop our overlay propagating
+        // back to the host, which is the point of mounting in a namespace at
+        // all - but PRIVATE also stops host mounts propagating *in*, and that
+        // became a bug the day the namespace outlived a single launch. A
+        // session's namespace is created once and joined all day: under
+        // PRIVATE it kept the mount table as it stood at the first launch, so
+        // a USB drive plugged in afterwards, a LUKS volume unlocked, a library
+        // share mounted, were all invisible to every later program. Downstream
+        // keeps receiving from the host and still sends nothing back.
         rustix::mount::mount_change(
             "/",
-            MountPropagationFlags::PRIVATE | MountPropagationFlags::REC,
+            MountPropagationFlags::DOWNSTREAM | MountPropagationFlags::REC,
         )
         .map_err(|e| MountError::Mount(e.into()))?;
 

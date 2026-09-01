@@ -72,7 +72,47 @@ impl Environment {
         // real cause instead: this is the pre-session error, and it is still
         // the right one here.
         self.ensure_not_running()?;
-        self.start_session()
+
+        // Everything above is check-then-act, and two cold launches arriving
+        // together - a file manager double-click registering twice, a script
+        // starting two programs - would both see no session and both start an
+        // anchor. Only one can mount, and the loser died on a bare EBUSY.
+        // O_EXCL on a lock file settles which of them gets to try.
+        let lock = self.root.join("session.lock");
+        let held = loop {
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&lock)
+            {
+                Ok(_) => break LockGuard(lock.clone()),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    // Somebody else is starting one. Wait for their session
+                    // rather than racing it, and fall back to trying
+                    // ourselves if their attempt died without cleaning up.
+                    if let Some(pid) = self.wait_for_session() {
+                        return Ok(pid);
+                    }
+                    let _ = std::fs::remove_file(&lock);
+                }
+                Err(e) => return Err(Error::Layer(lock.clone(), e)),
+            }
+        };
+        let started = self.start_session();
+        drop(held);
+        started
+    }
+
+    /// Waits briefly for somebody else's anchor to come up.
+    fn wait_for_session(&self) -> Option<u32> {
+        let deadline = std::time::Instant::now() + READY_TIMEOUT;
+        while std::time::Instant::now() < deadline {
+            if let Some(pid) = self.session() {
+                return Some(pid);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        None
     }
 
     /// Starts an anchor and waits for it to report that the mount is up.
@@ -149,8 +189,14 @@ impl Environment {
             (LinkNameSpaceType::Mount, "mnt"),
         ] {
             let path = format!("/proc/{anchor}/ns/{name}");
-            let f =
-                std::fs::File::open(&path).map_err(|e| Error::Layer(PathBuf::from(&path), e))?;
+            // Not Error::Layer: "preparing the layer failed" describes the
+            // overlay, and the usual way to get here is a session stopped from
+            // another terminal between the check and the join.
+            let f = std::fs::File::open(&path).map_err(|e| {
+                Error::SessionFailed(format!(
+                    "the session vanished while joining it ({path}: {e}); try again"
+                ))
+            })?;
             move_into_link_name_space(f.as_fd(), Some(kind))
                 .map_err(|e| Error::SessionFailed(format!("could not join {name}: {e}")))?;
         }
@@ -160,6 +206,14 @@ impl Environment {
     /// Forgets a session's record. The processes are `stop`'s business.
     pub fn clear_session(&self) {
         let _ = std::fs::remove_file(self.session_file());
+    }
+}
+
+/// Removes the start lock however the attempt ends.
+struct LockGuard(PathBuf);
+impl Drop for LockGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
     }
 }
 

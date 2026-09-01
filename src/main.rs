@@ -630,19 +630,36 @@ fn run(name: &str, argv: Vec<String>, cwd: Option<PathBuf>) -> Result<()> {
 /// written only afterwards.
 fn session_anchor(name: &str) -> Result<()> {
     use std::io::Write as _;
-    let e = env::Environment::open(name)?;
-    let spec = e.spec()?;
-    std::fs::create_dir_all(&spec.target)
-        .with_context(|| format!("could not create the mount point {}", spec.target.display()))?;
-    if !UserNsOverlay::is_available() {
-        println!("this kernel restricts unprivileged user namespaces; run `raven doctor`");
+    // Every failure below has to leave through stdout: the launcher reads that
+    // pipe and nothing else, and the anchor's stderr goes to /dev/null because
+    // it outlives the terminal that started it. A `?` here would print to a
+    // stderr nobody is holding and the launcher would report only silence.
+    let report = |what: std::fmt::Arguments<'_>| -> ! {
+        println!("{what}");
         let _ = std::io::stdout().flush();
         std::process::exit(1);
+    };
+    let e = match env::Environment::open(name) {
+        Ok(e) => e,
+        Err(err) => report(format_args!("{err}")),
+    };
+    let spec = match e.spec() {
+        Ok(s) => s,
+        Err(err) => report(format_args!("{err}")),
+    };
+    if let Err(err) = std::fs::create_dir_all(&spec.target) {
+        report(format_args!(
+            "could not create the mount point {}: {err}",
+            spec.target.display()
+        ));
+    }
+    if !UserNsOverlay::is_available() {
+        report(format_args!(
+            "this kernel restricts unprivileged user namespaces; run `raven doctor`"
+        ));
     }
     if let Err(err) = UserNsOverlay.mount(&spec) {
-        println!("could not mount the overlay: {err}");
-        let _ = std::io::stdout().flush();
-        std::process::exit(1);
+        report(format_args!("could not mount the overlay: {err}"));
     }
     let pid = std::process::id();
     // Written only after the mount exists, so a reader of this file never sees

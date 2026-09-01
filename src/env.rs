@@ -128,6 +128,14 @@ impl Environment {
         // using them - it would hand them a C: that dissolves as they run.
         let holders = holders_of(&root.join("upper"));
         if !holders.is_empty() {
+            // The same classification every other exclusive operation makes.
+            // destroy reads holders directly rather than going through
+            // ensure_not_running, because the environment may not open, and
+            // that is exactly how it came to be the one command still saying
+            // "still running - held by raven".
+            if holders.iter().all(|h| h.comm == "raven") {
+                return Err(Error::SessionHolds(name.to_owned()));
+            }
             return Err(Error::EnvironmentBusy {
                 name: name.to_owned(),
                 holders: describe(&holders),
