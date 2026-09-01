@@ -49,9 +49,36 @@ correction). Review caught it; the direction survived, the number did not.
 So the honest summary is: per-process launch cost is real and doubled, and the
 sustained filesystem path is modestly slower. What this benchmark does *not*
 answer is whether a running game feels any of it — that needs a frame-time or
-input-to-response measurement in the same scene, which no one has made yet. The
-7.75× `wineserver` CPU observation also still lacks an attribution
-(`WINEDEBUG=+server` names every request; nobody has looked).
+input-to-response measurement in the same scene, which no one has made yet.
+
+## The wineserver phantom
+
+The 7.75× claim died under attribution. `WINEDEBUG=+server` captures of the
+same game reaching the same title screen, 25 seconds each, both conditions on
+the same day:
+
+|  | plain Wine | Raven |
+|---|---|---|
+| total server requests | 490 852 | 490 298 |
+| registry (`enum_key_value`) | 8 213 | 8 213 |
+| file (`create_file`) | 944 | 887 |
+| steady state, dominant | `set_queue_mask` + `get_message` | identical |
+
+**A difference of 0.1%.** Request for request, `wineserver` does the same work
+under Raven as under plain Wine. Nothing about the six-times-larger C: appears
+in the server traffic, because nothing about it can: file metadata and reads on
+C: are in-process unix syscalls inside ntdll, synchronization is `/dev/ntsync`
+(nine handles open, verified), and what remains in steady state is the game's
+own message pump.
+
+The original observation — 15.5% against 2.0% — was an instantaneous CPU
+reading in a process monitor. On the day of the controlled capture the same
+reading went the *other* way (17.8% under Raven, 31–34% under plain Wine)
+while the request streams stayed identical. An instantaneous `wineserver` CPU
+percentage tracks the game's frame pacing at the moment of the glance, not the
+server's workload; it now joins the list of measurements this project does not
+trust. There is no wineserver pathology to fix, and the whole launch overhead
+lives client-side, in the directory cache above.
 
 ## The launch cost, dissected
 

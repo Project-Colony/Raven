@@ -127,11 +127,15 @@ attack, which is worth knowing.
 
 ### 2.3 Find out what `wineserver` is actually doing
 
-7.75× is a large multiple and nobody has looked at *what* the extra traffic is.
-`WINEDEBUG=+server` names every request.
-
-**Done when:** the extra requests are attributed to a cause — file handles,
-synchronization, registry — because the fix differs for each.
+**Done — the extra requests do not exist.** Full `+server` captures of the same
+game, same scene, same day: 490 852 requests under plain Wine, 490 298 under
+Raven — 0.1% apart, with every family matching (registry enumeration count
+identical to the key). File I/O on C: is in-process in ntdll and never reaches
+the server; sync is `ntsync`; steady state is the message pump. The 7.75× was
+an instantaneous CPU% glance, and on capture day the same glance pointed the
+other way while the request streams stayed identical. A whole line of attack is
+closed: the launch overhead is entirely client-side, in the directory cache.
+Details in [performance.md](../internals/performance.md).
 
 ### 2.4 Not the problem, so nobody re-checks it
 
