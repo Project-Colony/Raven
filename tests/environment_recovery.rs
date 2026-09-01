@@ -35,7 +35,12 @@ fn a_process_left_in_the_namespace_is_found_and_stopped() {
         eprintln!("skipped: this kernel restricts unprivileged user namespaces");
         return;
     }
-    let root = std::env::temp_dir().join(format!("raven-recovery-{}", std::process::id()));
+    // The root deliberately contains a space, a comma, a colon and a
+    // backslash: each survives a different escaping between the mount options
+    // and what the kernel displays in mountinfo, and a holder must be found
+    // through all of them - a miss here is `destroy` deleting layers under a
+    // live mount.
+    let root = std::env::temp_dir().join(format!("raven-recovery-{} a,b:c\\d", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     for d in ["base", "upper", "work", "merged"] {
         fs::create_dir_all(root.join(d)).unwrap();

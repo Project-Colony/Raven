@@ -115,7 +115,11 @@ impl OverlaySpec {
 /// with a backslash. A path containing either character silently corrupts the
 /// option string unless it is escaped — a comma truncates a path, and a colon
 /// splits one layer into two that do not exist.
-fn escape(p: &Path) -> String {
+///
+/// `pub(crate)` because this escaped form is also what the kernel *stores*:
+/// anything comparing against `/proc/<pid>/mountinfo` must start from it,
+/// not from the raw path.
+pub(crate) fn escape(p: &Path) -> String {
     p.to_string_lossy()
         .replace('\\', r"\\")
         .replace(',', r"\,")

@@ -251,21 +251,28 @@ fn holders_of(upper: &std::path::Path) -> Vec<Holder> {
 
 /// What this upper directory looks like inside `/proc/<pid>/mountinfo`.
 ///
-/// The kernel octal-escapes space, tab, newline and backslash in mount
-/// options, and an environment name may legally contain a space. The trailing
-/// comma is overlayfs always printing `workdir=` next, and it keeps a path
-/// from matching another that merely starts the same.
+/// Two escapings stack, and both matter. The option string handed to
+/// `mount(2)` was already escaped once by [`crate::mount::escape`] — a
+/// backslash before `\`, `,` and `:` — and the kernel octal-escapes what it
+/// then displays: space, tab, newline, backslash and comma. A needle built
+/// from the raw path silently misses any path containing those characters,
+/// an environment name may legally contain a comma, and a missed holder is
+/// `destroy` deleting layers under a live mount. The expected forms are
+/// pinned by tests, captured from real mounts.
 fn mountinfo_needle(upper: &std::path::Path) -> String {
     let mut needle = String::from("upperdir=");
-    for c in upper.to_string_lossy().chars() {
+    for c in crate::mount::escape(upper).chars() {
         match c {
             ' ' => needle.push_str("\\040"),
             '\t' => needle.push_str("\\011"),
             '\n' => needle.push_str("\\012"),
             '\\' => needle.push_str("\\134"),
+            ',' => needle.push_str("\\054"),
             _ => needle.push(c),
         }
     }
+    // overlayfs always prints `workdir=` next; the comma keeps a path from
+    // matching another that merely starts the same.
     needle.push(',');
     needle
 }
@@ -439,6 +446,26 @@ mod tests {
             !MOUNTINFO.contains(&needle),
             "\"up\" must not claim the mount belonging to \"up per\""
         );
+    }
+
+    #[test]
+    fn the_two_escapings_stack_the_way_the_kernel_displays_them() {
+        // Expected forms captured from real mounts (the review that found the
+        // bug reproduced all four): the path is escaped once for the mount
+        // options and the kernel octal-escapes the *escaped* string, so a
+        // comma becomes \134\054 - a needle built from the raw path misses it.
+        for (path, expect) in [
+            ("/tmp/x/up,per", "upperdir=/tmp/x/up\\134\\054per,"),
+            ("/tmp/x/up:per", "upperdir=/tmp/x/up\\134:per,"),
+            ("/tmp/x/up\\per", "upperdir=/tmp/x/up\\134\\134per,"),
+            ("/tmp/x/up per", "upperdir=/tmp/x/up\\040per,"),
+        ] {
+            assert_eq!(
+                mountinfo_needle(std::path::Path::new(path)),
+                expect,
+                "for {path:?}"
+            );
+        }
     }
 
     #[test]
