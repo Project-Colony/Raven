@@ -91,6 +91,25 @@ upper layer, leaving something that can neither be destroyed nor recreated.
 `raven env destroy` restores permissions as it descends and handles this. If you
 deleted an environment by hand and hit it, `chmod -R u+w` the directory first.
 
+## A disk or hardware utility finds no devices
+
+Seen with Rufus 4.15: the interface runs, and reports `Windows VDS is
+unavailable` then `0 devices found`, with the USB key plugged in and visible
+to Linux.
+
+Expected, under any Wine, forever. Tools like Rufus enumerate drives through
+the Virtual Disk Service and raw physical-drive handles
+(`\\.\PhysicalDrive0`), and Wine implements neither — your block devices are
+simply not part of the Windows world it presents. This is the same category
+as kernel drivers: a hardware utility needs the machine, not just the API
+surface, and Raven deliberately gives programs a Windows *world*, not
+Windows *hardware*. Use the native tool for the job instead — for a bootable
+USB stick, that is Ventoy, GNOME Disks, or `dd`.
+
+The same Rufus is still a useful data point: under plain Wine it crashes at
+startup before showing a window; against a Raven environment it runs and
+renders. Real-Windows worlds sometimes fix programs, not just break them.
+
 ## Anti-cheat refuses to start the game
 
 If the publisher has enabled Easy Anti-Cheat or BattlEye's Linux support, the

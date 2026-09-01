@@ -22,11 +22,11 @@ fn raven_bin() -> PathBuf {
     p.join("raven")
 }
 
+/// The library's own check, not a copy of it: the CI runners taught us that a
+/// single-knob version passes and then fails the mount (AppArmor).
 fn userns_available() -> bool {
-    fs::read_to_string("/proc/sys/user/max_user_namespaces")
-        .ok()
-        .and_then(|s| s.trim().parse::<u64>().ok())
-        .is_some_and(|n| n > 0)
+    use raven::mount::MountBackend as _;
+    raven::mount::UserNsOverlay::is_available()
 }
 
 struct Layout {
@@ -183,6 +183,12 @@ fn the_mount_does_not_survive_the_process() {
 
 #[test]
 fn a_missing_layer_is_reported_by_name() {
+    if !userns_available() {
+        // On a restricted kernel the earlier "user namespaces unavailable"
+        // refusal wins, so the path validation this asserts never runs.
+        eprintln!("skipped: this kernel restricts unprivileged user namespaces");
+        return;
+    }
     let l = Layout::new("missing");
     fs::remove_dir(l.p("work")).unwrap();
     let out = run_in_overlay(&l, "true");
