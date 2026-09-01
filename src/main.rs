@@ -228,7 +228,80 @@ fn doctor() -> Result<()> {
         "environments                 : {}",
         env::Environment::list()?.len()
     );
+    report_exe_handlers();
     Ok(())
+}
+
+/// Who actually gets a double-clicked `.exe`.
+///
+/// Wine registers a handler for the same `MZ` magic, the kernel picks the most
+/// recently registered one silently, and losing that race looks like Raven
+/// losing its prefix. It cost an hour once; this is the hour, written down.
+fn report_exe_handlers() {
+    const LABEL: &str = ".exe handler                 ";
+    if !Path::new("/proc/sys/fs/binfmt_misc").exists() {
+        out!("{LABEL}: binfmt_misc is not mounted - a double-clicked .exe cannot run");
+        return;
+    }
+    let handlers = launch::exe_handlers();
+    let Some(winner) = handlers.iter().find(|h| h.enabled) else {
+        out!("{LABEL}: none - a double-clicked .exe will not run; see `raven binfmt`");
+        return;
+    };
+
+    let raven_wins = winner.name == launch::BINFMT_NAME;
+    out!(
+        "{LABEL}: {} -> {}{}",
+        winner.name,
+        winner.interpreter.display(),
+        if raven_wins { "" } else { "  (NOT Raven)" }
+    );
+
+    // Every claimant, when there is more than one: the kernel's choice is
+    // silent, so the losers must not be.
+    if handlers.len() > 1 {
+        for h in &handlers {
+            out!(
+                "    {:10} {:8} {}{}",
+                h.name,
+                if h.enabled { "enabled" } else { "disabled" },
+                h.interpreter.display(),
+                if std::ptr::eq(h, winner) { "  <- wins" } else { "" }
+            );
+        }
+    }
+
+    if !raven_wins {
+        out!(
+            "  Every double-clicked .exe runs through {}, and the failure looks\n  \
+             like Raven losing its prefix. If that is Wine's registration, mask it:\n    \
+             echo -n | sudo tee /etc/binfmt.d/wine.conf\n    \
+             sudo systemctl restart systemd-binfmt",
+            winner.name
+        );
+    } else if handlers.iter().any(|h| h.enabled && h.name != winner.name) {
+        out!(
+            "  Another handler matches, and whichever registers LAST wins - an\n  \
+             update to its package can silently take every .exe back. Mask it\n  \
+             (for Wine: an empty /etc/binfmt.d/wine.conf, then restart\n  \
+             systemd-binfmt)."
+        );
+    }
+
+    if !winner.interpreter.exists() {
+        if winner.held_open {
+            out!(
+                "  Its interpreter no longer exists. The registration survives on the\n  \
+                 kernel's open handle until reboot - then every .exe stops running.\n  \
+                 Re-register: see `raven binfmt`."
+            );
+        } else {
+            out!(
+                "  Its interpreter no longer exists, so every double-clicked .exe\n  \
+                 fails right now. Re-register: see `raven binfmt`."
+            );
+        }
+    }
 }
 
 fn base_cmd(cmd: BaseCmd) -> Result<()> {
@@ -335,6 +408,7 @@ fn binfmt() -> Result<()> {
         "mounted      : {}",
         Path::new("/proc/sys/fs/binfmt_misc").exists()
     );
+    report_exe_handlers();
     out!();
     out!("Registering needs root, once. It belongs to the package rather than");
     out!("to Raven, so that nothing has to hold privilege while Raven runs:");

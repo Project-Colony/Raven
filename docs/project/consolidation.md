@@ -35,11 +35,18 @@ Wine's package registers `:DOSWin:` for the same `MZ` magic. When both are
 present the kernel picks Wine's, every `.exe` runs against `~/.wine`, and the
 failure looks like Raven losing the prefix. It cost an hour.
 
-`doctor` currently reports namespaces, Wine, `ntsync`, bases and environments —
-and says nothing about `binfmt` at all.
+**Done.** `doctor` (and `raven binfmt`) lists every registration claiming a
+`.exe` — by `MZ` magic or by extension — names the one the kernel will pick,
+and says what to do when it is not Raven's, when a rival is still armed behind
+a winning Raven, and when the interpreter was deleted after registration (the
+`cargo clean` case: the `F` flag keeps it alive until reboot, then every
+`.exe` stops).
 
-**Done when:** `doctor` lists every registration matching `MZ`, names which one
-the kernel will pick, and says plainly what to do when it is not Raven's.
+Which entry wins was settled by experiment, not documentation: in a sandboxed
+`binfmt_misc` mount, of two entries claiming `MZ` the one registered *last*
+runs, and the unsorted directory order lists newest-first — so the first
+enabled claimant in readdir order is the kernel's choice. All three failure
+scenarios were staged in the sandbox and produce the intended diagnosis.
 
 ### 1.2 Recovering an environment whose namespace is still alive
 

@@ -35,6 +35,98 @@ pub fn registered() -> bool {
         .exists()
 }
 
+/// One `binfmt_misc` registration that would claim a Windows executable.
+///
+/// Wine ships one of these too, and when both are present the kernel picks
+/// one silently. The evening that cost an hour, every `.exe` ran against
+/// `~/.wine` and the failure looked like Raven losing its prefix — so
+/// `raven doctor` reports every claimant, not just Raven's.
+#[derive(Debug, PartialEq, Eq)]
+pub struct ExeHandler {
+    pub name: String,
+    pub enabled: bool,
+    pub interpreter: PathBuf,
+    /// The `F` flag. The kernel holds the interpreter open from registration
+    /// on, so deleting the binary leaves the registration working — until the
+    /// next boot registers from the conf file again and finds nothing.
+    pub held_open: bool,
+}
+
+/// Every registration that would claim a `.exe`, in the order the kernel
+/// tries them. The first *enabled* one wins.
+///
+/// The kernel scans newest-registration-first, and the directory lists in
+/// that same order. Verified by experiment rather than read from
+/// documentation: two entries registered for `MZ` in a sandboxed
+/// `binfmt_misc` mount, and the one registered second both listed first
+/// (unsorted readdir order) and ran.
+pub fn exe_handlers() -> Vec<ExeHandler> {
+    exe_handlers_in(Path::new("/proc/sys/fs/binfmt_misc"))
+}
+
+fn exe_handlers_in(dir: &Path) -> Vec<ExeHandler> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name == "register" || name == "status" {
+            continue;
+        }
+        if let Ok(text) = std::fs::read_to_string(entry.path()) {
+            found.extend(parse_handler(&name, &text));
+        }
+    }
+    found
+}
+
+/// Reads one `/proc/sys/fs/binfmt_misc/<name>` entry, keeping it only when it
+/// would claim a Windows executable: magic bytes overlapping `MZ` at offset
+/// zero, or the `.exe` extension.
+fn parse_handler(name: &str, text: &str) -> Option<ExeHandler> {
+    let mut enabled = false;
+    let mut interpreter = None;
+    let mut held_open = false;
+    let mut offset = 0u64;
+    let mut magic = None;
+    let mut extension = None;
+    for line in text.lines() {
+        if line == "enabled" {
+            enabled = true;
+        } else if let Some(v) = line.strip_prefix("interpreter ") {
+            interpreter = Some(PathBuf::from(v));
+        } else if let Some(v) = line.strip_prefix("flags:") {
+            held_open = v.contains('F');
+        } else if let Some(v) = line.strip_prefix("offset ") {
+            offset = v.parse().ok()?;
+        } else if let Some(v) = line.strip_prefix("magic ") {
+            magic = Some(v.to_owned());
+        } else if let Some(v) = line.strip_prefix("extension ") {
+            extension = Some(v.to_owned());
+        }
+    }
+    let claims_exe = match (&magic, &extension) {
+        // A magic shorter than `MZ` claims a superset of PEs; a longer one
+        // starting with it still claims almost every PE. A mask could in
+        // principle bend a different magic onto `MZ`; nothing registers such
+        // a thing, and this reads registrations rather than re-implementing
+        // the kernel's matcher.
+        (Some(m), _) => offset == 0 && (m.starts_with("4d5a") || "4d5a".starts_with(m.as_str())),
+        (None, Some(e)) => e == ".exe",
+        _ => false,
+    };
+    if !claims_exe {
+        return None;
+    }
+    Some(ExeHandler {
+        name: name.to_owned(),
+        enabled,
+        interpreter: interpreter?,
+        held_open,
+    })
+}
+
 /// Whether a path is a Windows executable, by reading its first two bytes.
 ///
 /// `binfmt_misc` invokes its interpreter as `interpreter <file> <args…>`, with
@@ -146,6 +238,100 @@ mod tests {
         let line = binfmt_line(Path::new("/usr/bin/raven"));
         let magic = line.split(':').nth(4).unwrap();
         assert_eq!(magic, "MZ");
+    }
+
+    // The fixture texts below are byte-for-byte what the kernel prints,
+    // captured from a sandboxed binfmt_misc mount rather than written from
+    // memory of the format.
+
+    #[test]
+    fn wines_registration_is_recognised_as_a_rival() {
+        let h = parse_handler(
+            "DOSWin",
+            "enabled\ninterpreter /usr/bin/wine\nflags: \noffset 0\nmagic 4d5a\n",
+        )
+        .expect("Wine claims MZ and must be reported");
+        assert!(h.enabled);
+        assert_eq!(h.interpreter, PathBuf::from("/usr/bin/wine"));
+        assert!(!h.held_open, "Wine registers without F");
+    }
+
+    #[test]
+    fn a_disabled_entry_is_kept_but_marked() {
+        // Disabled entries never match, but doctor must still list them: a
+        // user who disabled one by hand deserves to see it.
+        let h = parse_handler(
+            "DOSWin",
+            "disabled\ninterpreter /usr/bin/wine\nflags: \noffset 0\nmagic 4d5a\n",
+        )
+        .unwrap();
+        assert!(!h.enabled);
+    }
+
+    #[test]
+    fn an_extension_entry_claims_a_double_clicked_exe() {
+        let h = parse_handler(
+            "byext",
+            "enabled\ninterpreter /usr/bin/wine\nflags: \nextension .exe\n",
+        )
+        .expect(".exe by extension is a claim too");
+        assert!(h.enabled);
+    }
+
+    #[test]
+    fn unrelated_registrations_are_not_reported() {
+        // ELF magic, a different extension, and MZ at a non-zero offset: none
+        // of these would claim a PE.
+        for (name, text) in [
+            (
+                "elf",
+                "enabled\ninterpreter /bin/true\nflags: \noffset 0\nmagic 7f454c46\n",
+            ),
+            (
+                "com",
+                "enabled\ninterpreter /usr/bin/wine\nflags: \nextension .com\n",
+            ),
+            (
+                "shifted",
+                "enabled\ninterpreter /bin/true\nflags: POCF\noffset 2\nmagic 4d5a\n",
+            ),
+        ] {
+            assert!(parse_handler(name, text).is_none(), "{name} should not match");
+        }
+    }
+
+    #[test]
+    fn the_f_flag_is_what_keeps_a_deleted_interpreter_alive() {
+        let h = parse_handler(
+            "raven-pe",
+            "enabled\ninterpreter /usr/bin/raven\nflags: F\noffset 0\nmagic 4d5a\n",
+        )
+        .unwrap();
+        assert!(h.held_open);
+    }
+
+    #[test]
+    fn scanning_a_directory_skips_the_control_files() {
+        let dir = std::env::temp_dir().join(format!("raven-bfm-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(
+            dir.join("raven-pe"),
+            "enabled\ninterpreter /usr/bin/raven\nflags: F\noffset 0\nmagic 4d5a\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("DOSWin"),
+            "enabled\ninterpreter /usr/bin/wine\nflags: \noffset 0\nmagic 4d5a\n",
+        )
+        .unwrap();
+        // The two pseudo-files every binfmt_misc mount carries.
+        std::fs::write(dir.join("register"), "").unwrap();
+        std::fs::write(dir.join("status"), "enabled\n").unwrap();
+
+        let mut names: Vec<String> = exe_handlers_in(&dir).into_iter().map(|h| h.name).collect();
+        names.sort();
+        assert_eq!(names, ["DOSWin", "raven-pe"]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
