@@ -4,6 +4,7 @@
 //! `main.rs` is a shell over this API and holds no logic of its own, so that a
 //! graphical front end is a second caller rather than a rewrite.
 
+pub mod attach;
 pub mod base;
 pub mod env;
 pub mod launch;
@@ -75,4 +76,18 @@ pub enum Error {
          a process in uninterruptible sleep cannot be killed; check `ps`"
     )]
     StillHeld(String, String),
+
+    #[error("{0:?} is not a usable drive letter - use a single letter from d to z")]
+    BadLetter(char),
+
+    #[error(
+        "{0} is not a block device - attaching anything else would hand a program raw access to the wrong thing"
+    )]
+    NotABlockDevice(std::path::PathBuf),
+
+    #[error("drive {0}: already has a device attached; detach it first")]
+    AlreadyAttached(char),
+
+    #[error("drive {0}: has no device attached")]
+    NotAttached(char),
 }

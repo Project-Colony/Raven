@@ -81,6 +81,21 @@ exists to end), `/etc/binfmt.d/wine.conf`, and
 `/usr/share/applications/raven.desktop`. `raven doctor` confirms the kernel
 now hands `.exe` files to `/usr/bin/raven`.
 
+### 2026-09-01 — input automation for a UI diagnosis
+
+```
+pacman -S --needed --noconfirm ydotool
+```
+
+| Package | Version | How it arrived |
+|---|---|---|
+| `ydotool` | repo version of the day | `pacman -S` |
+
+Not a Raven dependency at all: installed to drive a Windows program's UI
+(clicks at computed coordinates via `ydotoold`'s virtual input device) while
+diagnosing a Rufus rendering bug that was then dropped as out of scope. Kept
+in the log because it is on the machine; safe to remove.
+
 ### 2026-08-31 — the Windows image for the base
 
 Not a package, but it is the largest thing this project has pulled onto a

@@ -97,14 +97,16 @@ Seen with Rufus 4.15: the interface runs, and reports `Windows VDS is
 unavailable` then `0 devices found`, with the USB key plugged in and visible
 to Linux.
 
-Expected, under any Wine, forever. Tools like Rufus enumerate drives through
-the Virtual Disk Service and raw physical-drive handles
-(`\\.\PhysicalDrive0`), and Wine implements neither — your block devices are
-simply not part of the Windows world it presents. This is the same category
-as kernel drivers: a hardware utility needs the machine, not just the API
-surface, and Raven deliberately gives programs a Windows *world*, not
-Windows *hardware*. Use the native tool for the job instead — for a bootable
-USB stick, that is Ventoy, GNOME Disks, or `dd`.
+Expected, under any Wine, forever. Tools like Rufus *enumerate* disks through
+SetupDi device interfaces, and nothing in Wine ever registers the disk
+interface class — the list is empty regardless of configuration. What **can**
+work is a tool that opens a device by name (`\\.\PhysicalDriveN`, `\\.\D:`)
+instead of asking for a list: `raven env attach <env> /dev/sdX` wires a real
+block device in for exactly that, with genuine sector read/write. The
+enumeration gap itself is a Wine patch, not a Raven feature; the full
+analysis, tier by tier, is in
+[../internals/device-passthrough.md](../internals/device-passthrough.md).
+For a bootable USB stick, use the native tool: Ventoy, GNOME Disks, or `dd`.
 
 The same Rufus is still a useful data point: under plain Wine it crashes at
 startup before showing a window; against a Raven environment it runs and

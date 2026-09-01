@@ -134,6 +134,25 @@ enum EnvCmd {
     Status { name: String },
     /// Release an environment: terminate every process holding its mount.
     Stop { name: String },
+    /// Attach a block device to an environment as a raw drive.
+    ///
+    /// Dangerous by design: a program in the environment can then read and
+    /// WRITE the device's sectors directly. Tools that discover disks through
+    /// Windows enumeration still will not see it - the docs say why.
+    Attach {
+        name: String,
+        /// The unix block device, e.g. /dev/sdc.
+        device: PathBuf,
+        /// The drive letter, d through z.
+        #[arg(long, default_value = "d")]
+        letter: char,
+    },
+    /// Detach a previously attached device. The device itself is untouched.
+    Detach {
+        name: String,
+        #[arg(long, default_value = "d")]
+        letter: char,
+    },
     /// Re-run the registry projection, after editing the environment's rules.
     Reproject { name: String },
     /// Set the environment used for programs that are not inside one.
@@ -422,6 +441,43 @@ fn env_cmd(cmd: EnvCmd) -> Result<()> {
                 }
                 out!("Release it: raven env stop {name}");
             }
+            for a in e.attachments() {
+                out!(
+                    "attached: {}: -> {}  (\\\\.\\PhysicalDrive{}, raw access)",
+                    a.letter,
+                    a.device.display(),
+                    a.number
+                );
+            }
+            Ok(())
+        }
+        EnvCmd::Attach {
+            name,
+            device,
+            letter,
+        } => {
+            let e = env::Environment::open(&name)?;
+            let a = e.attach(&device, letter)?;
+            out!(
+                "Attached {} as {}: and \\\\.\\PhysicalDrive{}.",
+                a.device.display(),
+                a.letter,
+                a.number
+            );
+            out!("A program in {name} can now read and WRITE this device's sectors.");
+            out!("Detach it: raven env detach {name} --letter {}", a.letter);
+            if !raven::attach::accessible(&a.device) {
+                out!();
+                out!("You cannot open the device yet. Grant yourself access (lasts");
+                out!("until it is replugged):");
+                out!("  sudo setfacl -m u:$USER:rw {}", a.device.display());
+            }
+            Ok(())
+        }
+        EnvCmd::Detach { name, letter } => {
+            let e = env::Environment::open(&name)?;
+            e.detach(letter)?;
+            out!("Detached {letter}: from {name}. The device itself is untouched.");
             Ok(())
         }
         EnvCmd::Stop { name } => {

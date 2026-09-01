@@ -42,15 +42,20 @@ Rufus's author has declined Wine support outright — rufus#1411.)
 
 | Goal | Tier | What it takes |
 |---|---|---|
-| Raw sector I/O for tools that open `\\.\PhysicalDriveN` or `\\.\X:` directly | **Configuration** | the links above, plus rw access to the device node. Works today; a candidate `raven env attach` feature. |
+| Raw sector I/O for tools that open `\\.\PhysicalDriveN` or `\\.\X:` directly | **Configuration** | the links above, plus rw access to the device node. Shipped: `raven env attach <env> /dev/sdX` wires all of it up, and `detach` reverses it exactly. |
 | Appearing in a SetupDi enumeration (Rufus's dropdown) | **Wine patch, upstreamable** | make mountmgr's disks PnP-enumerated PDOs (a synthetic storage bus, structurally like `winebus.sys` for HID), register `GUID_DEVINTERFACE_DISK`, expose `USBSTOR` as enumerator and a removable policy, report `BusTypeUsb` instead of the hard-coded `BusTypeScsi`. Nothing in wine or wine-staging does any of this today. |
 | Flashing a bootable USB end to end | **Out of reach** | the mountmgr disk device has no read/write path at all, `IOCTL_DISK_SET_DRIVE_LAYOUT_EX` / `CREATE_DISK` / `UPDATE_PROPERTIES` are unimplemented on every path, volume lock/dismount are success-only stubs, and there is no VDS or `FormatEx`. Use the native tool. |
 
 ## What Raven does with this
 
 Raven's floor rule applies: the mount and the world are Raven's; the API
-surface is Wine's. The configuration tier can become a Raven feature —
-explicit, per-environment, loudly labelled dangerous. The patch tier is an
-upstream contribution to Wine, not a Raven component. The last tier is what
+surface is Wine's. The configuration tier is `raven env attach` — explicit,
+per-environment, and loud about what it grants (`src/attach.rs`). It refuses
+a running environment because wineserver holds the registry in memory and
+would overwrite the offline edit on exit; it refuses anything that is not a
+block device; and it never touches the device node's permissions — it prints
+the `setfacl` grant for the user to run, because handing out raw write access
+is the user's decision, not a side effect. The patch tier is an upstream
+contribution to Wine, not a Raven component. The last tier is what
 [troubleshooting.md](../guide/troubleshooting.md) already says: a hardware
 utility needs the machine, and the native tool is the answer.

@@ -65,6 +65,26 @@ After that, `./setup.exe` runs like any other executable. A program **inside** a
 environment resolves to that environment on its own; the default covers
 everything else.
 
+## Giving a program a real disk
+
+Some tools want a device, not files — sector editors, imaging tools, anything
+that opens `\\.\PhysicalDriveN`. Wire one in:
+
+```bash
+raven env attach games /dev/sdc
+```
+
+The device appears as `d:` and `\\.\PhysicalDrive3`, with **raw read and
+write access to its sectors** — attach a disk whose contents you are prepared
+to lose to the program you are about to run. Raven never changes the device
+node's permissions; if you cannot open it, `attach` prints the `setfacl`
+command that grants it. `raven env detach games` undoes the whole thing, and
+the environment must be stopped for either direction.
+
+What this does and does not make visible — tools that *enumerate* disks
+instead of opening them by name will still show an empty list — is in
+[../internals/device-passthrough.md](../internals/device-passthrough.md).
+
 ## Starting over
 
 ```bash
