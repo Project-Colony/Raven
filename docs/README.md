@@ -20,6 +20,7 @@ Sorted by who is reading, not by subject.
 | [internals/shadow-set.md](internals/shadow-set.md) | which libraries must be Wine's, which may be Microsoft's, and how we find out |
 | [internals/packaging.md](internals/packaging.md) | how it is installed, and the two steps that need root |
 | [internals/performance.md](internals/performance.md) | what a real Windows costs at launch, and the theories already ruled out |
+| [internals/device-passthrough.md](internals/device-passthrough.md) | what it takes for a disk utility to see real hardware, and which tier each goal sits in |
 | [internals/system-dependencies.md](internals/system-dependencies.md) | what to install, and a log of what development has installed |
 | [internals/contributing.md](internals/contributing.md) | building, testing, and the conventions inherited from the org |
 
