@@ -7,9 +7,10 @@ The bird is not drawn on top of them - it is the void they leave behind, so the
 head only exists because the layers do. That is the program's own architecture,
 drawn: Raven is a real Windows seen through the layers Raven puts around it.
 
-The head is a corvid and not a generic bird on purpose. The long bill with the
-hooked tip, the receding forehead and the shaggy throat hackles are what
-separate a raven from every other silhouette at this size.
+The head is faceted rather than drawn - straight cuts only, the same vocabulary
+as the bands it is cut from, so the bird and the strata read as one object made
+of one operation. The long wedge bill breaking toward the right edge is what
+fixes it as a bird at every size.
 
 ## Which file to use
 
@@ -79,9 +80,11 @@ and `bg_primary` should be these, so the mark and the program agree.
 - **Do not put the pale-ink icon on a light ground.** The bands vanish and the
   bird disappears with them. Use the light-ink file or the `-on-dark` export.
 - Keep clear space of one band-height (54 units) on every side.
-- Geometry, for anyone editing the paths: the frame is 220 units wide inside an
-  18-unit margin; bands are 54, 54 and 76 units deep with 8-unit seams; the eye
-  is an 18-unit square; the bill runs from x=150 to the hook at x=230.
+- Geometry, for anyone editing the paths: the frame is 208 units square inside a
+  24-unit margin; three bands 64 units deep, separated by 8-unit seams; the eye
+  is an 18-unit square at (96, 104); the bill runs from the brow at x=130 out to
+  the tip at x=216. Every edge of the head is a straight line - there is not one
+  curve in the mark, and adding one would break it.
 
 The icon masters keep `currentColor` so a caller can ink them. The logo pair
 ships with the ink baked in, because the README header block picks between them
