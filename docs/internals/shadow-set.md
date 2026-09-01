@@ -144,6 +144,18 @@ investigation were Wine genuinely resolving activation contexts against the real
 store; and the reason a bare game exited while its dialog flashed was the same
 machinery failing earlier.
 
+## The second measured entry, also not a library
+
+**`Windows\Fonts` is shadowed.** win32u re-enumerates and re-checks every font
+file at every process start; the real base carries ~340 of them, and that was
+92 of the 105 milliseconds each process spawn cost over plain Wine (227 → 135
+ms with the mask — the full attribution is in
+[performance.md](performance.md)). Wine's own `Fonts` directory is empty and
+text renders through the host's fontconfig, so the mask restores exactly the
+plain-Wine situation, and the game still reaches its title screen under it.
+What the entry costs: a program that reads Microsoft's font *files* — not just
+the faces — will not find them. None has been seen yet; the corpus will say.
+
 ## The two mechanisms
 
 **`WINEDLLOVERRIDES`** asks Wine which implementation to prefer, per library:

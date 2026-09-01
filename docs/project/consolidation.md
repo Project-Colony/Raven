@@ -112,18 +112,24 @@ anything is still unmeasured.
 
 ### 2.2 Test ext4 `casefold`
 
-The one lever identified for the +95 ms per-process cost. Wine builds a
-directory cache to resolve Windows paths case-insensitively —
-`init_cached_dir_data` runs 809 times against 133 — and a case-insensitive
-filesystem would remove the need.
+**Done — closed, and the question it was meant to answer dissolved.** The
+premise was wrong twice over: `casefold` is not ext4-only (Wine reads the flag
+on any filesystem — source-verified, and tmpfs folds since Linux 6.13, root
+not required), and the directory-cache cost it was supposed to remove was a
+trace-counting artifact (809 was lines-per-file, not caches; the real count is
+9). Tested anyway, on identical control trees on plain and casefolding tmpfs:
+Wine detects the fold and gains nothing — same caches, same spawn time, and
+its non-wildcard listing path degrades to a full readdir. The real per-process
+cost was `C:\windows\fonts` — see 4, where it became the shadow set's second
+measured entry, worth 92 of the 105 ms.
 
-Two unknowns, both cheap to settle: whether Wine detects such a filesystem and
-skips its cache at all, and whether it is reachable, since `casefold` is
-ext4-only and a btrfs base cannot have it.
-
-**Done when:** a base is deployed onto a `casefold` ext4 filesystem and the
-`init_cached_dir_data` count is compared. A negative result closes the line of
-attack, which is worth knowing.
+One finding survives `casefold`'s funeral: on a casefolding filesystem the
+lowercase-shadow hazard (a `wineboot` update creating a literal `windows`
+beside the base's `Windows` in the upper layer, after which exact-match
+lookups land in the empty shell) is structurally impossible. Worth weighing
+if base deployment ever chooses a filesystem; the hazard is real — an
+experiment replica hit it and lost `kernel32`.
+[performance.md](../internals/performance.md) has all five experiments.
 
 ### 2.3 Find out what `wineserver` is actually doing
 
@@ -188,8 +194,11 @@ matrix is one row, not four.
 
 ## 4. The shadow set — the actual research
 
-One entry is measured: `Windows\WinSxS` must be hidden, or installers render
-without text and ignore every click. That is the whole list.
+Two entries are measured. `Windows\WinSxS` must be hidden, or installers
+render without text and ignore every click. `Windows\Fonts` must be hidden, or
+every process start pays ~92 ms re-checking ~340 font files (227 → 135 ms
+measured; text renders through fontconfig either way, and plain Wine's own
+Fonts directory is empty). That is the whole list.
 
 **Next, in order:**
 

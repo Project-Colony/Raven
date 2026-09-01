@@ -117,7 +117,17 @@ pub fn shadow(layer: &Path, relative: &str) -> Result<(), Error> {
 ///
 /// Deliberately short. Each entry costs the environment something real, so one
 /// goes in only when a measurement says it must — see `shadow`.
-pub const SHADOWED: &[&str] = &["Windows/WinSxS"];
+///
+/// `WinSxS`: unmasked, installers render without text and ignore clicks.
+///
+/// `Fonts`: win32u re-enumerates and re-checks every font file at every
+/// process start — 676 path lookups against the real base's ~340 fonts,
+/// measured at 92 ms of the 105 ms per-process overhead (227 → 135 ms with
+/// the mask). Text still renders through the host's fontconfig, exactly as it
+/// does under plain Wine, whose own Fonts directory is empty. The cost of
+/// this entry is that programs wanting Microsoft's font *files* (not just
+/// faces) will not see them; revisit when the corpus turns one up.
+pub const SHADOWED: &[&str] = &["Windows/WinSxS", "Windows/Fonts"];
 
 #[cfg(test)]
 mod tests {

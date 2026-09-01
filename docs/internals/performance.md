@@ -69,7 +69,10 @@ under Raven as under plain Wine. Nothing about the six-times-larger C: appears
 in the server traffic, because nothing about it can: file metadata and reads on
 C: are in-process unix syscalls inside ntdll, synchronization is `/dev/ntsync`
 (nine handles open, verified), and what remains in steady state is the game's
-own message pump.
+own message pump. The one place filesystem cost *can* land inside the server —
+`NtCreateFile`, where wineserver itself `open(2)`s the unix path — is ruled out
+by the same data: equal `create_file` counts, and Raven's server CPU read
+*lower*, so there is no per-request overlay penalty either.
 
 The original observation — 15.5% against 2.0% — was an instantaneous CPU
 reading in a process monitor. On the day of the controlled capture the same
@@ -96,30 +99,57 @@ masking the entire store with an opaque overlay directory, so 1 directory and
 The overlay is not the cost either. An overlay carrying only Wine's skeleton
 runs in 109–121 ms — identical to no overlay at all.
 
-What the operation counts actually show:
+The third suspect was the case-insensitivity machinery, and it looked
+convincing: `init_cached_dir_data` appeared 809 times against the real base and
+133 against the skeleton. That attribution was **a counting artifact**. The
+function traces one line per *file it lists*, not one per cache built; the real
+count is 9 directory enumerations per launch against the real base — mostly one
+directory of ~340 files, listed twice. The "809 directories cached" never
+existed. Three controlled experiments buried the theory properly: a skeleton
+tree with `System32`/`SysWOW64` inflated to real-Windows entry counts spawns in
+~120 ms (+7 ms, entry count is nearly free); the same tree renamed to real
+Windows casing (`Windows/System32`) also spawns in ~120 ms (the case mismatch
+costs nothing measurable); and the same trees on a casefolding tmpfs are no
+faster (Wine detects the `casefold` flag — the check is not gated on ext4, read
+from the 11.16 source and verified — but keeps building the same caches, and
+its non-wildcard listing path *degrades* to full readdir on a case-insensitive
+filesystem). **The `casefold` line of attack is closed**, with one genuine
+side-benefit recorded below.
 
-| Wine operation | skeleton only | real Windows |
-|---|---|---|
-| `init_cached_dir_data` | 133 | **809** |
-| `get_nt_and_unix_names` | 179 | 841 |
-| `append_entry` | 1 027 | 5 802 |
+What the +105 ms actually was: **fonts.** Per traced launch, 676 of the 841
+path resolutions point into `C:\windows\fonts` — win32u re-enumerates and
+re-checks every font file at every process start. The real base carries ~340
+fonts; Wine's own `Fonts` directory is empty (text renders through the host's
+fontconfig), so plain Wine never pays this. One opaque-overlay mask on
+`Windows/Fonts`, same measurement protocol:
 
-`init_cached_dir_data` is the case-insensitivity machinery. To resolve a Windows
-path on a case-sensitive filesystem, Wine reads the whole directory and builds a
-lookup cache. The merged `System32` holds 4 617 entries against Wine's 852, and
-Wine caches 809 directories per launch instead of 133.
+|  | plain Wine | Raven, fonts visible | Raven, fonts masked |
+|---|---|---|---|
+| spawn, warm server | ~113 ms | ~227 ms | **~135 ms** |
 
-So the cost is not a pathology to be removed. It is the price of case-insensitive
-resolution over a Windows that is simply much larger, paid once per process.
+`Windows/Fonts` is now the shadow set's second measured entry (`layer.rs`),
+and the remaining ~20 ms is the overlay plus the rest of the real tree. Fonts
+still render — through fontconfig, exactly as under plain Wine — and the game
+still reaches its title screen with the mask on. The cost: programs that want
+Microsoft's font *files*, not just the faces, will not see them; the corpus
+will say whether such a program exists.
 
-Whether a case-insensitive filesystem underneath — ext4's `casefold` — removes
-the need for that cache is the obvious question and is **untested**. It also may
-not be reachable: `casefold` is an ext4 feature, and a btrfs base cannot have it.
+The casefold side-benefit worth keeping: on a casefolding filesystem the
+lowercase-shadow hazard is *impossible*. On a case-sensitive filesystem, a
+`wineboot` prefix update can `mkdir` a literal lowercase `windows` beside a
+real-Windows-cased `Windows`, and every later exact-match lookup lands in the
+empty shell — observed in an experiment replica, where it broke `kernel32`
+loading outright. A casefolding filesystem folds the two names into one
+directory and the hazard vanishes. This matters to Raven because an
+environment's upper layer is exactly where such a shadow would be born.
 
-**The methodological lesson, which cost two wrong hypotheses:** a trace line
-count is not a cost. Both WinSxS theories were plausible, measurable, and false,
-and only the control experiment — an overlay with nothing real in it — separated
-the variables.
+**The methodological lesson, which cost three wrong hypotheses:** a trace line
+count is not a cost, and it is not even a *count* until the trace format is
+read. WinSxS, the overlay, and the directory cache were each plausible,
+measurable, and false; the control experiments — an overlay with nothing real
+in it, a skeleton inflated to real size, a tree renamed to real casing — are
+what separated the variables, and the last one took the attribution down to a
+single directory name.
 
 ## Built
 
@@ -144,16 +174,17 @@ trusted and wrong.
 
 ## Where to start when this is picked up
 
-1. **Test `casefold`.** It is the only lever identified. Deploy a base onto an
-   ext4 filesystem with the feature enabled, and measure whether Wine's
-   `init_cached_dir_data` count drops. If Wine builds its cache regardless of
-   the filesystem, this line of attack is closed and that is worth knowing early.
-2. **Establish whether it matters.** +95 ms per process is invisible for a game
-   launched once and costs twenty seconds for an installer that spawns two
-   hundred processes. Measuring a real installer would say whether this is a
-   priority at all.
-3. **Do not re-derive the falsified theories.** WinSxS and the overlay are both
-   ruled out, by experiment, and the experiments are described above.
+1. **The spawn cost is attributed and mostly fixed** — fonts, masked, 227 → 135
+   ms. The residual ~20 ms over plain Wine has no owner yet; profile it only if
+   an installer measurement says it matters.
+2. **`casefold` is closed.** Tested on a casefolding tmpfs against identical
+   control trees: detected by Wine, no gain, slight regression on directory
+   listing — and one real benefit (the lowercase-shadow hazard becomes
+   impossible) recorded above for whenever base deployment chooses a
+   filesystem.
+3. **Do not re-derive the falsified theories.** WinSxS, the overlay, the
+   directory cache and the case-mismatch are all ruled out, by experiment, and
+   the experiments are described above.
 
 ## What was gained anyway
 
