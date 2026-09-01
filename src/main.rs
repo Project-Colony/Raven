@@ -288,6 +288,20 @@ fn doctor() -> Result<()> {
             "absent - Wine falls back to wineserver for NT synchronization"
         }
     );
+    match raven::prefix::media_decoders() {
+        None => out!("media playback              : GStreamer decoders present"),
+        Some(missing) => {
+            out!("media playback              : INCOMPLETE");
+            for m in missing {
+                out!("  missing: {m}");
+            }
+            out!(
+                "  Games will run, but cutscenes and music will be silently absent.\n  \
+                 Wine decodes media through GStreamer; Proton sidesteps this by\n  \
+                 bundling its own, and Raven uses the system's."
+            );
+        }
+    }
     out!(
         "bases                        : {}",
         base::Base::list()?.len()

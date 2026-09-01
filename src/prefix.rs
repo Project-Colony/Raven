@@ -57,3 +57,39 @@ pub fn wine_available() -> bool {
         .output()
         .is_ok_and(|o| o.status.success())
 }
+
+/// Whether Wine can decode the media formats games actually ship.
+///
+/// Wine plays video and audio through GStreamer, and a distribution that
+/// installs GStreamer's *libraries* without its *plugins* leaves that silently
+/// broken: the game runs, the cutscene is black and the music is absent, and
+/// the only clue is a `Missing decoder` line on a stderr nobody is reading.
+/// Proton avoids the whole question by bundling its own GStreamer; Raven uses
+/// the system's, so the least it can do is say when the system has none.
+///
+/// MP3 is the probe because it is the format most likely to be present in an
+/// older game and the one whose decoder lives in an optional package.
+pub fn media_decoders() -> Option<Vec<&'static str>> {
+    let dirs = [
+        "/usr/lib/gstreamer-1.0",
+        "/usr/lib64/gstreamer-1.0",
+        "/usr/lib/x86_64-linux-gnu/gstreamer-1.0",
+    ];
+    let has = |plugin: &str| {
+        dirs.iter()
+            .any(|d| std::path::Path::new(d).join(plugin).exists())
+    };
+    let mut missing = Vec::new();
+    // Either one decodes MP3: libav through ffmpeg, or good through mpg123.
+    if !has("libgstlibav.so") && !has("libgstgood.so") {
+        missing.push("MP3 and most video (install gst-libav)");
+    }
+    if !has("libgstplayback.so") {
+        missing.push("the playback pipeline itself (install gst-plugins-base)");
+    }
+    if missing.is_empty() {
+        None
+    } else {
+        Some(missing)
+    }
+}

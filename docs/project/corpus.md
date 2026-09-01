@@ -40,6 +40,7 @@ statement about a class of them.
 | `com` | Resolves a COM server registered at install time. The projection deliberately does not carry the COM registry | Open question - the refusal is a design decision that could be revisited per-environment |
 | `mui` | Strings live in `.mui` satellite files; the program runs mute | Known, unfixed |
 | `service` | Expects a Windows service to be running. None are | Open question |
+| `media` | Audio or video missing while the game itself runs. Wine decodes through GStreamer, and a system with GStreamer's libraries but not its plugins fails silently | Not Raven's code, but Raven's job to report: `raven doctor` names the missing package |
 | `enumeration` | Discovers hardware through SetupDi device interfaces, which Wine never registers - Rufus is the type specimen | A Wine patch, not a Raven change |
 | `drm` | A copy-protection wrapper refuses before the program starts. Steam's is the common one: launched outside a running Steam client it aborts with `Application load error 5:0000065434` | Not Raven's to fix. Test a title without the wrapper, or run the store client itself |
 | `d3d` | A Direct3D problem: version unsupported, device creation fails, rendering wrong | Depends. D3D 8-11 is DXVK's; D3D12 needs vkd3d-proton, which Raven does not install |
@@ -54,7 +55,7 @@ same investigation from being run twice.
 
 | Program | Kind | Result | Category | Notes |
 |---|---|---|---|---|
-| *N.P.C. Dreams* v1.12 | RPG Maker VX Ace game | **Runs**, from a double-clicked `.exe` in a file manager to its title screen | — | The end-to-end proof: a real installer wrote 256 MB into the environment and the base finished byte-identical. Renders through `GDI32` only - it imports no Direct3D library, so it cannot exercise DXVK |
+| *N.P.C. Dreams* v1.12 | RPG Maker VX Ace game | **Runs**, but silently mute: `Missing decoder: MPEG-1 Layer 3` | `media` | The end-to-end proof: a real installer wrote 256 MB into the environment and the base finished byte-identical. Renders through `GDI32` only - it imports no Direct3D library, so it cannot exercise DXVK |
 | RPG Maker VX Ace RGSS3 runtime | Installer (Inno-style) | **Installs** | — | The one installer framework exercised so far |
 | Rufus 4.15 | Disk utility | **Runs and renders**, but finds no devices | `enumeration` | Also a datum in the other direction: it *crashes at startup under plain Wine* and runs under Raven. A real Windows sometimes fixes a program rather than breaking it |
 | Fallout New Vegas (Steam) | Game, Direct3D 9 | **Refuses to start**: `Application load error 5:0000065434` | `drm` | Steam's DRM wrapper, aborting before the engine exists. Says nothing about Raven or Direct3D - and is exactly why the corpus records categories: without one, this reads as "Raven cannot run Fallout" |

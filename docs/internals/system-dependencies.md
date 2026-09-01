@@ -20,6 +20,7 @@ been developed on Arch.
 |---|---|
 | `wine` | the NT-to-Linux syscall bridge; not optional and not replaceable |
 | `wimlib` | deploys a Windows base from an official ISO, with no VM and no boot |
+| `gst-libav` | lets Wine decode the media games ship. **Optional but nearly always wanted**: without it a game runs with its cutscenes black and its music absent, and says so only on a stderr nobody reads. `raven doctor` reports this |
 
 ### For the secondary "bring your own Windows partition" path
 
