@@ -84,6 +84,22 @@ exists to end), `/etc/binfmt.d/wine.conf`, and
 `/usr/share/applications/raven.desktop`. `raven doctor` confirms the kernel
 now hands `.exe` files to `/usr/bin/raven`.
 
+### 2026-09-01 — sound and video in games
+
+```
+pacman -S --needed --noconfirm gst-libav
+```
+
+| Package | Version | How it arrived |
+|---|---|---|
+| `gst-libav` | 1.28.6-3 | requested |
+
+Wine decodes media through GStreamer, and this machine had GStreamer's
+libraries with none of the decoding plugins: 119 plugins present, not one that
+handles MP3. Two games in the corpus ran perfectly and silently, saying so only
+on a stderr a double-clicked program does not have. `raven doctor` reports this
+now, and reported it clean immediately after the install.
+
 ### 2026-09-01 — input automation for a UI diagnosis
 
 ```

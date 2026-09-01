@@ -226,3 +226,36 @@ lands on.
 
 What would make this work worthless is measuring it badly and reporting a number
 nobody can reproduce. Hence the insistence on recording configurations.
+
+## What masking the fonts actually costs
+
+The `Windows/Fonts` entry was added on a measurement - it took process spawn
+from 227 ms to 135 ms, because `win32u` re-checks every font file on every
+spawn - and the correctness side of that trade was never written down. It is
+this:
+
+| | |
+|---|---|
+| fonts the environment's registry declares | **961** |
+| font files a program can actually open in `C:\Windows\Fonts` | **0** |
+| Linux fonts Wine falls back to through fontconfig | 904 |
+| what `Segoe UI` resolves to | Adwaita Sans |
+| what `Arial` resolves to | Noto Sans |
+
+So text renders, which is why nothing looked wrong: Wine substitutes through
+fontconfig. Three things are nevertheless lost.
+
+- **The registry lies.** It lists 961 fonts whose files do not exist. A program
+  that reads the list and opens what it names fails.
+- **A program that enumerates the directory sees nothing**, where a real
+  Windows would show 338 files.
+- **Metrics change.** Arial is not Noto Sans and Segoe UI is not Adwaita Sans;
+  a layout tuned to the real ones will shift. Proton bundles `liberation-fonts`
+  precisely to supply metric-compatible substitutes, which Raven does not.
+
+**The trade deserves re-deciding, because sessions changed its price.** The
+92 ms was decisive when every launch paid a full cold start of about two
+seconds; a launch now costs 0.16 s, and the same 92 ms would take it to roughly
+0.25 s - still an order of magnitude better than before sessions existed.
+Buying Microsoft's actual fonts back for that is a different bargain from the
+one originally struck, and it has not been re-measured.
