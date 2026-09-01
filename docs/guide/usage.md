@@ -101,6 +101,12 @@ Raven downloads nothing and bundles no version, exactly as `base deploy` takes
 an ISO you supply. Point it at an upstream release, at the copy inside a Proton,
 at a distribution's package - whichever you trust.
 
+**Updating is the same command with a newer build.** Raven replaces what it
+installed and deletes what the new version no longer ships, so an older module
+cannot survive beside newer ones - upstream dropped `d3d10.dll` exactly that
+way, and a stale one paired with a current `d3d11.dll` is how a mismatch breaks
+without saying so.
+
 C: is a real Windows, so `System32` already holds Microsoft's own `d3d11.dll`
 and `dxgi.dll`. The DXVK copies land in the environment's writable layer and
 shadow them; the base finishes byte-identical, and `raven env dxvk games

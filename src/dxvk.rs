@@ -125,18 +125,42 @@ impl Environment {
             });
         }
 
+        written.sort();
+        written.dedup();
+
+        // Installing over an older build is the normal way to update, and
+        // upstream drops modules between versions - d3d10.dll went that way.
+        // Anything the previous install left that this one does not replace is
+        // a stale library still shadowing the real Windows, invisible to
+        // `dxvk` and untouched by `--remove`, and pairing an old module with
+        // new ones is exactly how a mismatch breaks mysteriously.
+        let superseded: Vec<String> = ours
+            .iter()
+            .filter(|rel| !written.contains(rel))
+            .cloned()
+            .collect();
+        for rel in &superseded {
+            let _ = std::fs::remove_file(self.upper().join(rel));
+        }
+
         let reg = self.prefix().join("user.reg");
         let mut text = std::fs::read_to_string(&reg).map_err(|e| Error::Layer(reg.clone(), e))?;
-        for dll in unique_dlls(&done) {
+        let keep = unique_dlls(&done);
+        for dll in &keep {
             // "native" and not "native,builtin": a fallback to Wine's own
             // implementation would hide a DXVK that failed to load behind a
             // silent performance cliff, which is the opposite of useful.
-            text = text::set_value(&text, OVERRIDES, &dll, Some("native"));
+            text = text::set_value(&text, OVERRIDES, dll, Some("native"));
+        }
+        for rel in &superseded {
+            if let Some(dll) = module_of(rel) {
+                if !keep.contains(&dll) {
+                    text = text::set_value(&text, OVERRIDES, &dll, None);
+                }
+            }
         }
         text::write_atomic(&reg, &text)?;
 
-        written.sort();
-        written.dedup();
         let m = self.dxvk_manifest_path();
         std::fs::write(&m, written.join("\n") + "\n").map_err(|e| Error::Layer(m, e))?;
         Ok(done)
@@ -180,12 +204,7 @@ impl Environment {
                 .find(|(_, windir)| rel.starts_with(windir))
                 .map(|(a, _)| *a)
                 .unwrap_or("?");
-            let dll = rel
-                .rsplit('/')
-                .next()
-                .unwrap_or(&rel)
-                .trim_end_matches(".dll")
-                .to_string();
+            let dll = module_of(&rel).unwrap_or_else(|| rel.clone());
             found.push(Shadow { dll, arch, path });
         }
         found
@@ -221,6 +240,14 @@ impl Environment {
             .filter(|(name, _)| DLLS.contains(&name.as_str()))
             .collect()
     }
+}
+
+/// The module name inside a manifest path: `Windows/System32/d3d11.dll` -> `d3d11`.
+fn module_of(rel: &str) -> Option<String> {
+    rel.rsplit('/')
+        .next()
+        .and_then(|f| f.strip_suffix(".dll"))
+        .map(String::from)
 }
 
 fn unique_dlls(done: &[Shadow]) -> Vec<String> {
@@ -323,6 +350,16 @@ mod tests {
         for must in ["d3d9", "d3d11", "dxgi", "d3d10core", "d3d8"] {
             assert!(DLLS.contains(&must), "{must} missing from DLLS");
         }
+    }
+
+    #[test]
+    fn a_manifest_path_yields_its_module_name() {
+        assert_eq!(module_of("Windows/System32/d3d11.dll").unwrap(), "d3d11");
+        assert_eq!(
+            module_of("Windows/SysWOW64/d3d10_1.dll").unwrap(),
+            "d3d10_1"
+        );
+        assert_eq!(module_of("Windows/System32/notadll"), None);
     }
 
     #[test]
