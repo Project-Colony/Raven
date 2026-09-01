@@ -39,7 +39,7 @@ statement about a class of them.
 | `kernel-driver` | Needs a driver, so needs the NT kernel - kernel-mode anti-cheat above all | **No.** This is the permanent ceiling, and the reason a VM exists. See [../internals/device-passthrough.md](../internals/device-passthrough.md) |
 | `com` | Resolves a COM server registered at install time. The projection deliberately does not carry the COM registry | Open question - the refusal is a design decision that could be revisited per-environment |
 | `mui` | Strings live in `.mui` satellite files; the program runs mute | Known, unfixed |
-| `service` | Expects a Windows service to be running. None are | Open question |
+| `service` | Expects a Windows service that the real installation had. Wine's Service Control Manager runs and serves ~15 services Wine reimplements, and a program **can** register its own - tested. What is absent is the 2835 service definitions in the base's `SYSTEM` hive, which the projection denies on purpose: they describe a different machine's drivers and hardware | Depends which. A program's own service should work; Microsoft's do not exist |
 | `media` | Audio or video missing while the game itself runs. Wine decodes through GStreamer, and a system with GStreamer's libraries but not its plugins fails silently | Not Raven's code, but Raven's job to report: `raven doctor` names the missing package |
 | `enumeration` | Discovers hardware through SetupDi device interfaces, which Wine never registers - Rufus is the type specimen | A Wine patch, not a Raven change |
 | `drm` | A copy-protection wrapper refuses before the program starts. Steam's is the common one: launched outside a running Steam client it aborts with `Application load error 5:0000065434` | Not Raven's to fix. Test a title without the wrapper, or run the store client itself |
@@ -72,6 +72,9 @@ Named so the gaps are visible rather than merely absent:
 - **A 32-bit Direct3D title.** The x32 libraries are installed and unexercised.
 - **Anything using COM**, the category most likely to be broken by a design
   decision rather than a bug.
+- **A program whose service must actually *run*, not merely register.**
+  `sc create` and `sc query` work; nothing has yet been made to start and stay
+  up under Wine's Service Control Manager.
 - **A second installer framework.** NSIS, MSI, InstallShield - all untried.
 - **Anything with a `.mui` file**, to see how mute "mute" really is.
 - **A 32-bit program of any kind other than the RPG Maker game.**
