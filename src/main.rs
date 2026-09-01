@@ -190,7 +190,7 @@ fn main() -> Result<()> {
         Commands::Doctor => doctor(),
         Commands::Base(c) => base_cmd(c),
         Commands::Env(c) => env_cmd(c),
-        Commands::Run { name, argv } => run(&name, argv),
+        Commands::Run { name, argv } => run(&name, argv, None),
         Commands::Launch { exe, args } => {
             let e = launch::resolve(&exe)?;
             // The kernel invokes this with no terminal of its own, so when a
@@ -207,7 +207,12 @@ fn main() -> Result<()> {
             }
             let mut argv = vec!["wine".to_string(), exe.display().to_string()];
             argv.extend(args);
-            run(&e.name, argv)
+            // The program's own directory, as Windows would give it.
+            let cwd = exe
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .map(PathBuf::from);
+            run(&e.name, argv, cwd)
         }
         Commands::Binfmt => binfmt(),
         Commands::Exec {
@@ -224,6 +229,7 @@ fn main() -> Result<()> {
                 target,
             },
             argv,
+            None,
             None,
         ),
     }
@@ -593,7 +599,7 @@ fn binfmt() -> Result<()> {
     Ok(())
 }
 
-fn run(name: &str, argv: Vec<String>) -> Result<()> {
+fn run(name: &str, argv: Vec<String>, cwd: Option<PathBuf>) -> Result<()> {
     let e = env::Environment::open(name)?;
     // Checked before mounting: overlayfs would refuse the held upper layer
     // anyway, but with an EBUSY naming neither the environment nor the
@@ -603,10 +609,15 @@ fn run(name: &str, argv: Vec<String>) -> Result<()> {
     let spec = e.spec()?;
     std::fs::create_dir_all(&spec.target)
         .with_context(|| format!("could not create the mount point {}", spec.target.display()))?;
-    exec(spec, argv, Some(e.prefix()))
+    exec(spec, argv, Some(e.prefix()), cwd)
 }
 
-fn exec(spec: OverlaySpec, argv: Vec<String>, wineprefix: Option<PathBuf>) -> Result<()> {
+fn exec(
+    spec: OverlaySpec,
+    argv: Vec<String>,
+    wineprefix: Option<PathBuf>,
+    cwd: Option<PathBuf>,
+) -> Result<()> {
     if !UserNsOverlay::is_available() {
         bail!("this kernel restricts unprivileged user namespaces; run `raven doctor`");
     }
@@ -619,6 +630,15 @@ fn exec(spec: OverlaySpec, argv: Vec<String>, wineprefix: Option<PathBuf>) -> Re
     cmd.args(&argv[1..]);
     if let Some(p) = wineprefix {
         cmd.env("WINEPREFIX", p);
+    }
+    // Windows' shell starts a program in its own directory, and a great many
+    // programs depend on that to find the data beside them - a game's Data/,
+    // its .ini files. A double-clicked .exe reaches us with the file manager's
+    // directory instead, so without this the program looks for its own files
+    // in the user's home and fails for a reason that has nothing to do with
+    // Raven.
+    if let Some(d) = cwd {
+        cmd.current_dir(d);
     }
     // Replaces this process, so the mount lives exactly as long as the program.
     Err(cmd.exec()).with_context(|| format!("could not run {}", argv[0]))
