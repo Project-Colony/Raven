@@ -147,6 +147,21 @@ enum EnvCmd {
         #[arg(long, default_value = "d")]
         letter: char,
     },
+    /// Install, remove or report DXVK in an environment.
+    ///
+    /// Raven fetches nothing: point `--from` at a DXVK build you already have,
+    /// the way `base deploy` takes an ISO you already have. With no flag, this
+    /// reports what is installed.
+    Dxvk {
+        name: String,
+        /// An extracted DXVK release, or a release archive of one.
+        #[arg(long, value_name = "PATH", conflicts_with = "remove")]
+        from: Option<PathBuf>,
+        /// Uncover the real Windows again by deleting what was installed.
+        #[arg(long)]
+        remove: bool,
+    },
+
     /// Detach a previously attached device. The device itself is untouched.
     Detach {
         name: String,
@@ -471,6 +486,50 @@ fn env_cmd(cmd: EnvCmd) -> Result<()> {
                 out!("You cannot open the device yet. Grant yourself access (lasts");
                 out!("until it is replugged):");
                 out!("  sudo setfacl -m u:$USER:rw {}", a.device.display());
+            }
+            Ok(())
+        }
+        EnvCmd::Dxvk { name, from, remove } => {
+            let e = env::Environment::open(&name)?;
+            if let Some(src) = from {
+                let done = e.install_dxvk(&src)?;
+                let mut dlls: Vec<&str> = done.iter().map(|s| s.dll.as_str()).collect();
+                dlls.sort();
+                dlls.dedup();
+                // plural() appends an "s"; "library" does not take one.
+                let word = if done.len() == 1 {
+                    "library"
+                } else {
+                    "libraries"
+                };
+                out!(
+                    "Installed {} DXVK {word} into {name}: {}",
+                    done.len(),
+                    dlls.join(", ")
+                );
+                out!("They shadow the real Windows through the overlay; the base is untouched.");
+                out!("Undo it: raven env dxvk {name} --remove");
+            } else if remove {
+                let gone = e.remove_dxvk()?;
+                let word = if gone == 1 { "library" } else { "libraries" };
+                out!("Removed {gone} DXVK {word} from {name}; the real Windows is uncovered.");
+            } else {
+                let files = e.dxvk();
+                if files.is_empty() {
+                    out!("{name}: no DXVK installed");
+                } else {
+                    for f in &files {
+                        out!("  {:<10} {}", f.dll, f.arch);
+                    }
+                    let over = e.dxvk_overrides();
+                    // The two halves are reported apart on purpose: a file with
+                    // no override is a library Wine will ignore.
+                    for f in &files {
+                        if !over.iter().any(|(n, _)| n == &f.dll) {
+                            out!("warning: {} is installed but has no DLL override", f.dll);
+                        }
+                    }
+                }
             }
             Ok(())
         }

@@ -6,6 +6,7 @@
 
 pub mod attach;
 pub mod base;
+pub mod dxvk;
 pub mod env;
 pub mod launch;
 pub mod layer;
@@ -99,4 +100,17 @@ pub enum Error {
 
     #[error("drive {0}: has no device attached")]
     NotAttached(char),
+
+    #[error(
+        "{0} does not look like a DXVK build - expected a directory holding \
+         x64/ (and usually x32/), or a release archive of one"
+    )]
+    NotADxvkBuild(std::path::PathBuf),
+
+    #[error(
+        "{0} is already in this environment and Raven did not put it there - \
+         installing would overwrite it and removing would delete it; move it \
+         aside first if you want DXVK to take over"
+    )]
+    DxvkWouldOverwrite(std::path::PathBuf),
 }

@@ -14,6 +14,7 @@
 pub mod emit;
 pub mod hive;
 pub mod rules;
+pub mod text;
 
 use std::path::Path;
 use std::process::Command;

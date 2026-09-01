@@ -87,6 +87,30 @@ What this does and does not make visible — tools that *enumerate* disks
 instead of opening them by name will still show an empty list — is in
 [../internals/device-passthrough.md](../internals/device-passthrough.md).
 
+## Direct3D through Vulkan
+
+Wine translates Direct3D to OpenGL; DXVK reimplements it on Vulkan, and most
+games want the second. It is a set of DLLs, not a patch, so Raven installs it
+the way it does everything else - from something you already have:
+
+```bash
+raven env dxvk games --from ~/Downloads/dxvk-2.7.tar.gz
+```
+
+Raven downloads nothing and bundles no version, exactly as `base deploy` takes
+an ISO you supply. Point it at an upstream release, at the copy inside a Proton,
+at a distribution's package - whichever you trust.
+
+C: is a real Windows, so `System32` already holds Microsoft's own `d3d11.dll`
+and `dxgi.dll`. The DXVK copies land in the environment's writable layer and
+shadow them; the base finishes byte-identical, and `raven env dxvk games
+--remove` uncovers the real ones again by deleting Raven's rather than restoring
+Microsoft's. Raven refuses to overwrite a library it did not install itself, so
+a DLL some installer left in the environment is safe.
+
+Whether Direct3D works at all against a real Windows is, as of this writing,
+**unmeasured** - see [../project/status.md](../project/status.md).
+
 ## Starting over
 
 ```bash

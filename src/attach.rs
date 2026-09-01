@@ -34,9 +34,9 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::{Error, env::Environment};
+use crate::{Error, env::Environment, registry::text};
 
-const HEADER: &str = "[Software\\\\Wine\\\\Drives]";
+const SECTION: &str = "Software\\\\Wine\\\\Drives";
 
 /// A device wired into an environment.
 #[derive(Debug, PartialEq, Eq)]
@@ -124,7 +124,7 @@ impl Environment {
         let _ = std::fs::remove_file(&phys);
         std::os::unix::fs::symlink(&device, &phys).map_err(|e| Error::Layer(phys, e))?;
 
-        write_registry(&reg, &updated)?;
+        text::write_atomic(&reg, &updated)?;
 
         Ok(Attachment {
             letter,
@@ -186,7 +186,7 @@ impl Environment {
             std::os::unix::fs::symlink(t, &phys).map_err(|e| Error::Layer(phys, e))?;
         }
 
-        write_registry(&reg, &updated)?;
+        text::write_atomic(&reg, &updated)?;
 
         let _ = std::fs::remove_dir(self.root.join("attached").join(letter.to_string()));
         let _ = std::fs::remove_dir(self.root.join("attached"));
@@ -234,28 +234,6 @@ fn check_block_device(device: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-/// Replaces `system.reg` atomically: the file is the environment's entire
-/// HKLM, and an in-place rewrite torn by ENOSPC or a crash would cost every
-/// registry key written since the environment was created. Same temp-file
-/// then rename dance wineserver itself uses to save it.
-fn write_registry(reg: &Path, updated: &str) -> Result<(), Error> {
-    let mut name = reg.file_name().unwrap_or_default().to_os_string();
-    name.push(".raven-tmp");
-    let tmp = reg.with_file_name(name);
-    let result = (|| {
-        use std::io::Write as _;
-        let mut f = std::fs::File::create(&tmp)?;
-        f.write_all(updated.as_bytes())?;
-        f.sync_all()?;
-        std::fs::rename(&tmp, reg)
-    })();
-    if let Err(e) = result {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(Error::Layer(reg.to_path_buf(), e));
-    }
-    Ok(())
-}
-
 /// The letters whose Drives entries mountmgr turns into `\Device\Harddisk`
 /// objects — `"floppy"` on a letter index ≥ 2 — in section order, which is
 /// the order mountmgr creates them in and therefore numbers them by.
@@ -264,7 +242,7 @@ fn disk_letters(text: &str) -> Vec<char> {
     let mut in_section = false;
     for line in text.lines() {
         if line.starts_with('[') {
-            in_section = line.starts_with(HEADER);
+            in_section = line.starts_with(&format!("[{SECTION}]"));
             continue;
         }
         if !in_section {
@@ -292,83 +270,17 @@ fn single_char(s: &str) -> Option<char> {
 }
 
 /// Whether the Drives section maps the letter at all, whatever the type.
-fn has_drive_entry(text: &str, letter: char) -> bool {
-    let key = format!("\"{letter}:\"=");
-    let mut in_section = false;
-    for line in text.lines() {
-        if line.starts_with('[') {
-            in_section = line.starts_with(HEADER);
-            continue;
-        }
-        if in_section && line.starts_with(&key) {
-            return true;
-        }
-    }
-    false
+fn has_drive_entry(t: &str, letter: char) -> bool {
+    text::has_value(t, SECTION, &format!("{letter}:"))
 }
 
-/// Adds, replaces or removes the letter's entry in `[Software\\Wine\\Drives]`
-/// inside Wine's text-format `system.reg`, offline.
+/// Adds, replaces or removes the letter's entry in the Drives section.
 ///
-/// Offline on purpose: it needs no Wine, no mount, and no wineserver — and it
-/// is only legal because `attach` refuses a running environment, where the
-/// server holds the registry in memory and rewrites the file on exit.
-fn edit_drives_section(text: &str, letter: char, value: Option<&str>) -> String {
-    let entry = |v: &str| format!("\"{letter}:\"=\"{v}\"");
-    let key = format!("\"{letter}:\"=");
-
-    let mut out = Vec::new();
-    let mut in_section = false;
-    let mut section_seen = false;
-    let mut written = false;
-
-    for line in text.lines() {
-        if line.starts_with('[') {
-            // Leaving the Drives section without having written the value:
-            // insert it before the next section starts.
-            if in_section && !written {
-                if let Some(v) = value {
-                    out.push(entry(v));
-                }
-                written = true;
-            }
-            in_section = line.starts_with(HEADER);
-            if in_section {
-                section_seen = true;
-            }
-            out.push(line.to_string());
-            continue;
-        }
-        if in_section && line.starts_with(&key) {
-            // Replace or drop the existing entry.
-            if let Some(v) = value {
-                out.push(entry(v));
-            }
-            written = true;
-            continue;
-        }
-        out.push(line.to_string());
-    }
-    if in_section && !written {
-        if let Some(v) = value {
-            out.push(entry(v));
-        }
-        written = true;
-    }
-    if !section_seen && !written {
-        if let Some(v) = value {
-            let epoch = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-            out.push(String::new());
-            out.push(format!("{HEADER} {epoch}"));
-            out.push(entry(v));
-        }
-    }
-    let mut s = out.join("\n");
-    s.push('\n');
-    s
+/// Offline on purpose: it needs no Wine, no mount and no wineserver - and it is
+/// only legal because `attach` refuses a running environment, where the server
+/// holds the registry in memory and rewrites the file on exit.
+fn edit_drives_section(t: &str, letter: char, value: Option<&str>) -> String {
+    text::set_value(t, SECTION, &format!("{letter}:"), value)
 }
 
 #[cfg(test)]
@@ -480,22 +392,5 @@ mod tests {
         assert!(!has_drive_entry(REG, 'e'));
         // The x=y value outside the Drives section must not match.
         assert!(!has_drive_entry(REG, 'x'));
-    }
-
-    #[test]
-    fn the_registry_write_is_a_rename_and_leaves_no_droppings() {
-        let dir = std::env::temp_dir().join(format!("raven-regwrite-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let reg = dir.join("system.reg");
-        std::fs::write(&reg, "old").unwrap();
-        write_registry(&reg, "new contents\n").unwrap();
-        assert_eq!(std::fs::read_to_string(&reg).unwrap(), "new contents\n");
-        assert_eq!(
-            std::fs::read_dir(&dir).unwrap().count(),
-            1,
-            "no temp file may survive"
-        );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }
