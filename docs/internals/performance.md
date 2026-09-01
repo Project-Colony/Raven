@@ -155,6 +155,47 @@ in it, a skeleton inflated to real size, a tree renamed to real casing — are
 what separated the variables, and the last one took the attribution down to a
 single directory name.
 
+## Raven is always cold, and that is the whole gap
+
+Measured 2026-09-01 against *ShineHill*, a Direct3D 11 game, and against `wine
+cmd /c exit` as a floor. Same machine, same DXVK 3.1, one prefix a plain Wine
+one and the other a Raven environment over a real Windows.
+
+| | cold | warm |
+|---|---|---|
+| plain Wine, trivial program | 1.54 s | **0.12 s** |
+| Raven, trivial program | 1.89-2.07 s | **not reachable** |
+| *ShineHill* to its first GPU device | plain 2.29 s | plain **0.78 s**, Raven **2.71 s** |
+
+Cold against cold, Raven costs about **1.2x** - the same figure the spawn
+benchmark gives, so nothing new is wrong. The gap a user actually feels is a
+different quantity: **plain Wine keeps its `wineserver` alive between launches
+and Raven cannot.** Wine amortises start-up across every subsequent program and
+drops thirteenfold doing it; Raven mounts its overlay in a user namespace that
+dies with the process tree, so the server dies with it and the next launch pays
+the full cold price again.
+
+That property is not an accident - it is the one that guarantees no stale mounts
+after a crash, written down in [mount-stack.md](mount-stack.md) as a feature.
+It is also, on this measurement, the single largest thing standing between
+Raven and feeling instant.
+
+The fix is already named in the code: `run` refuses a busy environment with the
+comment *"until launches can join a running namespace"*. A persistent session -
+one namespace and one wineserver that later launches join with `nsenter
+--preserve-credentials`, which needs no root - would turn the second launch of
+the day into plain Wine's 0.12 s rather than another 2 s.
+
+### The refusal window, which is a bug today
+
+Wine's background services - `wineserver`, `services.exe`, `plugplay.exe`,
+`explorer.exe` and the rest - outlive the program that started them by **three
+to six seconds**. Raven refuses to launch into a held environment, so closing a
+game and immediately starting it again fails with `environment "games" is still
+running`. The refusal is correct and the message is honest, but the experience
+is not: the user did nothing wrong and has no reason to expect a wait. The
+persistent session above removes the whole window rather than papering over it.
+
 ## Built
 
 Everything in [architecture.md](architecture.md) is now a description rather

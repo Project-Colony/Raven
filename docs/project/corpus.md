@@ -58,17 +58,16 @@ same investigation from being run twice.
 | RPG Maker VX Ace RGSS3 runtime | Installer (Inno-style) | **Installs** | — | The one installer framework exercised so far |
 | Rufus 4.15 | Disk utility | **Runs and renders**, but finds no devices | `enumeration` | Also a datum in the other direction: it *crashes at startup under plain Wine* and runs under Raven. A real Windows sometimes fixes a program rather than breaking it |
 | Fallout New Vegas (Steam) | Game, Direct3D 9 | **Refuses to start**: `Application load error 5:0000065434` | `drm` | Steam's DRM wrapper, aborting before the engine exists. Says nothing about Raven or Direct3D - and is exactly why the corpus records categories: without one, this reads as "Raven cannot run Fallout" |
+| *ShineHill* (Steam, GameMaker) | Game, Direct3D 11, 64-bit | **Runs and renders.** DXVK created a D3D11 device on the GPU | — | The first game to draw through Direct3D against a real Windows. Chosen by reading its imports (`d3d11.dll`) and confirming it carries no Steam DRM wrapper - the two things that defeated the previous attempts |
 | `dxdiag.exe` (Windows 11 26200) | Microsoft's DirectX diagnostic | **Runs**, drove DXVK to initialise and enumerate the GPU | — | How Direct3D-on-Vulkan was first shown to work at all against a real Windows. Its DirectDraw probe went through WineD3D and its D3D9 probe through DXVK, in one process |
 
 ## What the corpus does not yet contain
 
 Named so the gaps are visible rather than merely absent:
 
-- **A game that renders a frame through Direct3D.** DXVK initialises; nothing
-  has drawn through it. This is the largest single unknown. The first two
-  attempts were defeated by the corpus itself: one game turned out to use GDI,
-  the next was wrapped in Steam DRM. Pick candidates by reading their imports
-  and checking for a DRM wrapper *before* running them.
+- **A Direct3D 12 title.** D3D12 is vkd3d-proton's, not DXVK's, and Raven
+  installs neither. Cyberpunk 2077 is the type specimen sitting untested.
+- **A 32-bit Direct3D title.** The x32 libraries are installed and unexercised.
 - **Anything using COM**, the category most likely to be broken by a design
   decision rather than a bug.
 - **A second installer framework.** NSIS, MSI, InstallShield - all untried.
