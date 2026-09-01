@@ -24,13 +24,32 @@ pub struct UserNsOverlay;
 
 impl MountBackend for UserNsOverlay {
     fn is_available() -> bool {
-        // A kernel with unprivileged user namespaces disabled reports zero here.
-        // `linux-hardened` and several distribution policies do exactly that.
-        match fs::read_to_string("/proc/sys/user/max_user_namespaces") {
-            Ok(s) => s.trim().parse::<u64>().unwrap_or(0) > 0,
-            // The file is absent on kernels built without the feature at all.
-            Err(_) => false,
+        // Three knobs gate unprivileged user namespaces, and a machine only
+        // needs one of them to say no. Checking just the first is how the CI
+        // runners passed the check and then failed the mount: GitHub's Ubuntu
+        // images allow the namespace but AppArmor denies the id-map writes.
+        let value = |path: &str| {
+            fs::read_to_string(path)
+                .ok()
+                .and_then(|s| s.trim().parse::<u64>().ok())
+        };
+        // Zero when disabled - linux-hardened and several distribution
+        // policies. Absent on kernels built without the feature at all.
+        if value("/proc/sys/user/max_user_namespaces").unwrap_or(0) == 0 {
+            return false;
         }
+        // Debian/Ubuntu-specific kernels carry this extra switch; absent
+        // elsewhere, and absence means no restriction.
+        if value("/proc/sys/kernel/unprivileged_userns_clone") == Some(0) {
+            return false;
+        }
+        // Ubuntu 23.10+ restricts through AppArmor instead: the namespace is
+        // created but holds no capabilities, and the mount fails later with a
+        // bare EPERM. Absent outside AppArmor kernels.
+        if value("/proc/sys/kernel/apparmor_restrict_unprivileged_userns") == Some(1) {
+            return false;
+        }
+        true
     }
 
     fn name(&self) -> &'static str {

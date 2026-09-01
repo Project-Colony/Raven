@@ -22,11 +22,11 @@ fn raven_bin() -> PathBuf {
     p.join("raven")
 }
 
+/// The library's own check, not a copy of it: the CI runners taught us that a
+/// single-knob version passes and then fails the mount (AppArmor).
 fn userns_available() -> bool {
-    fs::read_to_string("/proc/sys/user/max_user_namespaces")
-        .ok()
-        .and_then(|s| s.trim().parse::<u64>().ok())
-        .is_some_and(|n| n > 0)
+    use raven::mount::MountBackend as _;
+    raven::mount::UserNsOverlay::is_available()
 }
 
 struct Layout {
