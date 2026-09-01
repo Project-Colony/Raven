@@ -112,6 +112,45 @@ against plain Wine's 113 (1.19×)**. Four plausible theories were falsified on
 the way, the `wineserver` excess turned out not to exist at all, and the whole
 investigation is in [../internals/performance.md](../internals/performance.md).
 
+### DXVK initialises against a real Windows
+
+The question that decided whether Raven could aim at 3D at all, and it was
+open until 2026-09-01. `raven env dxvk` installed DXVK 3.1 into an
+environment - the libraries shadowing Microsoft's own `d3d9.dll` and
+`d3d11.dll` through the overlay - and Microsoft's own `dxdiag.exe`, running
+from the mounted Windows, drove it:
+
+```
+info:  DXVK: v3.1
+info:  Vulkan: Found vkGetInstanceProcAddr in winevulkan.dll
+info:  Found device: NVIDIA GeForce RTX 5080 (NVIDIA 610.57.4)
+info:  D3D9: VK_FORMAT_D16_UNORM_S8_UINT -> VK_FORMAT_D24_UNORM_S8_UINT
+```
+
+So the load path works with Microsoft's real libraries around it, the bridge
+to `winevulkan` resolves, the GPU is enumerated and formats are negotiated.
+DXVK and WineD3D also coexisted correctly in the same process: dxdiag's
+DirectDraw probe went through Wine's own OpenGL path, which DXVK does not
+provide, while its Direct3D 9 probe went through DXVK.
+
+**What this is not.** No game has rendered a frame through it, and nothing
+has been benchmarked. Initialisation is the gate, not the proof - it says
+the door opens, not that the room is furnished. The first attempt to measure
+it failed for an instructive reason, recorded below.
+
+### The corpus problem, made concrete
+
+The intended DXVK test was the one game this project has: *N.P.C. Dreams*, an
+RPG Maker VX Ace title. DXVK installed correctly and then wrote no log at all,
+because neither `Game.exe` nor `RGSS301.dll` references a single Direct3D,
+DXGI or DirectDraw library - their only graphics import is `GDI32`. The game
+renders by software blitting and never touches Direct3D.
+
+Nothing was wrong with Raven or with DXVK; the corpus was simply one program
+wide, and that program could not exercise the API in question. That is the
+whole argument for building a corpus rather than adding features: with two
+programs tested you cannot know what you have.
+
 ## Built
 
 Fifteen commands, counting each leaf subcommand once. The path from an

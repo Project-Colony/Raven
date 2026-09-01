@@ -114,8 +114,10 @@ shadow them; the base finishes byte-identical, and `raven env dxvk games
 Microsoft's. Raven refuses to overwrite a library it did not install itself, so
 a DLL some installer left in the environment is safe.
 
-Whether Direct3D works at all against a real Windows is, as of this writing,
-**unmeasured** - see [../project/status.md](../project/status.md).
+DXVK has been shown to initialise against a real Windows and reach the GPU -
+Microsoft's own `dxdiag.exe` drove it and DXVK enumerated the card. No game has
+rendered a frame through it yet, and nothing is benchmarked; see
+[../project/status.md](../project/status.md) for exactly how far that goes.
 
 ## Starting over
 

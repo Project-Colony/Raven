@@ -32,8 +32,10 @@ that physically cannot be.
 > plain Wine (135 ms against 113, down from 2× after the fonts discovery), and
 > the shadow set has two entries, each backed by a measurement.
 >
-> What that does *not* mean: one game, 2D and software-rendered — nothing yet
-> about Direct3D or DXVK; one installer framework exercised; programs that keep
+> What that does *not* mean: one game, 2D and software-rendered, which turned out to
+> render through GDI and never touch Direct3D at all; DXVK now installs and has
+> been shown to initialise and enumerate the GPU, but no game has rendered a
+> frame through it; one installer framework exercised; programs that keep
 > their strings in `.mui` files run mute. The honest ledger, including five
 > performance theories that measurement destroyed, is in
 > [docs/project/status.md](docs/project/status.md) and
