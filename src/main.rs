@@ -63,6 +63,10 @@ enum Commands {
     /// Show how `.exe` files are registered with the kernel.
     Binfmt,
 
+    /// Hold an environment's namespace open. Started by Raven, not by hand.
+    #[command(hide = true)]
+    SessionAnchor { name: String },
+
     /// Run a program inside an environment.
     Run {
         /// The environment to run in.
@@ -215,6 +219,7 @@ fn main() -> Result<()> {
             run(&e.name, argv, cwd)
         }
         Commands::Binfmt => binfmt(),
+        Commands::SessionAnchor { name } => session_anchor(&name),
         Commands::Exec {
             lower,
             upper,
@@ -601,15 +606,58 @@ fn binfmt() -> Result<()> {
 
 fn run(name: &str, argv: Vec<String>, cwd: Option<PathBuf>) -> Result<()> {
     let e = env::Environment::open(name)?;
-    // Checked before mounting: overlayfs would refuse the held upper layer
-    // anyway, but with an EBUSY naming neither the environment nor the
-    // processes. Until launches can join a running namespace, refusing
-    // clearly is the honest behaviour.
-    e.ensure_not_running()?;
+    // Join the environment's session rather than building a world of our own.
+    // The first launch of the day starts the anchor and pays for the mount;
+    // every later one lands in a namespace that already has a warm wineserver
+    // in it, which is where plain Wine's thirteenfold advantage came from.
+    let anchor = e.ensure_session()?;
+    e.join_session(anchor)?;
+
+    let mut cmd = Command::new(&argv[0]);
+    cmd.args(&argv[1..]);
+    cmd.env("WINEPREFIX", e.prefix());
+    if let Some(d) = cwd {
+        cmd.current_dir(d);
+    }
+    Err(cmd.exec()).with_context(|| format!("could not run {}", argv[0]))
+}
+
+/// Holds a namespace open so later launches can join it.
+///
+/// Mounts, reports itself, then does nothing for as long as it is wanted. It
+/// must stay single-threaded until the mount is done - the kernel refuses
+/// `CLONE_NEWUSER` to a threaded process - which is why the readiness line is
+/// written only afterwards.
+fn session_anchor(name: &str) -> Result<()> {
+    use std::io::Write as _;
+    let e = env::Environment::open(name)?;
     let spec = e.spec()?;
     std::fs::create_dir_all(&spec.target)
         .with_context(|| format!("could not create the mount point {}", spec.target.display()))?;
-    exec(spec, argv, Some(e.prefix()), cwd)
+    if !UserNsOverlay::is_available() {
+        println!("this kernel restricts unprivileged user namespaces; run `raven doctor`");
+        let _ = std::io::stdout().flush();
+        std::process::exit(1);
+    }
+    if let Err(err) = UserNsOverlay.mount(&spec) {
+        println!("could not mount the overlay: {err}");
+        let _ = std::io::stdout().flush();
+        std::process::exit(1);
+    }
+    let pid = std::process::id();
+    // Written only after the mount exists, so a reader of this file never sees
+    // a session that cannot be joined.
+    std::fs::write(e.session_file(), format!("{pid}\n")).with_context(|| {
+        format!(
+            "could not record the session at {}",
+            e.session_file().display()
+        )
+    })?;
+    println!("ready {pid}");
+    let _ = std::io::stdout().flush();
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(3600));
+    }
 }
 
 fn exec(

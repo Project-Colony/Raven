@@ -119,6 +119,27 @@ Microsoft's own `dxdiag.exe` drove it and DXVK enumerated the card. No game has
 rendered a frame through it yet, and nothing is benchmarked; see
 [../project/status.md](../project/status.md) for exactly how far that goes.
 
+## Why the second launch is instant
+
+The first program you run in an environment starts a **session**: Raven mounts
+C: once and keeps it, so every later launch joins what is already there instead
+of building a world of its own. The first launch of the day costs about two
+seconds; the ones after it cost about a sixth of one.
+
+The session holds C: until you release it:
+
+```bash
+raven env stop games
+```
+
+You need that only to change the environment itself - installing DXVK, attaching
+a device, re-running the projection - because those cannot safely happen under a
+live Wine. They will tell you so, and name this command.
+
+If Raven dies, the mount dies with it. That is not a courtesy: the mount lives
+inside the session's own namespace, so there is nothing left to clean up after a
+crash and nothing stale for the next boot to trip over.
+
 ## Starting over
 
 ```bash

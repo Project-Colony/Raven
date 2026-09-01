@@ -14,6 +14,7 @@ pub mod mount;
 pub mod paths;
 pub mod prefix;
 pub mod registry;
+pub mod session;
 
 /// Failures that are Raven's own, as opposed to the kernel's.
 #[derive(Debug, thiserror::Error)]
@@ -106,6 +107,16 @@ pub enum Error {
          x64/ (and usually x32/), or a release archive of one"
     )]
     NotADxvkBuild(std::path::PathBuf),
+
+    #[error("could not start a session for the environment: {0}")]
+    SessionFailed(String),
+
+    #[error(
+        "environment {0:?} has a live session holding its C:, which is what \
+         makes launches fast\n  \
+         release it: raven env stop {0}"
+    )]
+    SessionHolds(String),
 
     #[error(
         "{0} is already in this environment and Raven did not put it there - \

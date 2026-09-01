@@ -157,6 +157,12 @@ impl Environment {
         if holders.is_empty() {
             return Ok(());
         }
+        // A session anchor holding it is the ordinary state after a launch,
+        // not a stuck process, and saying "still running - held by raven"
+        // reads like a bug in Raven rather than the thing the user asked for.
+        if holders.iter().all(|h| h.comm == "raven") {
+            return Err(Error::SessionHolds(self.name.clone()));
+        }
         Err(Error::EnvironmentBusy {
             name: self.name.clone(),
             holders: describe(&holders),
@@ -170,6 +176,9 @@ impl Environment {
     /// different one — so the holders are signalled directly.
     pub fn stop(&self) -> Result<Vec<Holder>, Error> {
         let holders = self.holders();
+        // The session record goes first: whatever happens to the processes
+        // below, the recorded anchor is no longer one anybody should join.
+        self.clear_session();
         if holders.is_empty() {
             return Ok(holders);
         }

@@ -155,7 +155,7 @@ in it, a skeleton inflated to real size, a tree renamed to real casing — are
 what separated the variables, and the last one took the attribution down to a
 single directory name.
 
-## Raven is always cold, and that is the whole gap
+## Raven was always cold, and that was the whole gap
 
 Measured 2026-09-01 against *ShineHill*, a Direct3D 11 game, and against `wine
 cmd /c exit` as a floor. Same machine, same DXVK 3.1, one prefix a plain Wine
@@ -180,21 +180,49 @@ after a crash, written down in [mount-stack.md](mount-stack.md) as a feature.
 It is also, on this measurement, the single largest thing standing between
 Raven and feeling instant.
 
-The fix is already named in the code: `run` refuses a busy environment with the
-comment *"until launches can join a running namespace"*. A persistent session -
-one namespace and one wineserver that later launches join with `nsenter
---preserve-credentials`, which needs no root - would turn the second launch of
-the day into plain Wine's 0.12 s rather than another 2 s.
+### The session, and what it bought
 
-### The refusal window, which is a bug today
+Built the same day. The first launch starts an **anchor**: a Raven process that
+creates the namespace, mounts the overlay and then does nothing but stay alive.
+Later launches `setns` into it and run there, sharing the mount *and* the
+wineserver already inside. Joining needs no privilege - kernel uids are
+absolute and the namespace only supplies a view of them, so a process of the
+same user is seen as uid 0 inside exactly as the anchor is, and owning the user
+namespace is what admits it to the mount namespace.
+
+| | before | after |
+|---|---|---|
+| trivial program, first launch | 2.07 s | 2.05 s |
+| trivial program, every later launch | 2.07 s | **0.16 s** |
+| *ShineHill* to its first GPU device | 2.71 s | **0.92 s** |
+| plain Wine, for comparison | 1.54 s cold, 0.12 s warm | unchanged |
+
+**Twelve to thirteen times faster after the first launch of the day**, which is
+the launch nobody counts. The remaining 0.04 s over plain Wine's warm figure is
+`setns` plus the real Windows being larger than a Wine prefix, and is not worth
+chasing.
+
+The crash property that motivated the old design is intact: the mount is still
+owned by the anchor's process tree, and killing the anchor was verified to take
+the mount with it and leave nothing visible on the host.
+
+The refusal window went with it. Launches no longer refuse a busy environment -
+they join it. Operations that genuinely need exclusivity - `dxvk`, `attach`,
+`reproject`, `destroy` - still refuse, and now say so in terms of the session:
+*"has a live session holding its C:, which is what makes launches fast"*, with
+`raven env stop` as the way out. The three-to-six second wait survives only
+directly after an explicit stop, where it is expected.
+
+### The refusal window, which was a bug
 
 Wine's background services - `wineserver`, `services.exe`, `plugplay.exe`,
 `explorer.exe` and the rest - outlive the program that started them by **three
-to six seconds**. Raven refuses to launch into a held environment, so closing a
-game and immediately starting it again fails with `environment "games" is still
-running`. The refusal is correct and the message is honest, but the experience
-is not: the user did nothing wrong and has no reason to expect a wait. The
-persistent session above removes the whole window rather than papering over it.
+to six seconds**. Before sessions, Raven refused to launch into a held
+environment, so closing a game and immediately starting it again failed with
+`environment "games" is still running`. The refusal was correct and the message
+honest, but the experience was not: the user had done nothing wrong and had no
+reason to expect a wait. Sessions removed the window rather than papering over
+it - a second launch now joins what is already there.
 
 ## Built
 
