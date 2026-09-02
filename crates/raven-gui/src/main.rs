@@ -8,9 +8,9 @@
 mod load;
 mod model;
 mod theme;
+mod view;
 
-use iced::widget::{column, container, text};
-use iced::{Element, Length, Task};
+use iced::{Element, Task};
 
 use model::EnvRow;
 
@@ -28,13 +28,16 @@ pub enum Message {
     Go(Screen),
     Environments(load::EnvRows),
     Refresh,
+    Start(String),
+    Stop(String),
+    Acted(Result<(), String>),
 }
 
 #[derive(Default)]
 pub struct App {
-    screen: Screen,
-    envs: Vec<EnvRow>,
-    error: Option<String>,
+    pub(crate) screen: Screen,
+    pub(crate) envs: Vec<EnvRow>,
+    pub(crate) error: Option<String>,
 }
 
 impl App {
@@ -54,21 +57,38 @@ impl App {
                 Task::none()
             }
             Message::Refresh => load::environments(),
+            Message::Start(name) => Task::perform(
+                async move {
+                    tokio::task::spawn_blocking(move || {
+                        let e = raven::env::Environment::open(&name).map_err(|e| e.to_string())?;
+                        e.ensure_session().map(|_| ()).map_err(|e| e.to_string())
+                    })
+                    .await
+                    .unwrap_or_else(|e| Err(e.to_string()))
+                },
+                Message::Acted,
+            ),
+            Message::Stop(name) => Task::perform(
+                async move {
+                    tokio::task::spawn_blocking(move || {
+                        let e = raven::env::Environment::open(&name).map_err(|e| e.to_string())?;
+                        e.stop().map(|_| ()).map_err(|e| e.to_string())
+                    })
+                    .await
+                    .unwrap_or_else(|e| Err(e.to_string()))
+                },
+                Message::Acted,
+            ),
+            Message::Acted(Ok(())) => load::environments(),
+            Message::Acted(Err(e)) => {
+                self.error = Some(e);
+                load::environments()
+            }
         }
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let t = theme::typography();
-        let p = theme::palette();
-        container(column![text("Raven").size(t.sz(30)).color(p.text_primary)].spacing(t.sz(8)))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .padding(t.sz(16) as u16)
-            .style(move |_| container::Style {
-                background: Some(p.bg_primary.into()),
-                ..Default::default()
-            })
-            .into()
+        view::shell(self)
     }
 }
 
