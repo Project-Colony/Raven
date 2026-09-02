@@ -36,6 +36,38 @@ binary would keep working on the kernel's open handle until the next reboot
 (the `F` flag) and then make every `.exe` on the machine fail in a way nobody
 would connect to Raven; `raven doctor` detects and reports both states.
 
+## Two binaries, two desktop entries, one version
+
+The package installs `raven-gui` beside `raven`, and `raven-gui.desktop`
+beside `raven.desktop`. They stay separate rather than merging into one
+launcher, because the two desktop entries mean different things to a file
+manager:
+
+`raven.desktop` claims the `.exe` MIME types (`application/x-msdownload` and
+friends) and carries `NoDisplay=true`. It is the handler a file manager
+reaches for when someone double-clicks a Windows program, launching
+`raven launch %f` against that one file — it is not meant to appear in an
+application menu on its own.
+
+`raven-gui.desktop` claims no MIME type and has no `NoDisplay`. It appears in
+the menu under Raven's `System;Settings;` categories and launches `raven-gui`
+with no arguments, opening the administration window for managing bases and
+environments.
+
+If the GUI launcher also claimed the `.exe` association, double-clicking a
+Windows program would open the manager instead of running the program — the
+opposite of what a double-click means. Keeping the association on
+`raven.desktop` alone, and never adding it to `raven-gui.desktop`, is what
+keeps that from happening. Both entries reuse the single `Icon=raven` already
+installed into the `hicolor` theme; there is no second icon to keep in sync.
+
+`build()` needed no change to produce the second binary: `cargo build
+--release` at the workspace root already builds every workspace member, so
+`raven-gui` comes out of the same command as `raven`. Only `package()` gained
+two more `install` lines, and the release workflow gained a second staged
+asset — the signing job already signs every file it finds under `dist/`, so
+it needed no change at all.
+
 ## `ntsync` is not Raven's business
 
 Arch's `wine` package depends on `ntsync-autoload`, whose entire content is a

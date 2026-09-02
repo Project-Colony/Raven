@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Raven
+GenericName=Windows environment manager
+Comment=Manage the Windows installations and environments Raven runs programs against
+Exec=raven-gui
+Icon=raven
+Terminal=false
+Categories=System;Settings;
