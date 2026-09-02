@@ -62,9 +62,34 @@ pub fn shell(app: &App) -> Element<'_, Message> {
             .into(),
     };
 
+    let banner: Element<'_, Message> = match &app.offer {
+        None => Space::new().height(0).into(),
+        Some(offer) => {
+            let mut r = row![text(offer.message.clone()).size(t.sz(13)).color(p.error)]
+                .spacing(t.sz(8))
+                .align_y(iced::Alignment::Center);
+            if let Some(crate::errors::Action::Stop(name)) = &offer.action {
+                r = r.push(
+                    button(text("Stop the session").size(t.sz(12)))
+                        .on_press(Message::Stop(name.clone())),
+                );
+            }
+            container(r)
+                .padding(t.sz(10) as u16)
+                .width(Length::Fill)
+                .style(move |_| container::Style {
+                    background: Some(p.error_bg.into()),
+                    ..Default::default()
+                })
+                .into()
+        }
+    };
+
     container(row![
         sidebar,
-        container(body).padding(t.sz(16) as u16).width(Length::Fill)
+        container(column![banner, body].spacing(t.sz(8)))
+            .padding(t.sz(16) as u16)
+            .width(Length::Fill)
     ])
     .width(Length::Fill)
     .height(Length::Fill)

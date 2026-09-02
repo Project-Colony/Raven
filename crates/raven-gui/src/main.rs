@@ -5,6 +5,7 @@
 //! anything about environments; it draws what the library reports and asks the
 //! library to act.
 
+mod errors;
 mod load;
 mod model;
 mod theme;
@@ -30,14 +31,18 @@ pub enum Message {
     Refresh,
     Start(String),
     Stop(String),
-    Acted(Result<(), String>),
+    // `raven::Error` holds `std::io::Error` in some variants, so it cannot be
+    // `Clone` - and iced's widgets (`Button::on_press` among them) require
+    // `Message: Clone`. `Arc` is `Clone` regardless of what it wraps, so it
+    // carries the error across that boundary without the library changing.
+    Acted(Result<(), std::sync::Arc<raven::Error>>),
 }
 
 #[derive(Default)]
 pub struct App {
     pub(crate) screen: Screen,
     pub(crate) envs: Vec<EnvRow>,
-    pub(crate) error: Option<String>,
+    pub(crate) offer: Option<errors::Offer>,
 }
 
 impl App {
@@ -49,39 +54,44 @@ impl App {
             }
             Message::Environments(Ok(rows)) => {
                 self.envs = rows;
-                self.error = None;
+                self.offer = None;
                 Task::none()
             }
             Message::Environments(Err(e)) => {
-                self.error = Some(e);
+                self.offer = Some(errors::Offer {
+                    message: e,
+                    action: None,
+                });
                 Task::none()
             }
             Message::Refresh => load::environments(),
             Message::Start(name) => Task::perform(
                 async move {
                     tokio::task::spawn_blocking(move || {
-                        let e = raven::env::Environment::open(&name).map_err(|e| e.to_string())?;
-                        e.ensure_session().map(|_| ()).map_err(|e| e.to_string())
+                        let e = raven::env::Environment::open(&name)?;
+                        e.ensure_session().map(|_| ())
                     })
                     .await
-                    .unwrap_or_else(|e| Err(e.to_string()))
+                    .expect("the blocking task panicked")
+                    .map_err(std::sync::Arc::new)
                 },
                 Message::Acted,
             ),
             Message::Stop(name) => Task::perform(
                 async move {
                     tokio::task::spawn_blocking(move || {
-                        let e = raven::env::Environment::open(&name).map_err(|e| e.to_string())?;
-                        e.stop().map(|_| ()).map_err(|e| e.to_string())
+                        let e = raven::env::Environment::open(&name)?;
+                        e.stop().map(|_| ())
                     })
                     .await
-                    .unwrap_or_else(|e| Err(e.to_string()))
+                    .expect("the blocking task panicked")
+                    .map_err(std::sync::Arc::new)
                 },
                 Message::Acted,
             ),
             Message::Acted(Ok(())) => load::environments(),
             Message::Acted(Err(e)) => {
-                self.error = Some(e);
+                self.offer = Some(errors::explain(&e));
                 load::environments()
             }
         }
