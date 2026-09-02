@@ -18,9 +18,13 @@ pub fn screen(e: &EnvRow) -> Element<'_, Message> {
         heading("Session"),
         text(e.status_line()).size(t.sz(13)).color(p.text_primary),
         if e.is_running() {
-            button(text("Stop").size(t.sz(12))).on_press(Message::Stop(e.name.clone()))
+            button(text("Stop").size(t.sz(12)))
+                .style(theme::button_style(p))
+                .on_press(Message::Stop(e.name.clone()))
         } else {
-            button(text("Start").size(t.sz(12))).on_press(Message::Start(e.name.clone()))
+            button(text("Start").size(t.sz(12)))
+                .style(theme::button_style(p))
+                .on_press(Message::Start(e.name.clone()))
         },
     ]
     .spacing(t.sz(6));
@@ -33,6 +37,7 @@ pub fn screen(e: &EnvRow) -> Element<'_, Message> {
                     .size(t.sz(13))
                     .color(p.text_primary),
                 button(text("Remove").size(t.sz(12)))
+                    .style(theme::button_style(p))
                     .on_press(Message::RemoveD3d { env: name, vkd3d }),
             ],
             None => row![
@@ -40,6 +45,7 @@ pub fn screen(e: &EnvRow) -> Element<'_, Message> {
                     .size(t.sz(13))
                     .color(p.text_muted),
                 button(text("Install…").size(t.sz(12)))
+                    .style(theme::button_style(p))
                     .on_press(Message::InstallD3d { env: name, vkd3d }),
             ],
         }
@@ -71,10 +77,12 @@ pub fn screen(e: &EnvRow) -> Element<'_, Message> {
                     text(format!("{letter}:  {}", device.display()))
                         .size(t.sz(13))
                         .color(p.text_primary),
-                    button(text("Detach").size(t.sz(12))).on_press(Message::Detach {
-                        env: e.name.clone(),
-                        letter: *letter,
-                    }),
+                    button(text("Detach").size(t.sz(12)))
+                        .style(theme::button_style(p))
+                        .on_press(Message::Detach {
+                            env: e.name.clone(),
+                            letter: *letter,
+                        }),
                 ]
                 .spacing(t.sz(8))
                 .align_y(iced::Alignment::Center),
@@ -87,7 +95,9 @@ pub fn screen(e: &EnvRow) -> Element<'_, Message> {
         text("Re-run the projection after editing registry-rules.toml.")
             .size(t.sz(12))
             .color(p.text_muted),
-        button(text("Reproject").size(t.sz(12))).on_press(Message::Reproject(e.name.clone())),
+        button(text("Reproject").size(t.sz(12)))
+            .style(theme::button_style(p))
+            .on_press(Message::Reproject(e.name.clone())),
     ]
     .spacing(t.sz(6));
 
@@ -95,6 +105,7 @@ pub fn screen(e: &EnvRow) -> Element<'_, Message> {
         column![
             row![
                 button(text("← Environments").size(t.sz(12)))
+                    .style(theme::button_style(p))
                     .on_press(Message::Go(crate::Screen::Environments)),
                 Space::new().width(Length::Fill),
             ],

@@ -37,9 +37,13 @@ fn card(e: &EnvRow) -> Element<'_, Message> {
     let p = theme::palette();
 
     let action = if e.is_running() {
-        button(text("Stop").size(t.sz(13))).on_press(Message::Stop(e.name.clone()))
+        button(text("Stop").size(t.sz(13)))
+            .style(theme::button_style(p))
+            .on_press(Message::Stop(e.name.clone()))
     } else {
-        button(text("Start").size(t.sz(13))).on_press(Message::Start(e.name.clone()))
+        button(text("Start").size(t.sz(13)))
+            .style(theme::button_style(p))
+            .on_press(Message::Start(e.name.clone()))
     };
 
     let mut runtimes = row![].spacing(t.sz(8));
@@ -57,8 +61,15 @@ fn card(e: &EnvRow) -> Element<'_, Message> {
         );
     }
 
+    // The name is the card's own heading, not a control beside it, so it is
+    // drawn as text and only behaves like a button. No fill, and its colour is
+    // stated rather than left to `Style::default()`, which is black.
     let name = button(text(e.name.clone()).size(t.sz(16)).color(p.text_primary))
-        .style(|_, _| button::Style::default())
+        .style(move |_, _| button::Style {
+            background: None,
+            text_color: p.text_primary,
+            ..Default::default()
+        })
         .padding(0.0)
         .on_press(Message::Open(e.name.clone()));
 

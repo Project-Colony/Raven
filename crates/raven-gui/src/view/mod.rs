@@ -82,6 +82,7 @@ pub fn shell(app: &App) -> Element<'_, Message> {
             if let Some(crate::errors::Action::Stop(name)) = &offer.action {
                 r = r.push(
                     button(text("Stop the session").size(t.sz(12)))
+                        .style(theme::button_style(p))
                         .on_press(Message::Stop(name.clone())),
                 );
             }

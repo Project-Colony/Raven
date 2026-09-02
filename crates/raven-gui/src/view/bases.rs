@@ -129,7 +129,7 @@ fn deploy_form<'a>(deploying: Option<&'a Progress>, form: &'a DeployForm) -> Ele
     ]
     .spacing(t.sz(8));
 
-    let deploy_button = button(text("Deploy").size(t.sz(13)));
+    let deploy_button = button(text("Deploy").size(t.sz(13))).style(theme::button_style(p));
     let deploy_button = if busy {
         deploy_button
     } else {
