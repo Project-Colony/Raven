@@ -54,12 +54,28 @@ Two operations cannot go through the library, and both reasons are structural:
 Everything else - listing, status, DXVK and vkd3d install/remove, attach and
 detach, reproject, stop, start - is a library call.
 
-### One library addition
+### No library addition, after all
 
-`base::deploy` currently runs `wimlib-imagex apply` with `.status()`, which
-inherits the terminal. The GUI needs its output. Add a variant that captures
-it and reports progress; leave the existing function untouched so the CLI is
-unaffected.
+The design first called for a progress-reporting variant of `base::deploy`,
+because `.status()` inherits the terminal and the GUI needs the output. Testing
+removed the need. `.status()` inherits *the parent's* stdio, so when the GUI
+spawns `raven base deploy` with a piped stdout, `wimlib-imagex` writes into that
+pipe. The only question was whether wimlib suppresses progress when its output
+is not a terminal, as many tools do. It does not - verified by capturing a small
+WIM and applying it through a pipe:
+
+```
+Extracting file data: 3886 KiB of 3906 KiB (99%) done
+Extracting file data: 3906 KiB of 3906 KiB (100%) done
+```
+
+So the library is untouched and the parser lives in the GUI. wimlib separates
+these lines with carriage returns, not newlines, and emits two shapes:
+
+```
+Creating files: %lu of %lu (%u%%) done
+Extracting file data: %lu %s of %lu %s (%u%%) done
+```
 
 ## Workspace and packaging
 
