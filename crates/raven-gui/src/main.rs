@@ -68,7 +68,10 @@ pub enum Message {
     DeployNameChanged(String),
     DeployStart,
     DeployProgress(deploy::Progress),
-    DeployDone(bool),
+    // `Err` carries the last thing the child said before it gave up, so a
+    // failure that took minutes does not have to be reproduced in a terminal
+    // to be understood.
+    DeployDone(Result<(), String>),
 }
 
 #[derive(Default)]
@@ -309,18 +312,19 @@ impl App {
                 self.deploying = Some(progress);
                 Task::none()
             }
-            Message::DeployDone(success) => {
+            Message::DeployDone(outcome) => {
                 self.deploy_job = None;
                 self.deploying = None;
-                if success {
-                    self.deploy_form = DeployForm::default();
-                    load::bases()
-                } else {
-                    self.offer = Some(Offer::action_error(
-                        "Deployment failed. Run the same `raven base deploy` from a terminal to see why."
-                            .into(),
-                    ));
-                    Task::none()
+                match outcome {
+                    Ok(()) => {
+                        self.deploy_form = DeployForm::default();
+                        load::bases()
+                    }
+                    Err(reason) => {
+                        self.offer =
+                            Some(Offer::action_error(format!("Deployment failed. {reason}")));
+                        Task::none()
+                    }
                 }
             }
         }

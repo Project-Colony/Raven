@@ -21,8 +21,8 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use iced::futures::Stream;
 use iced::futures::channel::mpsc;
+use iced::futures::{SinkExt, Stream};
 
 use crate::Message;
 
@@ -55,6 +55,20 @@ pub fn parse_progress(line: &str) -> Option<Progress> {
     })
 }
 
+/// The one line of a failed child's error output worth putting in a banner.
+///
+/// The last line is the one that says why - both Raven and `wimlib-imagex`
+/// end with the sentence that matters. What follows it is usually blank, or a
+/// remnant of a progress line wimlib redrew with `\r`, so empty pieces are
+/// skipped rather than shown as an empty message.
+pub fn last_meaningful_line(stderr: &str) -> Option<String> {
+    stderr
+        .split(['\r', '\n'])
+        .map(str::trim)
+        .rfind(|line| !line.is_empty())
+        .map(str::to_owned)
+}
+
 /// What `raven base deploy` needs, gathered from the bases screen's three
 /// text fields since this batch has no file dialog.
 ///
@@ -80,19 +94,36 @@ pub struct Args {
 /// it the type is `for<'a> fn(&'a Args) -> S<'a>`, which cannot coerce there.
 pub fn run(args: &Args) -> impl Stream<Item = Message> + use<> {
     let args = args.clone();
-    iced::stream::channel(16, async move |output| {
-        tokio::task::spawn_blocking(move || pump(&args, output))
-            .await
-            .expect("the blocking task panicked");
+    iced::stream::channel(16, async move |mut output| {
+        let outcome = {
+            let output = output.clone();
+            tokio::task::spawn_blocking(move || pump(&args, output))
+                .await
+                .expect("the blocking task panicked")
+        };
+        // The outcome comes back as a value rather than being pushed down the
+        // channel with the progress updates, so that it can be `await`ed here.
+        // Dropping a progress update is right - they arrive faster than anyone
+        // reads them. Dropping this one is not: `deploying` and `deploy_job`
+        // would stay `Some` for ever, freezing the bar at whatever percentage
+        // it had reached with the fields and the Deploy button disabled and no
+        // way out of it. Awaiting waits for room instead of giving up.
+        let _ = output.send(Message::DeployDone(outcome)).await;
     })
 }
 
-/// Runs the child to completion, reporting wimlib's progress as it goes.
+/// Runs the child to completion, reporting wimlib's progress as it goes, and
+/// returns why it failed if it did.
 ///
 /// wimlib redraws its progress line in place with `\r` rather than emitting
 /// one `\n`-terminated line per update, so each chunk read off the pipe is
 /// split on both and only the last complete reading is reported - the ones
 /// before it were already stale by the time the read returned.
+///
+/// stderr is piped rather than inherited. A GUI started from an application
+/// menu has nowhere to inherit it *to*, so the reason a deployment failed -
+/// the one operation here that costs minutes - would go to no terminal at all
+/// and the window would have nothing to say but "try it again by hand".
 ///
 /// `Command::new("raven")` resolves through `$PATH`, not to this workspace's
 /// own build. That's the right binary to run in the packaged case the GUI
@@ -103,7 +134,7 @@ pub fn run(args: &Args) -> impl Stream<Item = Message> + use<> {
 /// rather than `target/debug/raven`, so a developer testing a CLI change
 /// against a freshly built GUI silently deploys with the old, already-
 /// installed CLI and sees no sign that happened.
-fn pump(args: &Args, mut output: mpsc::Sender<Message>) {
+fn pump(args: &Args, mut output: mpsc::Sender<Message>) -> Result<(), String> {
     let child = Command::new("raven")
         .arg("base")
         .arg("deploy")
@@ -114,15 +145,23 @@ fn pump(args: &Args, mut output: mpsc::Sender<Message>) {
         .arg("--name")
         .arg(&args.name)
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn();
 
     let mut child = match child {
         Ok(child) => child,
-        Err(_) => {
-            let _ = output.try_send(Message::DeployDone(false));
-            return;
-        }
+        Err(e) => return Err(format!("`raven base deploy` would not start: {e}")),
     };
+
+    // stderr is drained by its own thread. The child writes to both pipes, and
+    // a single reader parked on stdout would deadlock the moment stderr's pipe
+    // filled - which is exactly what a failing deployment does.
+    let mut stderr = child.stderr.take().expect("stderr was requested piped");
+    let errors = std::thread::spawn(move || {
+        let mut said = String::new();
+        let _ = stderr.read_to_string(&mut said);
+        said
+    });
 
     let mut stdout = child.stdout.take().expect("stdout was requested piped");
     let mut buf = [0u8; 4096];
@@ -137,12 +176,20 @@ fn pump(args: &Args, mut output: mpsc::Sender<Message>) {
             .filter_map(parse_progress)
             .next_back()
         {
+            // Losing one of these is fine and intended: they arrive faster than
+            // the window redraws, and the next one is already truer.
             let _ = output.try_send(Message::DeployProgress(progress));
         }
     }
 
     let success = child.wait().map(|status| status.success()).unwrap_or(false);
-    let _ = output.try_send(Message::DeployDone(success));
+    let said = errors.join().unwrap_or_default();
+    if success {
+        Ok(())
+    } else {
+        Err(last_meaningful_line(&said)
+            .unwrap_or_else(|| "It gave no reason before it stopped.".to_owned()))
+    }
 }
 
 #[cfg(test)]
@@ -177,6 +224,25 @@ mod tests {
         assert_eq!(parse_progress("Applying image 1 to /home/x/base"), None);
         // A percentage that is not wimlib's shape must not be mistaken for one.
         assert_eq!(parse_progress("almost (50%) there"), None);
+    }
+
+    #[test]
+    fn a_failure_is_reported_with_the_line_that_says_why() {
+        // Raven's own wording, as `base deploy` writes it to stderr, followed
+        // by the blank line a terminating newline leaves behind.
+        let said = "Applying image 1 to /home/x/.local/share/raven/bases/win11\n\
+                    error: no space left on device while writing Windows/System32\n";
+        assert_eq!(
+            last_meaningful_line(said).as_deref(),
+            Some("error: no space left on device while writing Windows/System32")
+        );
+    }
+
+    #[test]
+    fn a_child_that_said_nothing_yields_nothing_to_show() {
+        assert_eq!(last_meaningful_line(""), None);
+        // wimlib redraws with \r, so a killed child can leave only whitespace.
+        assert_eq!(last_meaningful_line("\r\n  \r\n"), None);
     }
 
     // The brief's exact `.last()` triggers clippy::double_ended_iterator_last
