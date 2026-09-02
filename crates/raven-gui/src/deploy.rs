@@ -93,6 +93,16 @@ pub fn run(args: &Args) -> impl Stream<Item = Message> + use<> {
 /// one `\n`-terminated line per update, so each chunk read off the pipe is
 /// split on both and only the last complete reading is reported - the ones
 /// before it were already stale by the time the read returned.
+///
+/// `Command::new("raven")` resolves through `$PATH`, not to this workspace's
+/// own build. That's the right binary to run in the packaged case the GUI
+/// ships for: the package installs the GUI and the CLI together at the same
+/// version (see `packaging/PKGBUILD`), so whichever `raven` `$PATH` finds is
+/// guaranteed to match. It is the wrong binary under `cargo run -p
+/// raven-gui`: PATH still resolves to the system's installed `/usr/bin/raven`
+/// rather than `target/debug/raven`, so a developer testing a CLI change
+/// against a freshly built GUI silently deploys with the old, already-
+/// installed CLI and sees no sign that happened.
 fn pump(args: &Args, mut output: mpsc::Sender<Message>) {
     let child = Command::new("raven")
         .arg("base")
