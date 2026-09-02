@@ -7,7 +7,7 @@
 use iced::Task;
 
 use crate::Message;
-use crate::model::{self, BaseRow, EnvRow};
+use crate::model::{self, BaseRow, Check, EnvRow};
 
 /// Loads every environment's state on a blocking worker.
 pub fn environments() -> Task<Message> {
@@ -43,6 +43,22 @@ pub fn bases() -> Task<Message> {
     )
 }
 
+/// Loads every diagnostic on a blocking worker. `checks` shells out to `wine
+/// --version`, which is enough of a subprocess call that it must not run on
+/// the interface thread either. Unlike `environments` and `bases`, `checks`
+/// cannot fail - it turns absence into a judgement rather than an error - so
+/// there is no `Err` case to carry.
+pub fn doctor() -> Task<Message> {
+    Task::perform(
+        async {
+            tokio::task::spawn_blocking(model::checks)
+                .await
+                .unwrap_or_default()
+        },
+        Message::Doctor,
+    )
+}
+
 /// The shape every loader returns: the data, or a message already fit to show.
 pub type Loaded<T> = Result<T, String>;
 
@@ -51,3 +67,6 @@ pub type EnvRows = Loaded<Vec<EnvRow>>;
 
 /// Named so the signature above reads: `Task<Message>` carrying `Loaded<Vec<BaseRow>>`.
 pub type BaseRows = Loaded<Vec<BaseRow>>;
+
+/// Named so the signature above reads: `Task<Message>` carrying `Vec<Check>`.
+pub type Checks = Vec<Check>;

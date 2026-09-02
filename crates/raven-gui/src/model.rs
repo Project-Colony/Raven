@@ -84,6 +84,68 @@ pub fn base_rows(bases: Vec<raven::base::Base>, envs: &[EnvRow]) -> Vec<BaseRow>
         .collect()
 }
 
+/// One line of the diagnostics screen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Check {
+    pub label: String,
+    pub ok: bool,
+    /// What it means, not just whether it passed. `raven doctor` reports
+    /// "absent - Wine falls back to wineserver for NT synchronization" rather
+    /// than "no", and the window keeps that.
+    pub detail: String,
+}
+
+/// The same four judgements `raven doctor` prints, from the same functions -
+/// a difference between the two would be a bug here, not a second opinion.
+pub fn checks() -> Vec<Check> {
+    use raven::mount::MountBackend as _;
+    let userns = raven::mount::UserNsOverlay::is_available();
+    let wine = raven::prefix::wine_available();
+    let ntsync = std::path::Path::new("/dev/ntsync").exists();
+    let media = raven::prefix::media_decoders();
+
+    vec![
+        Check {
+            label: "Unprivileged user namespaces".into(),
+            ok: userns,
+            detail: if userns {
+                "available - Raven can mount without root".into()
+            } else {
+                "this kernel restricts them, and Raven's only mount backend needs them".into()
+            },
+        },
+        Check {
+            label: "Wine".into(),
+            ok: wine,
+            detail: if wine {
+                "found".into()
+            } else {
+                "missing - Raven cannot run anything without it".into()
+            },
+        },
+        Check {
+            label: "ntsync".into(),
+            ok: ntsync,
+            detail: if ntsync {
+                "present".into()
+            } else {
+                "absent - Wine falls back to wineserver for NT synchronization".into()
+            },
+        },
+        Check {
+            label: "Media playback".into(),
+            ok: media.is_none(),
+            detail: match media {
+                None => "GStreamer decoders present".into(),
+                Some(missing) => format!(
+                    "incomplete: {}. Games will run with their cutscenes and music silently absent.",
+                    missing.join("; ")
+                ),
+            },
+        },
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,5 +181,19 @@ mod tests {
         row.session = Some(1);
         row.holders = 1;
         assert_eq!(row.status_line(), "running - 1 process");
+    }
+
+    #[test]
+    fn a_failing_check_carries_its_consequence_and_not_just_a_no() {
+        let c = Check {
+            label: "ntsync".into(),
+            ok: false,
+            detail: "absent - Wine falls back to wineserver for NT synchronization".into(),
+        };
+        assert!(!c.ok);
+        assert!(
+            c.detail.len() > "no".len(),
+            "the CLI explains what a missing check costs, and the window keeps that"
+        );
     }
 }

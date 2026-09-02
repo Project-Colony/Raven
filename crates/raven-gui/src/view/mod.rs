@@ -2,6 +2,7 @@
 
 pub mod bases;
 pub mod detail;
+pub mod doctor;
 pub mod environments;
 
 use iced::widget::{Space, button, column, container, row, text};
@@ -69,10 +70,7 @@ pub fn shell(app: &App) -> Element<'_, Message> {
             None => environments::screen(&app.envs),
         },
         Screen::Bases => bases::screen(&app.bases, app.deploying.as_ref(), &app.deploy_form),
-        Screen::Doctor => text("Diagnostics")
-            .size(t.sz(22))
-            .color(p.text_primary)
-            .into(),
+        Screen::Doctor => doctor::screen(&app.checks),
     };
 
     let banner: Element<'_, Message> = match &app.offer {

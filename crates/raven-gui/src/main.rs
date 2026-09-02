@@ -16,7 +16,7 @@ use std::path::PathBuf;
 
 use iced::{Element, Subscription, Task};
 
-use model::{BaseRow, EnvRow};
+use model::{BaseRow, Check, EnvRow};
 
 /// Which screen is showing.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -42,6 +42,7 @@ pub enum Message {
     Go(Screen),
     Environments(load::EnvRows),
     Bases(load::BaseRows),
+    Doctor(load::Checks),
     Refresh,
     Start(String),
     Stop(String),
@@ -68,6 +69,7 @@ pub struct App {
     pub(crate) screen: Screen,
     pub(crate) envs: Vec<EnvRow>,
     pub(crate) bases: Vec<BaseRow>,
+    pub(crate) checks: Vec<Check>,
     pub(crate) offer: Option<errors::Offer>,
     pub(crate) deploy_form: DeployForm,
     /// The bar the bases screen draws, when a deployment is running.
@@ -84,10 +86,10 @@ impl App {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Go(screen) => {
-                let task = if screen == Screen::Bases {
-                    load::bases()
-                } else {
-                    Task::none()
+                let task = match screen {
+                    Screen::Bases => load::bases(),
+                    Screen::Doctor => load::doctor(),
+                    _ => Task::none(),
                 };
                 self.screen = screen;
                 task
@@ -118,6 +120,10 @@ impl App {
                     message: e,
                     action: None,
                 });
+                Task::none()
+            }
+            Message::Doctor(rows) => {
+                self.checks = rows;
                 Task::none()
             }
             Message::Refresh => load::environments(),
