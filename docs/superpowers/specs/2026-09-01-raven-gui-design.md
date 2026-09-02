@@ -74,7 +74,7 @@ crates/raven-gui/     the new binary
 `colony-ui` is published on crates.io, so the dependency is a plain version:
 
 ```toml
-colony-ui = "0.1.3"
+colony-ui = "0.1.4"
 ```
 
 This changed during the design. It was a git dependency on a tag when the
@@ -83,9 +83,14 @@ until a second consumer had exercised the API. It was published instead, and
 Eidos - its first consumer - moved to `colony-ui = "0.1.1"`. Raven follows the
 convention that now exists rather than the one that did.
 
-`colony-ui` 0.1.3 requires `iced ^0.14.0`, which is the version Colony already
+`colony-ui` 0.1.4 requires `iced ^0.14.0`, which is the version Colony already
 uses, so the org stays on one iced rather than each repo drifting - the
 outcome the Resources workspace comment asks for.
+
+Naming the exact version is for the reader, not for Cargo: a `0.x` requirement
+already admits any later `0.1.y`, so `"0.1.3"` would have resolved to 0.1.4 on
+its own. The spec says which version it was written against so a future reader
+knows what was true.
 
 **What this touches outside the GUI**, which is the real cost of the split:
 
