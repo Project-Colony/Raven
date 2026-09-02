@@ -184,16 +184,28 @@ mod tests {
     }
 
     #[test]
-    fn a_failing_check_carries_its_consequence_and_not_just_a_no() {
-        let c = Check {
-            label: "ntsync".into(),
-            ok: false,
-            detail: "absent - Wine falls back to wineserver for NT synchronization".into(),
-        };
-        assert!(!c.ok);
-        assert!(
-            c.detail.len() > "no".len(),
-            "the CLI explains what a missing check costs, and the window keeps that"
+    fn every_check_carries_its_consequence_and_not_just_a_no() {
+        // `checks()` reads the machine, so which of them pass differs between
+        // machines and cannot be asserted on. What holds everywhere is the
+        // shape: four judgements, each one saying what it costs. Building a
+        // `Check` here and asserting on the string just typed would run none
+        // of that.
+        let checks = checks();
+        assert_eq!(
+            checks.len(),
+            4,
+            "raven doctor prints four judgements and the window shows the same four"
         );
+        for c in &checks {
+            assert!(!c.label.is_empty());
+            // A bare verdict is what `raven doctor` refuses to print, and the
+            // window shows whatever this returns, so it must refuse it too.
+            assert!(
+                !matches!(c.detail.as_str(), "" | "yes" | "no" | "ok"),
+                "{} said only {:?}, which is the green tick this screen exists to avoid",
+                c.label,
+                c.detail
+            );
+        }
     }
 }

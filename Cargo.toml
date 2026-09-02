@@ -12,8 +12,15 @@ repository = "https://github.com/Project-Colony/Raven"
 edition = "2024"
 rust-version = "1.85"
 
-# raven runs once per .exe launch, so what matters is start-up and size, both
-# measured before and after (numbers in the commit that added this).
+# Two binaries share this profile now, and they are paid for by different
+# people. `raven` runs once per .exe launch, so start-up and size are all that
+# matter, and both were measured before and after (numbers in the commit that
+# added this). `raven-gui` gains nothing measurable from either setting - it is
+# opened by hand, once, and then stays open - and pays for them in compile
+# time, since it links wgpu and iced under one codegen unit. The settings are
+# kept anyway: they are here for the launcher, which is the binary on the hot
+# path, and a second profile for the window would buy a faster build at the
+# cost of two release binaries built two different ways.
 # `panic = "abort"` is deliberately not set: it trades backtraces away for
 # little, and that decision is recorded in docs/project/consolidation.md.
 [profile.release]
