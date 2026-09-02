@@ -1,5 +1,6 @@
 //! Drawing. Nothing in here decides anything - `update` does that.
 
+pub mod detail;
 pub mod environments;
 
 use iced::widget::{Space, button, column, container, row, text};
@@ -13,19 +14,24 @@ pub fn shell(app: &App) -> Element<'_, Message> {
     let t = theme::typography();
     let p = theme::palette();
 
-    let item = |label: &'static str, screen: Screen, current: Screen| {
+    // `Screen::Detail` carries a `String`, so `Screen` is no longer `Copy`;
+    // `current` is taken by reference so the same `&app.screen` can feed all
+    // three calls below, and `selected` is settled before the `move` closure
+    // so `screen` stays available afterward for `on_press`.
+    let item = |label: &'static str, screen: Screen, current: &Screen| {
+        let selected = screen == *current;
         button(text(label).size(t.sz(13)))
             .width(Length::Fill)
             .style(move |_, _| button::Style {
                 background: Some(
-                    if screen == current {
+                    if selected {
                         p.bg_selected
                     } else {
                         p.bg_sidebar
                     }
                     .into(),
                 ),
-                text_color: if screen == current {
+                text_color: if selected {
                     p.accent_blue
                 } else {
                     p.text_secondary
@@ -39,9 +45,9 @@ pub fn shell(app: &App) -> Element<'_, Message> {
         column![
             text("Raven").size(t.sz(20)).color(p.text_primary),
             Space::new().height(t.sz(12)),
-            item("Environments", Screen::Environments, app.screen),
-            item("Bases", Screen::Bases, app.screen),
-            item("Diagnostics", Screen::Doctor, app.screen),
+            item("Environments", Screen::Environments, &app.screen),
+            item("Bases", Screen::Bases, &app.screen),
+            item("Diagnostics", Screen::Doctor, &app.screen),
         ]
         .spacing(t.sz(4)),
     )
@@ -53,8 +59,14 @@ pub fn shell(app: &App) -> Element<'_, Message> {
         ..Default::default()
     });
 
-    let body = match app.screen {
+    let body = match &app.screen {
         Screen::Environments => environments::screen(&app.envs),
+        Screen::Detail(name) => match app.envs.iter().find(|e| &e.name == name) {
+            Some(e) => detail::screen(e),
+            // The environment was destroyed from elsewhere between the click and
+            // the draw. Falling back is better than an empty page.
+            None => environments::screen(&app.envs),
+        },
         Screen::Bases => text("Bases").size(t.sz(22)).color(p.text_primary).into(),
         Screen::Doctor => text("Diagnostics")
             .size(t.sz(22))

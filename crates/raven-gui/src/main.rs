@@ -16,10 +16,11 @@ use iced::{Element, Task};
 use model::EnvRow;
 
 /// Which screen is showing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Screen {
     #[default]
     Environments,
+    Detail(String),
     Bases,
     Doctor,
 }
@@ -36,6 +37,11 @@ pub enum Message {
     // `Message: Clone`. `Arc` is `Clone` regardless of what it wraps, so it
     // carries the error across that boundary without the library changing.
     Acted(Result<(), std::sync::Arc<raven::Error>>),
+    Open(String),
+    InstallD3d { env: String, vkd3d: bool },
+    RemoveD3d { env: String, vkd3d: bool },
+    Detach { env: String, letter: char },
+    Reproject(String),
 }
 
 #[derive(Default)]
@@ -50,6 +56,10 @@ impl App {
         match message {
             Message::Go(screen) => {
                 self.screen = screen;
+                Task::none()
+            }
+            Message::Open(name) => {
+                self.screen = Screen::Detail(name);
                 Task::none()
             }
             Message::Environments(Ok(rows)) => {
@@ -94,6 +104,57 @@ impl App {
                 self.offer = Some(errors::explain(&e));
                 load::environments()
             }
+            Message::InstallD3d { env, vkd3d } => {
+                let which = if vkd3d { "vkd3d" } else { "dxvk" };
+                self.offer = Some(errors::Offer {
+                    message: format!(
+                        "Install it from a build you already have:  raven env {which} {env} --from <path>"
+                    ),
+                    action: None,
+                });
+                Task::none()
+            }
+            Message::RemoveD3d { env, vkd3d } => Task::perform(
+                async move {
+                    tokio::task::spawn_blocking(move || {
+                        let rt = if vkd3d {
+                            &raven::d3d::VKD3D
+                        } else {
+                            &raven::d3d::DXVK
+                        };
+                        let e = raven::env::Environment::open(&env)?;
+                        e.remove_d3d(rt).map(|_| ())
+                    })
+                    .await
+                    .expect("the blocking task panicked")
+                    .map_err(std::sync::Arc::new)
+                },
+                Message::Acted,
+            ),
+            Message::Detach { env, letter } => Task::perform(
+                async move {
+                    tokio::task::spawn_blocking(move || {
+                        raven::env::Environment::open(&env)?.detach(letter)
+                    })
+                    .await
+                    .expect("the blocking task panicked")
+                    .map_err(std::sync::Arc::new)
+                },
+                Message::Acted,
+            ),
+            Message::Reproject(env) => Task::perform(
+                async move {
+                    tokio::task::spawn_blocking(move || {
+                        raven::env::Environment::open(&env)?
+                            .project_registry()
+                            .map(|_| ())
+                    })
+                    .await
+                    .expect("the blocking task panicked")
+                    .map_err(std::sync::Arc::new)
+                },
+                Message::Acted,
+            ),
         }
     }
 

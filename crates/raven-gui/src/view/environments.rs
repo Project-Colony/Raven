@@ -57,10 +57,15 @@ fn card(e: &EnvRow) -> Element<'_, Message> {
         );
     }
 
+    let name = button(text(e.name.clone()).size(t.sz(16)).color(p.text_primary))
+        .style(|_, _| button::Style::default())
+        .padding(0.0)
+        .on_press(Message::Open(e.name.clone()));
+
     container(
         row![
             column![
-                text(e.name.clone()).size(t.sz(16)).color(p.text_primary),
+                name,
                 text(e.base.clone()).size(t.sz(11)).color(p.text_muted),
                 text(e.status_line())
                     .size(t.sz(12))
