@@ -66,6 +66,24 @@ pub fn env_rows(envs: Vec<Environment>) -> Vec<EnvRow> {
         .collect()
 }
 
+/// One deployed Windows, as the bases screen draws it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BaseRow {
+    pub id: String,
+    /// How many environments run against it, so destroying one is informed.
+    pub environments: usize,
+}
+
+pub fn base_rows(bases: Vec<raven::base::Base>, envs: &[EnvRow]) -> Vec<BaseRow> {
+    bases
+        .into_iter()
+        .map(|b| BaseRow {
+            environments: envs.iter().filter(|e| e.base == b.id).count(),
+            id: b.id,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,5 +1,6 @@
 //! Drawing. Nothing in here decides anything - `update` does that.
 
+pub mod bases;
 pub mod detail;
 pub mod environments;
 
@@ -67,7 +68,7 @@ pub fn shell(app: &App) -> Element<'_, Message> {
             // the draw. Falling back is better than an empty page.
             None => environments::screen(&app.envs),
         },
-        Screen::Bases => text("Bases").size(t.sz(22)).color(p.text_primary).into(),
+        Screen::Bases => bases::screen(&app.bases, app.deploying.as_ref(), &app.deploy_form),
         Screen::Doctor => text("Diagnostics")
             .size(t.sz(22))
             .color(p.text_primary)
