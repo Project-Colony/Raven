@@ -1,7 +1,7 @@
 [package]
 name = "raven"
 description = "Run Windows programs on Linux against a real Windows installation mounted as C:"
-version = "0.2.0" # x-release-please-version
+version = "0.3.0" # x-release-please-version
 license = "GPL-3.0-or-later"
 repository = "https://github.com/Project-Colony/Raven"
 edition = "2024"
