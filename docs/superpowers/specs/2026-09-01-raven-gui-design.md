@@ -71,17 +71,21 @@ crates/raven/         the library and the CLI binary, unchanged
 crates/raven-gui/     the new binary
 ```
 
-`colony-ui` is not on crates.io and does not need to be. Eidos - its only
-consumer - depends on it exactly this way:
+`colony-ui` is published on crates.io, so the dependency is a plain version:
 
 ```toml
-colony-ui = { git = "https://github.com/Project-Colony/Project-Colony-Resources", tag = "v0.1.0" }
+colony-ui = "0.1.3"
 ```
 
-Raven follows that convention rather than inventing a second one. Publishing to
-crates.io would force Eidos to migrate too, and would freeze an API that has
-been proven by one consumer. It is a reasonable thing to do later, once two
-GUIs have exercised it.
+This changed during the design. It was a git dependency on a tag when the
+question was first asked, and the recommendation then was to leave it that way
+until a second consumer had exercised the API. It was published instead, and
+Eidos - its first consumer - moved to `colony-ui = "0.1.1"`. Raven follows the
+convention that now exists rather than the one that did.
+
+`colony-ui` 0.1.3 requires `iced ^0.14.0`, which is the version Colony already
+uses, so the org stays on one iced rather than each repo drifting - the
+outcome the Resources workspace comment asks for.
 
 **What this touches outside the GUI**, which is the real cost of the split:
 
