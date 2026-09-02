@@ -5,10 +5,14 @@
 //! anything about environments; it draws what the library reports and asks the
 //! library to act.
 
+mod load;
+mod model;
 mod theme;
 
 use iced::widget::{column, container, text};
 use iced::{Element, Length, Task};
+
+use model::EnvRow;
 
 /// Which screen is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -22,11 +26,15 @@ pub enum Screen {
 #[derive(Debug, Clone)]
 pub enum Message {
     Go(Screen),
+    Environments(load::EnvRows),
+    Refresh,
 }
 
 #[derive(Default)]
 pub struct App {
     screen: Screen,
+    envs: Vec<EnvRow>,
+    error: Option<String>,
 }
 
 impl App {
@@ -36,6 +44,16 @@ impl App {
                 self.screen = screen;
                 Task::none()
             }
+            Message::Environments(Ok(rows)) => {
+                self.envs = rows;
+                self.error = None;
+                Task::none()
+            }
+            Message::Environments(Err(e)) => {
+                self.error = Some(e);
+                Task::none()
+            }
+            Message::Refresh => load::environments(),
         }
     }
 
@@ -55,8 +73,12 @@ impl App {
 }
 
 fn main() -> iced::Result {
-    iced::application(App::default, App::update, App::view)
-        .title("Raven")
-        .default_font(theme::APP_FONT)
-        .run()
+    iced::application(
+        || (App::default(), load::environments()),
+        App::update,
+        App::view,
+    )
+    .title("Raven")
+    .default_font(theme::APP_FONT)
+    .run()
 }

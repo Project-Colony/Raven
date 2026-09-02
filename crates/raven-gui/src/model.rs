@@ -1,0 +1,105 @@
+//! Plain data the screens draw.
+//!
+//! Kept apart from the drawing so it can be tested: an iced widget tree cannot
+//! be meaningfully asserted on, and pretending otherwise produces tests that
+//! pass whatever the window looks like.
+
+use std::path::PathBuf;
+
+use raven::d3d::{DXVK, VKD3D};
+use raven::env::Environment;
+
+/// One environment, as a card draws it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnvRow {
+    pub name: String,
+    pub base: String,
+    /// The session anchor's pid, when one is live.
+    pub session: Option<u32>,
+    /// How many processes hold the mount, the anchor included.
+    pub holders: usize,
+    /// The installed build, as the release named itself.
+    pub dxvk: Option<String>,
+    pub vkd3d: Option<String>,
+    /// Drive letter and the device behind it.
+    pub attachments: Vec<(char, PathBuf)>,
+}
+
+impl EnvRow {
+    pub fn is_running(&self) -> bool {
+        self.session.is_some()
+    }
+
+    /// The line under the environment's name. Written here rather than in the
+    /// view so it can be tested, and because "1 process" is not "1 processes".
+    pub fn status_line(&self) -> String {
+        if !self.is_running() {
+            return "not running".into();
+        }
+        let plural = if self.holders == 1 {
+            "process"
+        } else {
+            "processes"
+        };
+        format!("running - {} {plural}", self.holders)
+    }
+}
+
+/// Reads every environment's state. Touches `/proc` for each process on the
+/// machine and stats dozens of files, so this must not run on the interface
+/// thread - `load::environments` is the only intended caller.
+pub fn env_rows(envs: Vec<Environment>) -> Vec<EnvRow> {
+    envs.into_iter()
+        .map(|e| EnvRow {
+            name: e.name.clone(),
+            base: e.manifest.base.clone(),
+            session: e.session(),
+            holders: e.holders().len(),
+            dxvk: e.d3d_build(&DXVK),
+            vkd3d: e.d3d_build(&VKD3D),
+            attachments: e
+                .attachments()
+                .into_iter()
+                .map(|a| (a.letter, a.device))
+                .collect(),
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_environment_with_a_session_is_marked_running() {
+        let row = EnvRow {
+            name: "games".into(),
+            base: "win11-26200-pro".into(),
+            session: Some(4242),
+            holders: 9,
+            dxvk: Some("dxvk-3.1".into()),
+            vkd3d: None,
+            attachments: vec![],
+        };
+        assert!(row.is_running());
+        assert_eq!(row.status_line(), "running - 9 processes");
+    }
+
+    #[test]
+    fn an_environment_without_one_says_so_in_the_singular_when_it_should() {
+        let mut row = EnvRow {
+            name: "games".into(),
+            base: "b".into(),
+            session: None,
+            holders: 0,
+            dxvk: None,
+            vkd3d: None,
+            attachments: vec![],
+        };
+        assert!(!row.is_running());
+        assert_eq!(row.status_line(), "not running");
+        row.session = Some(1);
+        row.holders = 1;
+        assert_eq!(row.status_line(), "running - 1 process");
+    }
+}

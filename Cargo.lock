@@ -2572,6 +2572,7 @@ dependencies = [
  "colony-ui",
  "iced",
  "raven",
+ "tokio",
 ]
 
 [[package]]
