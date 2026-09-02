@@ -61,6 +61,12 @@ opposite of what a double-click means. Keeping the association on
 keeps that from happening. Both entries reuse the single `Icon=raven` already
 installed into the `hicolor` theme; there is no second icon to keep in sync.
 
+The window itself has to opt into that entry. A compositor matches a window's
+application id against a desktop file's basename, so `raven-gui` sets its
+`application_id` to `raven-gui` — without it the entry and the running window
+are unrelated as far as a taskbar is concerned, and the `Icon=raven` above
+never reaches one. `assets/brand/README.md` records that agreement in full.
+
 `build()` needed no change to produce the second binary: `cargo build
 --release` at the workspace root already builds every workspace member, so
 `raven-gui` comes out of the same command as `raven`. Only `package()` gained

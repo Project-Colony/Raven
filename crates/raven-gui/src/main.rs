@@ -361,5 +361,17 @@ fn main() -> iced::Result {
         .subscription(App::subscription)
         .title("Raven")
         .default_font(theme::APP_FONT)
+        // A Wayland compositor identifies a window by the application id it
+        // reports and looks for a desktop file with that basename; iced leaves
+        // it empty, so nothing would ever match `raven-gui.desktop` and the
+        // `Icon=raven` it carries would never reach a taskbar. The three-way
+        // agreement this belongs to is written down in assets/brand/README.md.
+        .window(iced::window::Settings {
+            platform_specific: iced::window::settings::PlatformSpecific {
+                application_id: "raven-gui".to_owned(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
         .run()
 }
