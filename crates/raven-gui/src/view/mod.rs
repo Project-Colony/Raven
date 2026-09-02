@@ -76,7 +76,14 @@ pub fn shell(app: &App) -> Element<'_, Message> {
     let banner: Element<'_, Message> = match &app.offer {
         None => Space::new().height(0).into(),
         Some(offer) => {
-            let mut r = row![text(offer.message.clone()).size(t.sz(13)).color(p.error)]
+            // A notice is guidance the window cannot carry out itself, not a
+            // failure, and painting it in the error colours would tell the user
+            // something went wrong when nothing did.
+            let (ink, ground) = match offer.kind {
+                crate::errors::Kind::Notice => (p.text_primary, p.bg_modal_section),
+                _ => (p.error, p.error_bg),
+            };
+            let mut r = row![text(offer.message.clone()).size(t.sz(13)).color(ink)]
                 .spacing(t.sz(8))
                 .align_y(iced::Alignment::Center);
             if let Some(crate::errors::Action::Stop(name)) = &offer.action {
@@ -90,7 +97,7 @@ pub fn shell(app: &App) -> Element<'_, Message> {
                 .padding(t.sz(10) as u16)
                 .width(Length::Fill)
                 .style(move |_| container::Style {
-                    background: Some(p.error_bg.into()),
+                    background: Some(ground.into()),
                     ..Default::default()
                 })
                 .into()

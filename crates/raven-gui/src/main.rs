@@ -13,10 +13,17 @@ mod theme;
 mod view;
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use iced::{Element, Subscription, Task};
 
+use errors::Offer;
 use model::{BaseRow, Check, EnvRow};
+
+/// How often the environments screen asks who holds a session, per the design's
+/// Data flow section. The one clock in the program, and it runs only while that
+/// screen is showing.
+const POLL: Duration = Duration::from_secs(2);
 
 /// Which screen is showing.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -70,7 +77,11 @@ pub struct App {
     pub(crate) envs: Vec<EnvRow>,
     pub(crate) bases: Vec<BaseRow>,
     pub(crate) checks: Vec<Check>,
-    pub(crate) offer: Option<errors::Offer>,
+    pub(crate) offer: Option<Offer>,
+    /// Whether an environments load is in flight. The poll fires on a clock
+    /// that knows nothing about how long `/proc` takes, so without this a slow
+    /// scan would have a second one queued behind it every two seconds.
+    loading_envs: bool,
     pub(crate) deploy_form: DeployForm,
     /// The bar the bases screen draws, when a deployment is running.
     pub(crate) deploying: Option<deploy::Progress>,
@@ -83,50 +94,97 @@ pub struct App {
 }
 
 impl App {
+    /// The window and the first load. `reload_environments` rather than
+    /// `load::environments` so `loading_envs` is true from the first frame:
+    /// the boot load and the first poll must not both be in flight.
+    fn boot() -> (Self, Task<Message>) {
+        let mut app = Self::default();
+        let task = app.reload_environments();
+        (app, task)
+    }
+
+    /// Reads every environment's state, and records that it is being read.
+    fn reload_environments(&mut self) -> Task<Message> {
+        self.loading_envs = true;
+        load::environments()
+    }
+
+    /// Forgets a banner the user has navigated away from. An error raised on
+    /// one screen means nothing above another, and leaving it there makes the
+    /// new screen look broken.
+    fn dismiss_offer(&mut self) {
+        self.offer = None;
+    }
+
+    /// Forgets a banner a *load* raised, and only that. A load succeeding says
+    /// the read works again; it says nothing about the action that failed, and
+    /// taking that message and its button away is what a two-second poll would
+    /// otherwise do to every error in the program.
+    fn dismiss_stale_load_error(&mut self) {
+        if matches!(
+            self.offer,
+            Some(Offer {
+                kind: errors::Kind::LoadError,
+                ..
+            })
+        ) {
+            self.offer = None;
+        }
+    }
+
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Go(screen) => {
-                let task = match screen {
+                self.dismiss_offer();
+                // The design asks for a reload on arriving at the environments
+                // screen: the poll only runs while it is showing, so without
+                // this the first two seconds show whatever was true when the
+                // user last left it.
+                let task = match &screen {
+                    Screen::Environments | Screen::Detail(_) => self.reload_environments(),
                     Screen::Bases => load::bases(),
                     Screen::Doctor => load::doctor(),
-                    _ => Task::none(),
                 };
                 self.screen = screen;
                 task
             }
-            Message::Open(name) => {
-                self.screen = Screen::Detail(name);
-                Task::none()
-            }
+            // Opening a card is navigating to its detail, and gets the same
+            // treatment rather than a second, quietly different one.
+            Message::Open(name) => self.update(Message::Go(Screen::Detail(name))),
             Message::Environments(Ok(rows)) => {
                 self.envs = rows;
-                self.offer = None;
+                self.loading_envs = false;
+                self.dismiss_stale_load_error();
                 Task::none()
             }
             Message::Environments(Err(e)) => {
-                self.offer = Some(errors::Offer {
-                    message: e,
-                    action: None,
-                });
+                self.loading_envs = false;
+                self.offer = Some(Offer::load_error(e));
                 Task::none()
             }
             Message::Bases(Ok(rows)) => {
                 self.bases = rows;
-                self.offer = None;
+                self.dismiss_stale_load_error();
                 Task::none()
             }
             Message::Bases(Err(e)) => {
-                self.offer = Some(errors::Offer {
-                    message: e,
-                    action: None,
-                });
+                self.offer = Some(Offer::load_error(e));
                 Task::none()
             }
             Message::Doctor(rows) => {
                 self.checks = rows;
                 Task::none()
             }
-            Message::Refresh => load::environments(),
+            // A poll that arrives while the last one is still reading `/proc`
+            // is dropped rather than queued: the answer it would fetch is the
+            // answer already on its way.
+            Message::Refresh => {
+                if self.loading_envs {
+                    Task::none()
+                } else {
+                    self.reload_environments()
+                }
+            }
             Message::Start(name) => Task::perform(
                 async move {
                     tokio::task::spawn_blocking(move || {
@@ -151,19 +209,22 @@ impl App {
                 },
                 Message::Acted,
             ),
-            Message::Acted(Ok(())) => load::environments(),
+            Message::Acted(Ok(())) => {
+                self.dismiss_offer();
+                self.reload_environments()
+            }
+            // The reload still happens: whatever the action did before it
+            // failed is part of the state. It no longer takes the banner with
+            // it - that is what `dismiss_stale_load_error` is careful about.
             Message::Acted(Err(e)) => {
                 self.offer = Some(errors::explain(&e));
-                load::environments()
+                self.reload_environments()
             }
             Message::InstallD3d { env, vkd3d } => {
                 let which = if vkd3d { "vkd3d" } else { "dxvk" };
-                self.offer = Some(errors::Offer {
-                    message: format!(
-                        "Install it from a build you already have:  raven env {which} {env} --from <path>"
-                    ),
-                    action: None,
-                });
+                self.offer = Some(Offer::notice(format!(
+                    "Install it from a build you already have:  raven env {which} {env} --from <path>"
+                )));
                 Task::none()
             }
             Message::RemoveD3d { env, vkd3d } => Task::perform(
@@ -234,14 +295,12 @@ impl App {
                             percent: 0,
                             what: "Starting".into(),
                         });
-                        self.offer = None;
+                        self.dismiss_offer();
                     }
                     _ => {
-                        self.offer = Some(errors::Offer {
-                            message: "Fill in the image path, a numeric edition, and a name."
-                                .into(),
-                            action: None,
-                        });
+                        self.offer = Some(Offer::action_error(
+                            "Fill in the image path, a numeric edition, and a name.".into(),
+                        ));
                     }
                 }
                 Task::none()
@@ -257,26 +316,39 @@ impl App {
                     self.deploy_form = DeployForm::default();
                     load::bases()
                 } else {
-                    self.offer = Some(errors::Offer {
-                        message: "Deployment failed. Run the same `raven base deploy` from a terminal to see why."
+                    self.offer = Some(Offer::action_error(
+                        "Deployment failed. Run the same `raven base deploy` from a terminal to see why."
                             .into(),
-                        action: None,
-                    });
+                    ));
                     Task::none()
                 }
             }
         }
     }
 
-    /// While a deployment is running, keeps its stream alive; otherwise
-    /// subscribes to nothing. `deploy_job` - not `deploying` - is the
-    /// identity `Subscription::run_with` hashes on, so editing the progress
-    /// text alone can never be mistaken for a new job.
+    /// The two things that run without being asked.
+    ///
+    /// A deployment's stream, while one is running: `deploy_job` - not
+    /// `deploying` - is the identity `Subscription::run_with` hashes on, so
+    /// editing the progress text alone can never be mistaken for a new job.
+    ///
+    /// And the design's one clock. Who holds a session changes without the
+    /// window doing anything, so the environments screen and its details poll
+    /// for it - and nothing else does, because reading `/proc` for every
+    /// process on the machine on behalf of a screen nobody is looking at is
+    /// exactly the waste the design refuses.
     fn subscription(&self) -> Subscription<Message> {
-        match &self.deploy_job {
+        let deploying = match &self.deploy_job {
             Some(args) => Subscription::run_with(args.clone(), deploy::run),
             None => Subscription::none(),
-        }
+        };
+        let polling = match self.screen {
+            Screen::Environments | Screen::Detail(_) => {
+                iced::time::every(POLL).map(|_| Message::Refresh)
+            }
+            Screen::Bases | Screen::Doctor => Subscription::none(),
+        };
+        Subscription::batch([deploying, polling])
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -285,13 +357,9 @@ impl App {
 }
 
 fn main() -> iced::Result {
-    iced::application(
-        || (App::default(), load::environments()),
-        App::update,
-        App::view,
-    )
-    .subscription(App::subscription)
-    .title("Raven")
-    .default_font(theme::APP_FONT)
-    .run()
+    iced::application(App::boot, App::update, App::view)
+        .subscription(App::subscription)
+        .title("Raven")
+        .default_font(theme::APP_FONT)
+        .run()
 }
