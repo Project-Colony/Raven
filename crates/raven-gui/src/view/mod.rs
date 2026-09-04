@@ -21,7 +21,14 @@ pub fn shell(app: &App) -> Element<'_, Message> {
     // three calls below, and `selected` is settled before the `move` closure
     // so `screen` stays available afterward for `on_press`.
     let item = |label: &'static str, screen: Screen, current: &Screen| {
-        let selected = screen == *current;
+        // An environment's detail is the Environments screen one level down:
+        // `Open` is `Go(Detail)` and its back button returns here. So that
+        // entry stays lit while a detail shows, rather than the whole sidebar
+        // going dark on the most common navigation in the window.
+        let selected = match (&screen, current) {
+            (Screen::Environments, Screen::Detail(_)) => true,
+            _ => screen == *current,
+        };
         button(text(label).size(t.sz(13)))
             .width(Length::Fill)
             .style(move |_, _| button::Style {
