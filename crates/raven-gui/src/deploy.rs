@@ -245,15 +245,11 @@ mod tests {
         assert_eq!(last_meaningful_line("\r\n  \r\n"), None);
     }
 
-    // The brief's exact `.last()` triggers clippy::double_ended_iterator_last
-    // (it would be `.next_back()` in code that ships); kept verbatim since the
-    // brief's test text is authoritative, and allowed rather than edited.
-    #[allow(clippy::double_ended_iterator_last)]
     #[test]
     fn a_carriage_return_stream_yields_the_last_complete_line() {
         // wimlib redraws in place with \r rather than emitting new lines.
         let chunk = "Extracting file data: 1 KiB of 10 KiB (10%) done\rExtracting file data: 5 KiB of 10 KiB (50%) done\r";
-        let last = chunk.split('\r').filter_map(parse_progress).last();
+        let last = chunk.split('\r').filter_map(parse_progress).next_back();
         assert_eq!(last.map(|p| p.percent), Some(50));
     }
 }
