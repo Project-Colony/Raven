@@ -86,11 +86,13 @@ pub fn shell(app: &App) -> Element<'_, Message> {
             let mut r = row![text(offer.message.clone()).size(t.sz(13)).color(ink)]
                 .spacing(t.sz(8))
                 .align_y(iced::Alignment::Center);
-            if let Some(crate::errors::Action::Stop(name)) = &offer.action {
+            // Both actions stop the environment; only the words differ, and
+            // they are the action's own so the view cannot mislabel one.
+            if let Some(action) = &offer.action {
                 r = r.push(
-                    button(text("Stop the session").size(t.sz(12)))
+                    button(text(action.label()).size(t.sz(12)))
                         .style(theme::button_style(p))
-                        .on_press(Message::Stop(name.clone())),
+                        .on_press(Message::Stop(action.env().to_owned())),
                 );
             }
             container(r)
