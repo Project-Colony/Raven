@@ -255,6 +255,77 @@ fn read_line_before(pipe: &std::process::ChildStdout, limit: std::time::Duration
     out
 }
 
+/// Holds a namespace open so later launches can join it.
+///
+/// Mounts, reports itself on stdout, then does nothing for as long as it is
+/// wanted. It must stay single-threaded until the mount is done - the kernel
+/// refuses `CLONE_NEWUSER` to a threaded process - which is why the readiness
+/// line is written only afterwards, and why a binary has to reach this before
+/// starting any runtime of its own.
+///
+/// In the library rather than the launcher because `start_session` runs
+/// `current_exe()` as the anchor: whichever binary asked for the session is
+/// the one that must be able to hold it. The window asks too, and until it
+/// could answer, its Start started a second window instead, said nothing on
+/// the pipe, and was killed thirty seconds later with a message blaming the
+/// kernel.
+pub fn anchor(name: &str) -> ! {
+    use crate::mount::MountBackend as _;
+    use std::io::Write as _;
+    // Every failure has to leave through stdout: the launcher reads that pipe
+    // and nothing else, and the anchor's stderr goes to /dev/null because it
+    // outlives the terminal that started it. An error on stderr would reach
+    // nobody, and the launcher would report only silence.
+    let report = |what: std::fmt::Arguments<'_>| -> ! {
+        println!("{what}");
+        let _ = std::io::stdout().flush();
+        std::process::exit(1);
+    };
+    let e = match crate::env::Environment::open(name) {
+        Ok(e) => e,
+        Err(err) => report(format_args!("{err}")),
+    };
+    let spec = match e.spec() {
+        Ok(s) => s,
+        Err(err) => report(format_args!("{err}")),
+    };
+    if let Err(err) = std::fs::create_dir_all(&spec.target) {
+        report(format_args!(
+            "could not create the mount point {}: {err}",
+            spec.target.display()
+        ));
+    }
+    // Bring the layer's opaque markers in line with the current shadow set
+    // before mounting. An environment created when Windows/Fonts was masked
+    // would otherwise stay masked for ever, and a user should not have to
+    // rebuild to receive a fix.
+    if let Err(err) = crate::layer::reconcile(&e.layer()) {
+        report(format_args!("could not reconcile the layer: {err}"));
+    }
+    if !crate::mount::UserNsOverlay::is_available() {
+        report(format_args!(
+            "this kernel restricts unprivileged user namespaces; run `raven doctor`"
+        ));
+    }
+    if let Err(err) = crate::mount::UserNsOverlay.mount(&spec) {
+        report(format_args!("could not mount the overlay: {err}"));
+    }
+    let pid = std::process::id();
+    // Written only after the mount exists, so a reader of this file never
+    // sees a session that cannot be joined.
+    if let Err(err) = std::fs::write(e.session_file(), format!("{pid}\n")) {
+        report(format_args!(
+            "could not record the session at {}: {err}",
+            e.session_file().display()
+        ));
+    }
+    println!("ready {pid}");
+    let _ = std::io::stdout().flush();
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(3600));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::env::{Environment, Manifest};

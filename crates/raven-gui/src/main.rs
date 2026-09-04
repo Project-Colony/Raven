@@ -331,6 +331,21 @@ fn act(
 }
 
 fn main() -> iced::Result {
+    // `ensure_session` starts the anchor as `current_exe() session-anchor
+    // <name>` - whichever binary asked. From the window, that is this one,
+    // so it answers here, before iced and tokio exist: the anchor's
+    // `unshare(CLONE_NEWUSER)` is refused to a process that has threads.
+    let mut args = std::env::args().skip(1);
+    if args.next().as_deref() == Some("session-anchor") {
+        match args.next() {
+            Some(name) => raven::session::anchor(&name),
+            None => {
+                // The launcher reads stdout and nothing else.
+                println!("session-anchor needs an environment name");
+                std::process::exit(1);
+            }
+        }
+    }
     iced::application(App::boot, App::update, App::view)
         .subscription(App::subscription)
         .title("Raven")

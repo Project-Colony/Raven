@@ -238,7 +238,7 @@ fn main() -> Result<()> {
             run(&e.name, argv, cwd)
         }
         Commands::Binfmt => binfmt(),
-        Commands::SessionAnchor { name } => session_anchor(&name),
+        Commands::SessionAnchor { name } => raven::session::anchor(&name),
         Commands::Exec {
             lower,
             upper,
@@ -697,68 +697,6 @@ fn d3d_cmd(
         }
     }
     Ok(())
-}
-
-/// Holds a namespace open so later launches can join it.
-///
-/// Mounts, reports itself, then does nothing for as long as it is wanted. It
-/// must stay single-threaded until the mount is done - the kernel refuses
-/// `CLONE_NEWUSER` to a threaded process - which is why the readiness line is
-/// written only afterwards.
-fn session_anchor(name: &str) -> Result<()> {
-    use std::io::Write as _;
-    // Every failure below has to leave through stdout: the launcher reads that
-    // pipe and nothing else, and the anchor's stderr goes to /dev/null because
-    // it outlives the terminal that started it. A `?` here would print to a
-    // stderr nobody is holding and the launcher would report only silence.
-    let report = |what: std::fmt::Arguments<'_>| -> ! {
-        println!("{what}");
-        let _ = std::io::stdout().flush();
-        std::process::exit(1);
-    };
-    let e = match env::Environment::open(name) {
-        Ok(e) => e,
-        Err(err) => report(format_args!("{err}")),
-    };
-    let spec = match e.spec() {
-        Ok(s) => s,
-        Err(err) => report(format_args!("{err}")),
-    };
-    if let Err(err) = std::fs::create_dir_all(&spec.target) {
-        report(format_args!(
-            "could not create the mount point {}: {err}",
-            spec.target.display()
-        ));
-    }
-    // Bring the layer's opaque markers in line with the current shadow set
-    // before mounting. An environment created when Windows/Fonts was masked
-    // would otherwise stay masked for ever, and a user should not have to
-    // rebuild to receive a fix.
-    if let Err(err) = raven::layer::reconcile(&e.layer()) {
-        report(format_args!("could not reconcile the layer: {err}"));
-    }
-    if !UserNsOverlay::is_available() {
-        report(format_args!(
-            "this kernel restricts unprivileged user namespaces; run `raven doctor`"
-        ));
-    }
-    if let Err(err) = UserNsOverlay.mount(&spec) {
-        report(format_args!("could not mount the overlay: {err}"));
-    }
-    let pid = std::process::id();
-    // Written only after the mount exists, so a reader of this file never sees
-    // a session that cannot be joined.
-    std::fs::write(e.session_file(), format!("{pid}\n")).with_context(|| {
-        format!(
-            "could not record the session at {}",
-            e.session_file().display()
-        )
-    })?;
-    println!("ready {pid}");
-    let _ = std::io::stdout().flush();
-    loop {
-        std::thread::sleep(std::time::Duration::from_secs(3600));
-    }
 }
 
 fn exec(
