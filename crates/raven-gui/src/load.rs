@@ -2,7 +2,8 @@
 //!
 //! Reading one environment's state opens `/proc` for every process on the
 //! machine. Doing that on the interface thread stutters the window, so every
-//! library call in the program goes through this module.
+//! read goes through this module, and the actions take the same blocking
+//! route through `act` in `main.rs`.
 
 use iced::Task;
 

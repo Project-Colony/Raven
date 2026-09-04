@@ -188,30 +188,8 @@ impl App {
                     self.reload_environments()
                 }
             }
-            Message::Start(name) => Task::perform(
-                async move {
-                    tokio::task::spawn_blocking(move || {
-                        let e = raven::env::Environment::open(&name)?;
-                        e.ensure_session().map(|_| ())
-                    })
-                    .await
-                    .expect("the blocking task panicked")
-                    .map_err(std::sync::Arc::new)
-                },
-                Message::Acted,
-            ),
-            Message::Stop(name) => Task::perform(
-                async move {
-                    tokio::task::spawn_blocking(move || {
-                        let e = raven::env::Environment::open(&name)?;
-                        e.stop().map(|_| ())
-                    })
-                    .await
-                    .expect("the blocking task panicked")
-                    .map_err(std::sync::Arc::new)
-                },
-                Message::Acted,
-            ),
+            Message::Start(name) => act(name, |e| e.ensure_session().map(|_| ())),
+            Message::Stop(name) => act(name, |e| e.stop().map(|_| ())),
             Message::Acted(Ok(())) => {
                 self.dismiss_offer();
                 self.reload_environments()
@@ -230,47 +208,16 @@ impl App {
                 )));
                 Task::none()
             }
-            Message::RemoveD3d { env, vkd3d } => Task::perform(
-                async move {
-                    tokio::task::spawn_blocking(move || {
-                        let rt = if vkd3d {
-                            &raven::d3d::VKD3D
-                        } else {
-                            &raven::d3d::DXVK
-                        };
-                        let e = raven::env::Environment::open(&env)?;
-                        e.remove_d3d(rt).map(|_| ())
-                    })
-                    .await
-                    .expect("the blocking task panicked")
-                    .map_err(std::sync::Arc::new)
-                },
-                Message::Acted,
-            ),
-            Message::Detach { env, letter } => Task::perform(
-                async move {
-                    tokio::task::spawn_blocking(move || {
-                        raven::env::Environment::open(&env)?.detach(letter)
-                    })
-                    .await
-                    .expect("the blocking task panicked")
-                    .map_err(std::sync::Arc::new)
-                },
-                Message::Acted,
-            ),
-            Message::Reproject(env) => Task::perform(
-                async move {
-                    tokio::task::spawn_blocking(move || {
-                        raven::env::Environment::open(&env)?
-                            .project_registry()
-                            .map(|_| ())
-                    })
-                    .await
-                    .expect("the blocking task panicked")
-                    .map_err(std::sync::Arc::new)
-                },
-                Message::Acted,
-            ),
+            Message::RemoveD3d { env, vkd3d } => act(env, move |e| {
+                let rt = if vkd3d {
+                    &raven::d3d::VKD3D
+                } else {
+                    &raven::d3d::DXVK
+                };
+                e.remove_d3d(rt).map(|_| ())
+            }),
+            Message::Detach { env, letter } => act(env, move |e| e.detach(letter)),
+            Message::Reproject(env) => act(env, |e| e.project_registry().map(|_| ())),
             Message::DeployImageChanged(image) => {
                 self.deploy_form.image = image;
                 Task::none()
@@ -358,6 +305,29 @@ impl App {
     fn view(&self) -> Element<'_, Message> {
         view::shell(self)
     }
+}
+
+/// Opens the environment on a blocking thread, runs one action against it,
+/// and reports the outcome as `Message::Acted`.
+///
+/// Every action in the window has this shape - open, one library call, the
+/// `Arc` bridge for the error - and writing it once means a sixth action
+/// cannot quietly do any of it differently. Off the interface thread for the
+/// reason `load` gives: the calls behind these read `/proc` and start
+/// processes.
+fn act(
+    env: String,
+    f: impl FnOnce(&raven::env::Environment) -> Result<(), raven::Error> + Send + 'static,
+) -> Task<Message> {
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || f(&raven::env::Environment::open(&env)?))
+                .await
+                .expect("the blocking task panicked")
+                .map_err(std::sync::Arc::new)
+        },
+        Message::Acted,
+    )
 }
 
 fn main() -> iced::Result {
