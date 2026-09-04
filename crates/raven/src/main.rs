@@ -496,7 +496,8 @@ fn env_cmd(cmd: EnvCmd) -> Result<()> {
                 let (n, s) = plural(holders.len());
                 out!("{name}: running - {n} process{s} holding its C:");
                 for h in &holders {
-                    out!("  {:>7}  {}", h.pid, h.comm);
+                    let role = if h.anchor { "  (session anchor)" } else { "" };
+                    out!("  {:>7}  {}{role}", h.pid, h.comm);
                 }
                 out!("Release it: raven env stop {name}");
             }

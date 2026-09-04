@@ -133,7 +133,7 @@ impl Environment {
             // ensure_not_running, because the environment may not open, and
             // that is exactly how it came to be the one command still saying
             // "still running - held by raven".
-            if holders.iter().all(|h| h.comm == "raven") {
+            if holders.iter().all(|h| h.anchor) {
                 return Err(Error::SessionHolds(name.to_owned()));
             }
             return Err(Error::EnvironmentBusy {
@@ -168,7 +168,7 @@ impl Environment {
         // A session anchor holding it is the ordinary state after a launch,
         // not a stuck process, and saying "still running - held by raven"
         // reads like a bug in Raven rather than the thing the user asked for.
-        if holders.iter().all(|h| h.comm == "raven") {
+        if holders.iter().all(|h| h.anchor) {
             return Err(Error::SessionHolds(self.name.clone()));
         }
         Err(Error::EnvironmentBusy {
@@ -212,6 +212,12 @@ impl Environment {
 pub struct Holder {
     pub pid: u32,
     pub comm: String,
+    /// Whether this is Raven's own session anchor, recognised by what it is
+    /// running - `<binary> session-anchor <name>` - and not by its name.
+    /// The anchor is whichever binary asked for the session, so the name is
+    /// `raven` from the launcher and `raven-gui` from the window, and a
+    /// test on the name called the window's own session a foreign program.
+    pub anchor: bool,
 }
 
 fn describe(holders: &[Holder]) -> String {
@@ -260,10 +266,19 @@ fn holders_of(upper: &std::path::Path) -> Vec<Holder> {
             let comm = std::fs::read_to_string(entry.path().join("comm"))
                 .map(|s| s.trim().to_owned())
                 .unwrap_or_else(|_| "?".to_owned());
-            held.push(Holder { pid, comm });
+            let anchor = std::fs::read(entry.path().join("cmdline"))
+                .map(|c| is_anchor_cmdline(&c))
+                .unwrap_or(false);
+            held.push(Holder { pid, comm, anchor });
         }
     }
     held
+}
+
+/// Whether a `/proc/<pid>/cmdline` - NUL-separated argv - is a session
+/// anchor's: its first argument is `session-anchor`, whatever the binary.
+fn is_anchor_cmdline(cmdline: &[u8]) -> bool {
+    cmdline.split(|b| *b == 0).nth(1) == Some(b"session-anchor".as_slice())
 }
 
 /// What this upper directory looks like inside `/proc/<pid>/mountinfo`.
@@ -505,5 +520,28 @@ mod tests {
         // and getting it backwards would silently let Microsoft's ntdll win.
         assert_eq!(env.layer(), PathBuf::from("/data/environments/x/layer"));
         assert!(env.layer().ends_with("layer"));
+    }
+}
+
+#[cfg(test)]
+mod anchor_tests {
+    use super::is_anchor_cmdline;
+
+    #[test]
+    fn the_anchor_is_recognised_by_what_it_runs_not_by_its_name() {
+        // Whichever binary asked for the session becomes its anchor, so the
+        // name is `raven` from the launcher and `raven-gui` from the window.
+        assert!(is_anchor_cmdline(
+            b"/usr/bin/raven\0session-anchor\0games\0"
+        ));
+        assert!(is_anchor_cmdline(
+            b"/usr/bin/raven-gui\0session-anchor\0games\0"
+        ));
+        // A launcher joining the session, and the programs inside it, are not.
+        assert!(!is_anchor_cmdline(
+            b"/usr/bin/raven\0run\0games\0--\0wine\0a.exe\0"
+        ));
+        assert!(!is_anchor_cmdline(b"wineserver\0"));
+        assert!(!is_anchor_cmdline(b""));
     }
 }
