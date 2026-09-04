@@ -74,11 +74,14 @@ pub struct BaseRow {
     pub environments: usize,
 }
 
-pub fn base_rows(bases: Vec<raven::base::Base>, envs: &[EnvRow]) -> Vec<BaseRow> {
+/// `env_bases` is one base id per environment, straight from the manifests.
+/// A count needs nothing more, and reading an environment's state to get it
+/// would walk `/proc` for every process on the machine, twice over.
+pub fn base_rows(bases: Vec<raven::base::Base>, env_bases: &[String]) -> Vec<BaseRow> {
     bases
         .into_iter()
         .map(|b| BaseRow {
-            environments: envs.iter().filter(|e| e.base == b.id).count(),
+            environments: env_bases.iter().filter(|base| **base == b.id).count(),
             id: b.id,
         })
         .collect()
@@ -181,6 +184,26 @@ mod tests {
         row.session = Some(1);
         row.holders = 1;
         assert_eq!(row.status_line(), "running - 1 process");
+    }
+
+    #[test]
+    fn a_base_counts_the_environments_built_on_it_from_their_ids_alone() {
+        // Counting must not cost a read of each environment's state: that
+        // walks /proc for every process on the machine, and the id is in the
+        // manifest already.
+        let bases = vec![
+            raven::base::Base {
+                id: "win11".into(),
+                path: PathBuf::new(),
+            },
+            raven::base::Base {
+                id: "win10".into(),
+                path: PathBuf::new(),
+            },
+        ];
+        let rows = base_rows(bases, &["win11".into(), "win11".into()]);
+        assert_eq!(rows[0].environments, 2);
+        assert_eq!(rows[1].environments, 0);
     }
 
     #[test]

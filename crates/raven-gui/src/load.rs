@@ -25,16 +25,21 @@ pub fn environments() -> Task<Message> {
     )
 }
 
-/// Loads every base and, so each one's count is right, every environment.
-/// Touches the same `/proc` state `environments` does, so this must not run
-/// on the interface thread either.
+/// Loads every base, and the base id of every environment so each count is
+/// right. The ids come from the manifests alone, so unlike `environments`
+/// this never touches `/proc`; it stays off the interface thread only
+/// because it reads the disk.
 pub fn bases() -> Task<Message> {
     Task::perform(
         async {
             tokio::task::spawn_blocking(|| -> Loaded<Vec<BaseRow>> {
                 let bases = raven::base::Base::list().map_err(|e| e.to_string())?;
-                let envs = raven::env::Environment::list().map_err(|e| e.to_string())?;
-                Ok(model::base_rows(bases, &model::env_rows(envs)))
+                let env_bases: Vec<String> = raven::env::Environment::list()
+                    .map_err(|e| e.to_string())?
+                    .into_iter()
+                    .map(|e| e.manifest.base)
+                    .collect();
+                Ok(model::base_rows(bases, &env_bases))
             })
             .await
             .unwrap_or_else(|e| Err(e.to_string()))
