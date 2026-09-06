@@ -117,8 +117,7 @@ impl Environment {
 
     /// Starts an anchor and waits for it to report that the mount is up.
     fn start_session(&self) -> Result<u32, Error> {
-        let exe = std::env::current_exe().map_err(|e| Error::Tool("raven", e))?;
-        let mut cmd = Command::new(exe);
+        let mut cmd = Command::new(helper()?);
         cmd.arg("session-anchor")
             .arg(&self.name)
             .stdin(Stdio::null())
@@ -206,6 +205,35 @@ impl Environment {
     /// Forgets a session's record. The processes are `stop`'s business.
     pub fn clear_session(&self) {
         let _ = std::fs::remove_file(self.session_file());
+    }
+}
+
+/// The binary to re-run for the work the library cannot do in this process.
+///
+/// Two things are done by re-running Raven: holding a session open, and
+/// mounting for a registry import. Both need a process that will be replaced
+/// or will sleep for ever, so they cannot happen here - and both used to run
+/// `current_exe()`, which is right for the launcher and wrong for the window.
+/// The window can answer `session-anchor`, but `exec` would have it mount and
+/// exec over itself, so it refuses; running the CLI beside it instead means
+/// neither verb depends on which binary the user happened to start.
+pub(crate) fn helper() -> Result<PathBuf, Error> {
+    let exe = std::env::current_exe().map_err(|e| Error::Tool("raven", e))?;
+    Ok(helper_binary(&exe))
+}
+
+/// `raven` next to `exe` if there is one, else `exe` itself.
+///
+/// The package installs both binaries into `/usr/bin` and a cargo build puts
+/// both in `target/<profile>`, so the sibling exists in every layout Raven
+/// ships or is developed in. Where it does not, re-running ourselves is the
+/// old behaviour and still correct for the launcher.
+fn helper_binary(exe: &std::path::Path) -> PathBuf {
+    let sibling = exe.with_file_name("raven");
+    if sibling.is_file() {
+        sibling
+    } else {
+        exe.to_path_buf()
     }
 }
 
@@ -323,6 +351,41 @@ pub fn anchor(name: &str) -> ! {
     let _ = std::io::stdout().flush();
     loop {
         std::thread::sleep(std::time::Duration::from_secs(3600));
+    }
+}
+
+#[cfg(test)]
+mod helper_tests {
+    use super::helper_binary;
+
+    #[test]
+    fn the_helper_is_the_cli_beside_us_when_there_is_one() {
+        // The library re-runs its own binary for `session-anchor` and for the
+        // `exec` behind a registry import. From the window that would be the
+        // window - which answers neither well - so a `raven` next to it is
+        // preferred. The package installs both into /usr/bin and a cargo
+        // build puts both in target/<profile>, so the sibling is there in
+        // every layout Raven ships or is developed in.
+        let dir = std::env::temp_dir().join(format!("raven-helper-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let gui = dir.join("raven-gui");
+        std::fs::write(&gui, b"").unwrap();
+
+        // No sibling yet: the only thing to re-run is ourselves.
+        assert_eq!(helper_binary(&gui), gui);
+
+        let cli = dir.join("raven");
+        std::fs::write(&cli, b"").unwrap();
+        assert_eq!(
+            helper_binary(&gui),
+            cli,
+            "the CLI beside us answers both verbs"
+        );
+        // The CLI itself is its own helper, not a self-reference through a
+        // path that happens to have the same name.
+        assert_eq!(helper_binary(&cli), cli);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 

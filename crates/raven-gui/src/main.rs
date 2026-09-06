@@ -330,21 +330,48 @@ fn act(
     )
 }
 
-fn main() -> iced::Result {
-    // `ensure_session` starts the anchor as `current_exe() session-anchor
-    // <name>` - whichever binary asked. From the window, that is this one,
-    // so it answers here, before iced and tokio exist: the anchor's
-    // `unshare(CLONE_NEWUSER)` is refused to a process that has threads.
-    let mut args = std::env::args().skip(1);
-    if args.next().as_deref() == Some("session-anchor") {
-        match args.next() {
+/// Answers a command line rather than opening a window, and never returns.
+///
+/// The library re-runs a Raven binary for the two things it cannot do in the
+/// calling process - holding a session open, and mounting for a registry
+/// import - and it prefers the `raven` beside us for both. Should it ever
+/// fall back to this binary, falling through to iced would put a second,
+/// unexplained window on the user's screen and, worse, hand the caller the
+/// exit status of a window they closed: a registry import that projected
+/// nothing would report success. So anything that is not a window is
+/// answered here, before iced and tokio exist - which `session-anchor` needs
+/// anyway, since its `unshare(CLONE_NEWUSER)` is refused to a process that
+/// already has threads.
+///
+/// Everything is said on stdout: that is the stream the library reads.
+fn answer(verb: &str) -> ! {
+    match verb {
+        "session-anchor" => match std::env::args().nth(2) {
             Some(name) => raven::session::anchor(&name),
             None => {
-                // The launcher reads stdout and nothing else.
                 println!("session-anchor needs an environment name");
                 std::process::exit(1);
             }
+        },
+        "--help" | "-h" => {
+            println!("raven-gui - Raven's administration window. It takes no arguments.");
+            println!("The command line is `raven`; run `raven --help` for it.");
+            std::process::exit(0);
         }
+        "--version" | "-V" => {
+            println!("raven-gui {}", env!("CARGO_PKG_VERSION"));
+            std::process::exit(0);
+        }
+        other => {
+            println!("raven-gui does not answer {other:?}; run `raven {other}` instead.");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn main() -> iced::Result {
+    if let Some(verb) = std::env::args().nth(1) {
+        answer(&verb);
     }
     iced::application(App::boot, App::update, App::view)
         .subscription(App::subscription)

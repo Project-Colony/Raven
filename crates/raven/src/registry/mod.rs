@@ -66,8 +66,7 @@ pub fn import(
 ) -> Result<(), Error> {
     std::fs::create_dir_all(&spec.target).map_err(|e| Error::Layer(spec.target.clone(), e))?;
 
-    let me = std::env::current_exe().map_err(|e| Error::Tool("raven", e))?;
-    let mut cmd = Command::new(me);
+    let mut cmd = Command::new(crate::session::helper()?);
     cmd.arg("exec");
     for l in &spec.lower {
         cmd.arg("--lower").arg(l);
