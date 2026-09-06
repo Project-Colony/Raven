@@ -306,6 +306,16 @@ fn doctor() -> Result<()> {
         "bases                        : {}",
         base::Base::list()?.len()
     );
+    // A deploy that was interrupted leaves several gigabytes under a hidden
+    // name that `base list` passes over on purpose. Nothing else would ever
+    // mention it, so the diagnostics do.
+    for (id, path) in base::partials()? {
+        out!(
+            "  interrupted deploy of {id:?}, still on disk at {}",
+            path.display()
+        );
+        out!("  deploy {id:?} again to finish it, or remove that directory");
+    }
     out!(
         "environments                 : {}",
         env::Environment::list()?.len()

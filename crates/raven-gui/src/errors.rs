@@ -32,10 +32,18 @@ impl Action {
         }
     }
 
-    /// The environment the action is about.
-    pub fn env(&self) -> &str {
+    /// What pressing it asks for.
+    ///
+    /// Only `StopSession` goes through the stop that checks again first: its
+    /// label promises nothing of the user's is running, and the banner
+    /// carrying it outlives the poll, so that promise can go stale.
+    /// `StopHolders` has already said it will end the programs it lists, and
+    /// routing it through the same check made it refuse in exactly the case
+    /// it exists for - a button that re-raised its own banner for ever.
+    pub fn message(&self) -> crate::Message {
         match self {
-            Action::StopSession(name) | Action::StopHolders(name) => name,
+            Action::StopSession(name) => crate::Message::StopSession(name.clone()),
+            Action::StopHolders(name) => crate::Message::Stop(name.clone()),
         }
     }
 }
@@ -147,6 +155,28 @@ mod tests {
             offer.message.contains("1234 (ShineHill.exe)") && offer.message.contains("ends"),
             "must say what it will end: {}",
             offer.message
+        );
+    }
+
+    #[test]
+    fn the_stop_that_ends_the_users_programs_does_not_ask_permission_first() {
+        // The guarded stop refuses when anything but Raven's anchor holds the
+        // environment - which is exactly when this banner is raised. Sending
+        // it there made the button a loop: it re-raised its own banner and
+        // released nothing, and every card's Stop went with it, because Wine's
+        // services hold the mount from the moment Start warms them.
+        let busy = explain(&Error::EnvironmentBusy {
+            name: "games".into(),
+            holders: "1234 (ShineHill.exe)".into(),
+        });
+        assert!(
+            matches!(busy.action.unwrap().message(), crate::Message::Stop(n) if n == "games"),
+            "a stop that names what it ends must go straight through"
+        );
+        let session = explain(&Error::SessionHolds("games".into()));
+        assert!(
+            matches!(session.action.unwrap().message(), crate::Message::StopSession(n) if n == "games"),
+            "and the one promising nothing is running must look again"
         );
     }
 

@@ -152,7 +152,7 @@ pub fn checks() -> Vec<Check> {
 
 /// Who the kernel hands a double-clicked `.exe` to.
 ///
-/// The check `raven doctor` leads with, and the one the window most needs:
+/// The check `raven doctor` closes with, and the one the window most needs:
 /// Wine registers a handler for the same `MZ` magic, the kernel silently
 /// picks the most recently registered, and losing that race looks exactly
 /// like Raven losing its prefix. Someone using the window rather than a

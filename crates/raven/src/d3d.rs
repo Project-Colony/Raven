@@ -152,6 +152,20 @@ impl Environment {
                 for r in &created {
                     let _ = std::fs::remove_file(self.upper().join(r));
                 }
+                // An upgrade has by now overwritten some of the previous
+                // build's libraries in place, and those are not undone -
+                // deleting them would uninstall what was working. What is
+                // left is genuinely neither version, so the record stops
+                // naming one: `dxvk` says so, and reinstalling either build
+                // puts it right.
+                if !ours.is_empty() {
+                    let was = self.d3d_build(rt).unwrap_or_else(|| rt.key.to_string());
+                    let _ = write_manifest(
+                        &self.d3d_manifest_path(rt),
+                        &format!("{was} - interrupted upgrade, reinstall to settle it"),
+                        &ours,
+                    );
+                }
                 return Err(Error::Layer(to.clone(), e));
             }
             if is_new {
@@ -331,8 +345,6 @@ fn unique_dlls(done: &[Shadow]) -> Vec<String> {
     names
 }
 
-/// A directory holding the DXVK build, plus a guard that deletes it again if we
-/// created it by extracting an archive.
 /// Records which libraries Raven has put in the environment, and which build
 /// they came from - "which DXVK do I have" being the first question after
 /// "is one installed".
@@ -341,6 +353,8 @@ fn write_manifest(path: &std::path::Path, version: &str, files: &[String]) -> Re
     std::fs::write(path, body).map_err(|e| Error::Layer(path.to_path_buf(), e))
 }
 
+/// A directory holding the DXVK build, plus a guard that deletes it again if we
+/// created it by extracting an archive.
 fn unpack(source: &Path) -> Result<(PathBuf, Option<TempDir>), Error> {
     if source.is_dir() {
         return Ok((source.to_path_buf(), None));

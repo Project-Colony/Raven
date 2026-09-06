@@ -99,7 +99,7 @@ pub fn shell(app: &App) -> Element<'_, Message> {
                 r = r.push(
                     button(text(action.label()).size(t.sz(12)))
                         .style(theme::button_style(p))
-                        .on_press(Message::Stop(action.env().to_owned())),
+                        .on_press(action.message()),
                 );
             }
             container(r)

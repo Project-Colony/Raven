@@ -110,8 +110,9 @@ The cause was measured — win32u re-checking ~340 real font files at every
 process start — and masking the base's `Windows\Fonts` brought it to **135 ms
 against plain Wine's 113 (1.19×)**. That mask has since been withdrawn: a
 Windows whose registry declares 961 fonts while `C:\Windows\Fonts` holds none
-is not the real thing, and sessions made the trade cheap to reverse, because
-the cost now falls once on the anchor rather than on every launch. Four
+is not the real thing, and sessions made the trade cheap to reverse: a launch
+costs about a quarter of a second rather than two, so the same per-process 92
+ms is a much smaller share of it than it was. Four
 plausible theories were falsified on
 the way, the `wineserver` excess turned out not to exist at all, and the whole
 investigation is in [../internals/performance.md](../internals/performance.md).

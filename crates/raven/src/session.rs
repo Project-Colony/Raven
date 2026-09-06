@@ -90,7 +90,7 @@ impl Environment {
                     // Somebody else is starting one. Wait for their session
                     // rather than racing it, and fall back to trying
                     // ourselves if their attempt died without cleaning up.
-                    if let Some(pid) = self.wait_for_session() {
+                    if let Some(pid) = self.wait_for_session(&lock) {
                         return Ok(pid);
                     }
                     let _ = std::fs::remove_file(&lock);
@@ -103,12 +103,22 @@ impl Environment {
         started
     }
 
-    /// Waits briefly for somebody else's anchor to come up.
-    fn wait_for_session(&self) -> Option<u32> {
+    /// Waits for somebody else's anchor to come up, or for them to give up.
+    ///
+    /// Both endings matter. Watching only for the session meant that when the
+    /// holder failed - a renamed base, a kernel that refuses the mount - it
+    /// dropped its lock within milliseconds and the waiter still sat out the
+    /// full thirty seconds before trying anything itself. The lock going away
+    /// is the holder saying it is no longer starting one, and it is the same
+    /// signal that clears a lock left behind by a launcher that was killed.
+    fn wait_for_session(&self, lock: &std::path::Path) -> Option<u32> {
         let deadline = std::time::Instant::now() + READY_TIMEOUT;
         while std::time::Instant::now() < deadline {
             if let Some(pid) = self.session() {
                 return Some(pid);
+            }
+            if !lock.exists() {
+                return None;
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
@@ -316,11 +326,11 @@ fn read_line_before(pipe: &std::process::ChildStdout, limit: std::time::Duration
 /// line is written only afterwards, and why a binary has to reach this before
 /// starting any runtime of its own.
 ///
-/// In the library rather than the launcher because `start_session` runs
-/// `current_exe()` as the anchor: whichever binary asked for the session is
-/// the one that must be able to hold it. The window asks too, and until it
-/// could answer, its Start started a second window instead, said nothing on
-/// the pipe, and was killed thirty seconds later with a message blaming the
+/// In the library rather than the launcher because either binary may end up
+/// running it: `start_session` prefers the `raven` beside it, and falls back
+/// to whichever binary asked. The window asks too, and until it could answer,
+/// its Start started a second window instead, said nothing on the pipe, and
+/// was killed thirty seconds later with a message blaming the
 /// kernel.
 pub fn anchor(name: &str) -> ! {
     use crate::mount::MountBackend as _;
@@ -333,6 +343,19 @@ pub fn anchor(name: &str) -> ! {
         println!("{what}");
         let _ = std::io::stdout().flush();
         std::process::exit(1);
+    };
+    // `Error::Layer` reads "preparing the layer failed at <path>" and keeps
+    // the errno as a source, which anyhow prints for the CLI and `Display`
+    // drops. This line is all the launcher ever shows, and "permission
+    // denied" is the difference between a bug and a chmod.
+    let because = |e: &dyn std::error::Error| -> String {
+        let mut out = e.to_string();
+        let mut source = e.source();
+        while let Some(s) = source {
+            out.push_str(&format!(": {s}"));
+            source = s.source();
+        }
+        out
     };
     let e = match crate::env::Environment::open(name) {
         Ok(e) => e,
@@ -353,7 +376,10 @@ pub fn anchor(name: &str) -> ! {
     // would otherwise stay masked for ever, and a user should not have to
     // rebuild to receive a fix.
     if let Err(err) = crate::layer::reconcile(&e.layer()) {
-        report(format_args!("could not reconcile the layer: {err}"));
+        report(format_args!(
+            "could not reconcile the layer: {}",
+            because(&err)
+        ));
     }
     if !crate::mount::UserNsOverlay::is_available() {
         report(format_args!(
@@ -361,7 +387,10 @@ pub fn anchor(name: &str) -> ! {
         ));
     }
     if let Err(err) = crate::mount::UserNsOverlay.mount(&spec) {
-        report(format_args!("could not mount the overlay: {err}"));
+        report(format_args!(
+            "could not mount the overlay: {}",
+            because(&err)
+        ));
     }
     let pid = std::process::id();
     // Written only after the mount exists, so a reader of this file never

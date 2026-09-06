@@ -210,7 +210,8 @@ been given back: masking it saved ~92 ms of every process start (227 → 135 ms
 measured) because `win32u` re-checks ~340 font files at each one, but a Windows
 whose registry declares 961 fonts while `C:\Windows\Fonts` holds none is
 incoherent, and a real Windows is the whole premise. Sessions made the trade
-cheap to reverse — the cost falls on the anchor now, not on every launch.
+cheap to reverse: a launch costs about a quarter of a second rather than two,
+so the same per-process 92 ms is a much smaller share of it than it was.
 `layer::reconcile` un-masks the directory before every mount, so environments
 created under the mask healed themselves. That is the whole list.
 

@@ -166,8 +166,9 @@ impl Environment {
     /// `holders` asks that of every process on the machine; this asks it of
     /// one. The difference is the launch path's whole cost: validating the
     /// recorded anchor is a question about a single pid, and answering it by
-    /// scanning `/proc` was measured at 37 ms of a 32 ms warm launch - the
-    /// scan *was* the launch. Reading one `mountinfo` gives the same answer.
+    /// scanning `/proc` took all but about 2 ms of a 32 ms warm launch on a
+    /// 454-process machine - the scan *was* the launch. Reading the one
+    /// process's `mountinfo` gives the same answer.
     pub fn holds(&self, pid: u32) -> bool {
         let needle = mountinfo_needle(&self.upper());
         std::fs::read_to_string(format!("/proc/{pid}/mountinfo"))

@@ -51,7 +51,7 @@ impl Base {
 
     pub fn find(id: &str) -> Result<Base, Error> {
         let path = paths::bases_dir()?.join(paths::check_name(id)?);
-        if !path.is_dir() {
+        if !is_base_dir(id) || !path.is_dir() {
             return Err(Error::NoSuchBase(id.to_owned()));
         }
         Ok(Base {
@@ -177,6 +177,32 @@ pub fn deploy(image: &Path, index: u32, id: &str) -> Result<Base, Error> {
 /// that skips it is exact: a name is only ever hidden from `list` when Raven
 /// wrote it, never because a user chose one starting with a dot.
 const PARTIAL: &str = ".partial-";
+
+/// The deploys that were interrupted, and the directories they left.
+///
+/// Applying an image into a partial directory means an interrupted deploy
+/// leaves one behind - several gigabytes of it - and hiding it from `list`
+/// would hide it from the user too. `raven doctor` reports these so the
+/// space is accountable; the next deploy of the same id clears one on its
+/// own.
+pub fn partials() -> Result<Vec<(String, PathBuf)>, Error> {
+    let dir = paths::bases_dir()?;
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut out: Vec<(String, PathBuf)> = std::fs::read_dir(&dir)
+        .map_err(|e| Error::Layer(dir.clone(), e))?
+        .filter_map(Result::ok)
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            name.strip_prefix(PARTIAL)
+                .map(|id| (id.to_owned(), e.path()))
+        })
+        .collect();
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(out)
+}
 
 /// Where a deploy applies before it has earned the real name.
 fn partial_name(id: &str) -> String {

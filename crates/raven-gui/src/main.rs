@@ -53,15 +53,28 @@ pub enum Message {
     Refresh,
     Start(String),
     Stop(String),
+    /// A stop offered on the promise that only Raven's anchor holds the
+    /// environment. Distinct from `Stop` because that promise is checked
+    /// again before it acts; see `errors::Action::message`.
+    StopSession(String),
     // `raven::Error` holds `std::io::Error` in some variants, so it cannot be
     // `Clone` - and iced's widgets (`Button::on_press` among them) require
     // `Message: Clone`. `Arc` is `Clone` regardless of what it wraps, so it
     // carries the error across that boundary without the library changing.
     Acted(Result<(), std::sync::Arc<raven::Error>>),
     Open(String),
-    InstallD3d { env: String, vkd3d: bool },
-    RemoveD3d { env: String, vkd3d: bool },
-    Detach { env: String, letter: char },
+    InstallD3d {
+        env: String,
+        vkd3d: bool,
+    },
+    RemoveD3d {
+        env: String,
+        vkd3d: bool,
+    },
+    Detach {
+        env: String,
+        letter: char,
+    },
     Reproject(String),
     DeployImageChanged(String),
     DeployEditionChanged(String),
@@ -200,18 +213,23 @@ impl App {
                 e.warm_up();
                 Ok(())
             }),
-            Message::Stop(name) => act(name, |e| {
-                // The banner that offers this says "Stop the session", on the
-                // library's judgement that only Raven's own anchor holds the
-                // environment - and that banner is deliberately long-lived,
-                // exempt from the poll that clears the others. A game started
-                // in between would be killed by a button whose words promised
-                // it would not be. Asking again costs one read and lets the
-                // banner relabel itself instead.
+            // What every Stop control the user can see asks for: the card's,
+            // the detail screen's, and the banner that already says it will
+            // end the programs it lists. Wine's services hold the mount from
+            // the moment an environment is started, so a stop that refused
+            // while anything but the anchor held it would refuse always.
+            Message::Stop(name) => act(name, |e| e.stop().map(|_| ())),
+            Message::StopSession(name) => act(name, |e| {
+                // This one is offered on the library's judgement that only
+                // Raven's own anchor holds the environment, and the banner
+                // carrying it is deliberately long-lived - exempt from the
+                // poll that clears the others. A program started in between
+                // would be killed by a button whose words promised it would
+                // not be, so the judgement is taken again; when it has
+                // changed, the error relabels the banner honestly.
                 match e.ensure_not_running() {
-                    // Nothing there, or nothing but our own anchor.
-                    Ok(()) | Err(raven::Error::SessionHolds(_)) => e.stop().map(|_| ()),
-                    Err(other) => Err(other),
+                    Err(busy @ raven::Error::EnvironmentBusy { .. }) => Err(busy),
+                    _ => e.stop().map(|_| ()),
                 }
             }),
             Message::Acted(Ok(())) => {
