@@ -132,8 +132,14 @@ impl Environment {
         }
 
         let mut written: Vec<String> = Vec::new();
+        let mut created: Vec<String> = Vec::new();
         let mut done = Vec::new();
         for (from, to, rel, dll, arch) in &plan {
+            // Whether this call is the reason the file is there. An upgrade
+            // copies over the previous install's libraries, and undoing that
+            // by deleting them would turn a failed upgrade into an uninstall
+            // of the build that was working.
+            let is_new = !to.exists();
             let copy = (|| {
                 if let Some(parent) = to.parent() {
                     std::fs::create_dir_all(parent)?;
@@ -143,10 +149,13 @@ impl Environment {
             if let Err(e) = copy {
                 // Undo the half-install rather than leave the environment in a
                 // state neither `dxvk` nor `--remove` can describe.
-                for r in &written {
+                for r in &created {
                     let _ = std::fs::remove_file(self.upper().join(r));
                 }
                 return Err(Error::Layer(to.clone(), e));
+            }
+            if is_new {
+                created.push(rel.clone());
             }
             written.push(rel.clone());
             done.push(Shadow {
@@ -158,6 +167,24 @@ impl Environment {
 
         written.sort();
         written.dedup();
+
+        // The record goes down as soon as the files exist, and describes a
+        // superset of them from here on. Everything below can fail - the
+        // superseded sweep, reading and rewriting user.reg - and until this
+        // was written first, a failure there left libraries in the upper
+        // layer that `dxvk` could not see, `--remove` could not remove, and
+        // the next install refused as somebody else's, telling the user to
+        // move aside files Raven had put there itself. `d3d` already skips
+        // manifest entries that are not files, so a superset is harmless.
+        let version = root
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "unknown".into());
+        let m = self.d3d_manifest_path(rt);
+        let mut described: Vec<String> = written.iter().chain(ours.iter()).cloned().collect();
+        described.sort();
+        described.dedup();
+        write_manifest(&m, &version, &described)?;
 
         // Installing over an older build is the normal way to update, and
         // upstream drops modules between versions - d3d10.dll went that way.
@@ -192,16 +219,9 @@ impl Environment {
         }
         text::write_atomic(&reg, &text)?;
 
-        // The build's own directory name is the only version DXVK ships in a
-        // release, and "which DXVK do I have" is the first question after "is
-        // it installed" - so it is recorded rather than left to be guessed.
-        let version = root
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "unknown".into());
-        let m = self.d3d_manifest_path(rt);
-        let body = format!("#build {version}\n{}\n", written.join("\n"));
-        std::fs::write(&m, body).map_err(|e| Error::Layer(m, e))?;
+        // Narrowed to exactly what is installed now that the superseded
+        // files are gone and the overrides agree with them.
+        write_manifest(&m, &version, &written)?;
         Ok(done)
     }
 
@@ -313,6 +333,14 @@ fn unique_dlls(done: &[Shadow]) -> Vec<String> {
 
 /// A directory holding the DXVK build, plus a guard that deletes it again if we
 /// created it by extracting an archive.
+/// Records which libraries Raven has put in the environment, and which build
+/// they came from - "which DXVK do I have" being the first question after
+/// "is one installed".
+fn write_manifest(path: &std::path::Path, version: &str, files: &[String]) -> Result<(), Error> {
+    let body = format!("#build {version}\n{}\n", files.join("\n"));
+    std::fs::write(path, body).map_err(|e| Error::Layer(path.to_path_buf(), e))
+}
+
 fn unpack(source: &Path) -> Result<(PathBuf, Option<TempDir>), Error> {
     if source.is_dir() {
         return Ok((source.to_path_buf(), None));
