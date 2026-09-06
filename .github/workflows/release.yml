@@ -21,14 +21,70 @@ jobs:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
-          release-type: rust
+          # The workspace is a virtual manifest: one `[workspace.package]`
+          # version that both crates inherit, and no `[package]` at the root at
+          # all. That is why the config uses `release-type: simple` and names
+          # the version line outright - the `rust` type assumes a Cargo package
+          # lives here and throws on the manifest that does not have one, so no
+          # release pull request is opened at all. The type is set in the config
+          # file rather than here, so there is one place to read it.
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      # `release-type: simple` rewrites Cargo.toml and nothing else, but
+      # Cargo.lock pins every workspace member by version and this workflow
+      # builds with `--locked`. A release pull request that bumped the manifest
+      # alone would fail the moment it merged, so the lock is brought along.
+      #
+      # The condition is the branch existing, not an output of the action above:
+      # conditioning on `prs_created` silently skips this, and a step that skips
+      # looks exactly like a step that had nothing to do. That lesson is Eidos's,
+      # whose release pipeline this mirrors.
+      - name: Keep Cargo.lock in step with the version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          # Matched by prefix rather than named outright. Under `release-type:
+          # rust` the branch carried a component read from the Cargo package
+          # name - `…--components--raven` - and `simple` has no package to read
+          # one from, so the suffix is not ours to predict. One open release
+          # branch is the only case there is; more than one would be a
+          # release-please misconfiguration worth failing on.
+          branch=$(git ls-remote --heads "$url" \
+                   "release-please--branches--${GITHUB_REF_NAME}*" \
+                   | sed 's#.*refs/heads/##')
+          if [ -z "$branch" ]; then
+            echo "no release branch open - nothing to sync"
+            exit 0
+          fi
+          if [ "$(printf '%s\n' "$branch" | wc -l)" -gt 1 ]; then
+            echo "more than one release branch open, refusing to guess:"
+            printf '  %s\n' $branch
+            exit 1
+          fi
+          git clone --branch "$branch" --depth 1 "$url" pr
+          cd pr
+          # Rewrites the workspace members' versions in the lock and nothing
+          # else: no external dependency is touched and nothing is compiled.
+          # `cargo metadata --no-deps` does NOT do this - skipping resolution is
+          # the whole point of that flag, so the lock is never rewritten.
+          cargo update --workspace
+          if git diff --quiet Cargo.lock; then
+            echo "Cargo.lock already agrees with Cargo.toml"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: sync Cargo.lock with the release version" Cargo.lock
+          git push
+          echo "Cargo.lock synced onto $branch"
 
   # Raven is Linux-only: overlayfs and binfmt_misc do not exist elsewhere,
   # so the asset matrix is one row, not four.
   build:
-    name: Build raven-linux
+    name: Build raven and raven-gui
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ubuntu-latest
@@ -47,14 +103,18 @@ jobs:
       - name: Build
         run: cargo build --release --locked --target x86_64-unknown-linux-gnu
 
-      - name: Stage binary
-        run: cp target/x86_64-unknown-linux-gnu/release/raven raven-linux
+      - name: Stage binaries
+        run: |
+          cp target/x86_64-unknown-linux-gnu/release/raven raven-linux
+          cp target/x86_64-unknown-linux-gnu/release/raven-gui raven-gui-linux
 
-      - name: Upload binary to GitHub Release
+      - name: Upload binaries to GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ needs.release-please.outputs.tag_name }}
-          files: raven-linux
+          files: |
+            raven-linux
+            raven-gui-linux
 
   # Sign every release asset with the Project-Colony org key (ed25519).
   # Colony >= 0.8.0 verifies these signatures on install and REFUSES a

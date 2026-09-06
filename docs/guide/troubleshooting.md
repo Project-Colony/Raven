@@ -53,21 +53,26 @@ pick, and prints the masking fix when it is not Raven's.
 
 ## A second launch fails, or a program will not start again
 
-Closing a program's window can leave `wineserver` and a handful of Wine
-services alive inside the mount namespace, holding the environment busy.
+A launch into an environment that already has a session joins it rather than
+refusing — that is what a session is for — so this is no longer what an
+ordinary second launch does. What still holds an environment busy is the
+wreckage of a session: when the anchor dies, `wineserver` and a handful of Wine
+services stay alive inside the mount namespace for a few seconds afterwards,
+and overlayfs will not mount the same upper layer twice while they are there.
 
 ```bash
 raven env status games
 ```
 
-names the processes holding it, and
+names the processes holding it, marking the anchor of a live session as such,
+and
 
 ```bash
 raven env stop games
 ```
 
-terminates them and releases the environment. Launches into a held environment
-refuse with exactly these two commands rather than a bare
+terminates them and releases the environment. A launch that cannot mount
+refuses with exactly these two commands rather than a bare
 `Device or resource busy`.
 
 ## Launching feels slower than Proton

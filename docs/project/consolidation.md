@@ -79,9 +79,15 @@ launched into a running environment fails. Children of an already-running
 program are fine — they inherit the namespace — but a second independent launch
 is not.
 
-**Done when:** a second launch joins the existing namespace instead of failing,
-or refuses with an error that says why. The keeper-plus-`nsenter` pattern is
-already proven to work; it is not built.
+**Done.** The first launch starts an *anchor* — a Raven process that creates
+the namespace, mounts the overlay and then does nothing but stay alive — and
+every later launch `setns`es into it, so a second independent launch joins the
+same namespace and the same `wineserver` rather than failing. Joining needs no
+privilege: the anchor maps the user to uid 0 inside, and owning that user
+namespace is what permits entering the mount namespace. `raven env status`
+marks the anchor among the holders, recognising it by what the process is
+running — `session-anchor` as its first argument — rather than by its name,
+because the window can hold a session too.
 
 ### 1.4 Uninstall
 
@@ -100,11 +106,12 @@ handler pointing at a path that no longer exists.
 
 **Partly done** — see [performance.md](../internals/performance.md). A fixed
 workload, identical in both conditions, wall-clock: process spawn was **2.0×**
-(113 → 228 ms) before the fonts mask and is **1.19×** (113 → 135 ms) since —
-see 2.2 and 4 — and directory enumeration is 6.6× — of which 6.0× is the real
-`System32` holding six times the entries, leaving **~17% per entry** as the
-overlay's share. The lesson joined the list above: a ratio between two
-differently-sized workloads measures the workload.
+(113 → 228 ms), and **1.19×** (113 → 135 ms) while `Windows\Fonts` was masked
+— a mask since withdrawn on correctness grounds, so 2.0× is again what a cold
+spawn costs, see 2.2 and 4 — and directory enumeration is 6.6× — of which 6.0×
+is the real `System32` holding six times the entries, leaving **~17% per
+entry** as the overlay's share. The lesson joined the list above: a ratio
+between two differently-sized workloads measures the workload.
 
 **Still open:** a frame-time or input-to-response number for the same program
 under Raven and under plain Wine, on the same machine, in the same scene. The
@@ -121,8 +128,8 @@ trace-counting artifact (809 was lines-per-file, not caches; the real count is
 9). Tested anyway, on identical control trees on plain and casefolding tmpfs:
 Wine detects the fold and gains nothing — same caches, same spawn time, and
 its non-wildcard listing path degrades to a full readdir. The real per-process
-cost was `C:\windows\fonts` — see 4, where it became the shadow set's second
-measured entry, worth 92 of the 105 ms.
+cost was `C:\windows\fonts` — see 4, where masking it was worth 92 of the
+105 ms, until that mask was given back.
 
 One finding survives `casefold`'s funeral: on a casefolding filesystem the
 lowercase-shadow hazard (a `wineboot` update creating a literal `windows`
@@ -142,8 +149,8 @@ the server; sync is `ntsync`; steady state is the message pump. The 7.75× was
 an instantaneous CPU% glance, and on capture day the same glance pointed the
 other way while the request streams stayed identical. A whole line of attack is
 closed: the launch overhead is entirely client-side — and it turned out to be
-the per-process font re-check, which became the shadow set's second measured
-entry (see 4). Details in [performance.md](../internals/performance.md).
+the per-process font re-check, which the shadow set masked until that mask was
+given back (see 4). Details in [performance.md](../internals/performance.md).
 
 ### 2.4 Not the problem, so nobody re-checks it
 
@@ -167,15 +174,16 @@ tables costing something real.
 
 ### 3.2 The package itself
 
-**Done.** The `PKGBUILD` in `packaging/` installs all four pieces and its
+**Done.** The `PKGBUILD` in `packaging/` installs every piece and its
 description states that installing changes what every `.exe` does:
 
 | File | Goes to |
 |---|---|
 | `raven.conf` | `/usr/lib/binfmt.d/raven.conf` — applied by pacman's own `systemd-binfmt` hook in the same transaction |
 | `wine-mask.conf` | `/etc/binfmt.d/wine.conf` — masks Wine's, restored on uninstall |
-| `raven.desktop` | `/usr/share/applications/` |
-| the binary | `/usr/bin/raven`, plus `rvn` beside it |
+| `raven.desktop`, `raven-gui.desktop` | `/usr/share/applications/` |
+| the binaries | `/usr/bin/raven`, plus `rvn` beside it, and `/usr/bin/raven-gui` |
+| the icons | `/usr/share/icons/hicolor/`, 16 to 512, all named `raven` so the desktop entries' `Icon=` resolves |
 
 Uninstall reverses everything: the registration dies with the package instead
 of dangling, and the mask's removal hands `.exe` files back to Wine. A
@@ -196,11 +204,16 @@ can install — the machinery has yet to run once.
 
 ## 4. The shadow set — the actual research
 
-Two entries are measured. `Windows\WinSxS` must be hidden, or installers
-render without text and ignore every click. `Windows\Fonts` must be hidden, or
-every process start pays ~92 ms re-checking ~340 font files (227 → 135 ms
-measured; text renders through fontconfig either way, and plain Wine's own
-Fonts directory is empty). That is the whole list.
+One entry is measured. `Windows\WinSxS` must be hidden, or installers render
+without text and ignore every click. `Windows\Fonts` was the second and has
+been given back: masking it saved ~92 ms of every process start (227 → 135 ms
+measured) because `win32u` re-checks ~340 font files at each one, but a Windows
+whose registry declares 961 fonts while `C:\Windows\Fonts` holds none is
+incoherent, and a real Windows is the whole premise. Sessions made the trade
+cheap to reverse: a launch costs about a quarter of a second rather than two,
+so the same per-process 92 ms is a much smaller share of it than it was.
+`layer::reconcile` un-masks the directory before every mount, so environments
+created under the mask healed themselves. That is the whole list.
 
 **Next, in order:**
 
@@ -224,8 +237,10 @@ entry, and a corpus that regression-tests it.
 
 Stated so nobody mistakes the current evidence for more than it is.
 
-- **No 3D.** The one game run is 2D software-rendered. Nothing here says
-  anything about Direct3D, DXVK, or a GPU.
+- **One 3D game, and no D3D12.** ShineHill — Steam, GameMaker, Direct3D 11,
+  64-bit — renders through DXVK on the GPU against the real Windows, which is
+  one title on one driver. `raven env vkd3d` installs vkd3d-proton beside it,
+  but no D3D12 game has been tried, so that route is installed and unproven.
 - **One installer framework.**
 - **No anti-cheat.** It is a compatibility target, not a feature: a game whose
   publisher enabled the Proton path should behave the same under Raven, and

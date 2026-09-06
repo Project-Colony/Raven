@@ -115,8 +115,8 @@ Microsoft's. Raven refuses to overwrite a library it did not install itself, so
 a DLL some installer left in the environment is safe.
 
 DXVK has been shown to initialise against a real Windows and reach the GPU -
-Microsoft's own `dxdiag.exe` drove it and DXVK enumerated the card. No game has
-rendered a frame through it yet, and nothing is benchmarked; see
+Microsoft's own `dxdiag.exe` drove it and DXVK enumerated the card, and
+*ShineHill*, a Direct3D 11 game from Steam, then ran and drew through it; see
 [../project/status.md](../project/status.md) for exactly how far that goes.
 
 ### Direct3D 12
@@ -129,7 +129,9 @@ raven env vkd3d games --from ~/Downloads/vkd3d-proton-3.0.1.tar.zst
 ```
 
 A game wanting D3D11 and a game wanting D3D12 are different games, and one
-environment serves both. Removing either leaves the other alone.
+environment serves both. Removing either leaves the other alone. No D3D12 title
+has been run through it yet, though - vkd3d-proton is installed and unproven
+where DXVK is not.
 
 Neither command has an opinion about whose build you use, and that is not
 politeness: CachyOS's Proton and Valve's both carry these two projects as
@@ -141,7 +143,7 @@ There is no distinct "CachyOS DXVK" to prefer.
 The first program you run in an environment starts a **session**: Raven mounts
 C: once and keeps it, so every later launch joins what is already there instead
 of building a world of its own. The first launch of the day costs about two
-seconds; the ones after it cost about a sixth of one.
+seconds; the ones after it cost about a quarter of one.
 
 You can also bring an environment up before you need it, so nothing waits at
 all:

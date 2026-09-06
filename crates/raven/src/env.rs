@@ -49,11 +49,17 @@ impl Environment {
         self.root.join("registry-rules.toml")
     }
 
+    /// An environment created before the file existed has none, and the
+    /// defaults are the right answer for it. Any other failure to read is
+    /// reported: the defaults are the *wider* set, so quietly substituting
+    /// them for a file someone narrowed by hand projects more of the base's
+    /// registry than its author allowed - and says nothing.
     pub fn rules(&self) -> Result<registry::Rules, Error> {
         match std::fs::read_to_string(self.rules_file()) {
             Ok(text) => registry::Rules::parse(&text)
                 .map_err(|e| Error::Manifest(self.rules_file(), e.to_string())),
-            Err(_) => Ok(registry::Rules::default()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(registry::Rules::default()),
+            Err(e) => Err(Error::Layer(self.rules_file(), e)),
         }
     }
 
@@ -133,7 +139,7 @@ impl Environment {
             // ensure_not_running, because the environment may not open, and
             // that is exactly how it came to be the one command still saying
             // "still running - held by raven".
-            if holders.iter().all(|h| h.comm == "raven") {
+            if holders.iter().all(|h| h.anchor) {
                 return Err(Error::SessionHolds(name.to_owned()));
             }
             return Err(Error::EnvironmentBusy {
@@ -155,6 +161,21 @@ impl Environment {
         holders_of(&self.upper())
     }
 
+    /// Whether one particular process is holding this environment's C:.
+    ///
+    /// `holders` asks that of every process on the machine; this asks it of
+    /// one. The difference is the launch path's whole cost: validating the
+    /// recorded anchor is a question about a single pid, and answering it by
+    /// scanning `/proc` took all but about 2 ms of a 32 ms warm launch on a
+    /// 454-process machine - the scan *was* the launch. Reading the one
+    /// process's `mountinfo` gives the same answer.
+    pub fn holds(&self, pid: u32) -> bool {
+        let needle = mountinfo_needle(&self.upper());
+        std::fs::read_to_string(format!("/proc/{pid}/mountinfo"))
+            .map(|mi| mi.contains(&needle))
+            .unwrap_or(false)
+    }
+
     /// Refuses while the environment is held by live processes.
     ///
     /// overlayfs will not mount the same upper layer twice, so a second
@@ -168,7 +189,7 @@ impl Environment {
         // A session anchor holding it is the ordinary state after a launch,
         // not a stuck process, and saying "still running - held by raven"
         // reads like a bug in Raven rather than the thing the user asked for.
-        if holders.iter().all(|h| h.comm == "raven") {
+        if holders.iter().all(|h| h.anchor) {
             return Err(Error::SessionHolds(self.name.clone()));
         }
         Err(Error::EnvironmentBusy {
@@ -212,6 +233,12 @@ impl Environment {
 pub struct Holder {
     pub pid: u32,
     pub comm: String,
+    /// Whether this is Raven's own session anchor, recognised by what it is
+    /// running - `<binary> session-anchor <name>` - and not by its name.
+    /// The anchor is whichever binary asked for the session, so the name is
+    /// `raven` from the launcher and `raven-gui` from the window, and a
+    /// test on the name called the window's own session a foreign program.
+    pub anchor: bool,
 }
 
 fn describe(holders: &[Holder]) -> String {
@@ -260,10 +287,19 @@ fn holders_of(upper: &std::path::Path) -> Vec<Holder> {
             let comm = std::fs::read_to_string(entry.path().join("comm"))
                 .map(|s| s.trim().to_owned())
                 .unwrap_or_else(|_| "?".to_owned());
-            held.push(Holder { pid, comm });
+            let anchor = std::fs::read(entry.path().join("cmdline"))
+                .map(|c| is_anchor_cmdline(&c))
+                .unwrap_or(false);
+            held.push(Holder { pid, comm, anchor });
         }
     }
     held
+}
+
+/// Whether a `/proc/<pid>/cmdline` - NUL-separated argv - is a session
+/// anchor's: its first argument is `session-anchor`, whatever the binary.
+fn is_anchor_cmdline(cmdline: &[u8]) -> bool {
+    cmdline.split(|b| *b == 0).nth(1) == Some(b"session-anchor".as_slice())
 }
 
 /// What this upper directory looks like inside `/proc/<pid>/mountinfo`.
@@ -393,9 +429,49 @@ pub fn create(name: &str, base_id: &str) -> Result<Environment, Error> {
     })();
 
     if built.is_err() {
-        let _ = std::fs::remove_dir_all(&root);
+        // `remove_tree`, not `remove_dir_all`: creating an environment mounts
+        // it - `project_registry` does - and overlayfs leaves a `work/work`
+        // with no permissions at all, which stops a plain removal after it
+        // has already deleted the upper layer. The wreck that leaves is
+        // refused by a second `create` and by every command that opens it.
+        let _ = remove_tree(&root);
     }
     built
+}
+
+#[cfg(test)]
+mod rules_tests {
+    use super::{Environment, Manifest};
+
+    #[test]
+    fn a_rules_file_that_cannot_be_read_is_not_silently_replaced() {
+        // The default rules are the *wider* set, so falling back to them
+        // when a hand-narrowed file cannot be read projects more of the
+        // base's registry than its author allowed - the opposite of the
+        // conservative direction, and invisible.
+        let root = std::env::temp_dir().join(format!("raven-rules-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let env = Environment {
+            name: "rules-test".into(),
+            manifest: Manifest {
+                base: "none".into(),
+            },
+            root: root.clone(),
+        };
+
+        // Absent is the one case that legitimately means "the defaults".
+        assert!(env.rules().is_ok(), "no file means the default rules");
+
+        // Not valid UTF-8: an editor saving a comment in Latin-1 is enough.
+        std::fs::write(env.rules_file(), [0xff, 0xfe, 0x41]).unwrap();
+        assert!(
+            env.rules().is_err(),
+            "a rules file that exists and cannot be read must be reported"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 #[cfg(test)]
@@ -505,5 +581,28 @@ mod tests {
         // and getting it backwards would silently let Microsoft's ntdll win.
         assert_eq!(env.layer(), PathBuf::from("/data/environments/x/layer"));
         assert!(env.layer().ends_with("layer"));
+    }
+}
+
+#[cfg(test)]
+mod anchor_tests {
+    use super::is_anchor_cmdline;
+
+    #[test]
+    fn the_anchor_is_recognised_by_what_it_runs_not_by_its_name() {
+        // Whichever binary asked for the session becomes its anchor, so the
+        // name is `raven` from the launcher and `raven-gui` from the window.
+        assert!(is_anchor_cmdline(
+            b"/usr/bin/raven\0session-anchor\0games\0"
+        ));
+        assert!(is_anchor_cmdline(
+            b"/usr/bin/raven-gui\0session-anchor\0games\0"
+        ));
+        // A launcher joining the session, and the programs inside it, are not.
+        assert!(!is_anchor_cmdline(
+            b"/usr/bin/raven\0run\0games\0--\0wine\0a.exe\0"
+        ));
+        assert!(!is_anchor_cmdline(b"wineserver\0"));
+        assert!(!is_anchor_cmdline(b""));
     }
 }

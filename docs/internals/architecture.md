@@ -103,8 +103,10 @@ read-only Wine layer can shadow a file or directory outright where the
 override is not enough.
 
 Today the shadow set is a short, measurement-justified constant in
-`src/layer.rs` — two directory masks, `Windows/WinSxS` and `Windows/Fonts`;
-the per-library table the corpus will produce is planned as a data file keyed
+`crates/raven/src/layer.rs` — one directory mask, `Windows/WinSxS`.
+`Windows/Fonts` was masked there too and has been withdrawn: the spawn time it
+bought was not worth a Windows that declared 961 fonts and had none. The
+per-library table the corpus will produce is planned as a data file keyed
 by Windows build. It is the thing the project exists to shrink. See
 [shadow-set.md](shadow-set.md).
 
@@ -139,9 +141,9 @@ works without special handling, and the mount dies with the process tree that
 owns it.
 
 `binfmt_misc` is the exception, and it is a **packaging** concern rather than a
-runtime one: a file in `/etc/binfmt.d/`, applied by `systemd-binfmt` at boot,
-installed by the package manager that already holds root legitimately. Nothing
-needs to hold privilege while Raven runs.
+runtime one: a file in `/usr/lib/binfmt.d/`, applied by `systemd-binfmt` at
+boot, installed by the package manager that already holds root legitimately.
+Nothing needs to hold privilege while Raven runs.
 
 ### Where this breaks, and the seam that anticipates it
 
@@ -179,27 +181,45 @@ error. A bare `mount: operation not permitted` is not.
 
 ## Crate layout
 
-Phase 1 is **one crate**, not a workspace.
+Raven is a workspace of **two crates**: the library with its command line, and
+the window.
 
 [The org rule](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/design/repository-layout.md)
 is that a workspace is for a real boundary — a separate process, a different
 build target, a library something else genuinely consumes — and that splitting
 by layer buys nothing but a dependency graph. Once the privileged daemon
 disappeared, Raven became one program in one process, which is the case the rule
-answers with a single crate and subsystems as directories under `src/`.
+answers with a single crate and subsystems as directories under `src/`, and that
+is what it stayed until the window arrived. A second binary, with its own
+dependency tree, is a real boundary rather than a layer. The root manifest is
+virtual — nothing of its own but the member list and the one version both crates
+inherit, because a window and a library of different ages are not shippable
+together.
 
 ```
-src/
+crates/raven/src/
 ├── main.rs        the CLI; a thin shell over the library below
 ├── lib.rs         the library root and error type
 ├── paths.rs       the Colony filesystem layout for Raven
 ├── base.rs        deploying and describing a Windows base
 ├── env.rs         the environment model: create, run, recover, destroy
+├── session.rs     the anchor holding a namespace open, and joining it
+├── attach.rs      the real block devices an environment may see
+├── d3d.rs         installing DXVK and vkd3d-proton into a prefix
 ├── launch.rs      binfmt registration and environment resolution
 ├── layer.rs       case normalisation, and the shadow masks
 ├── prefix.rs      the Wine prefix pieces an environment keeps
 ├── mount/         the mount backends, behind one interface
 └── registry/      registry hive reading and Wine .reg projection
+
+crates/raven-gui/src/
+├── main.rs        the window, and the actions it asks the library for
+├── model.rs       the plain data the screens draw, kept testable
+├── load.rs        reading that model without freezing the window
+├── deploy.rs      base deployment, and the progress read from wimlib
+├── errors.rs      library errors turned into something a window can offer
+├── theme.rs       colony-ui's palette and scale, applied to iced
+└── view/          one module per screen
 ```
 
 A directory earns its existence by holding more than one file, which is why
@@ -213,17 +233,18 @@ operations, and if the logic ends up inside argument handlers, adding one means
 rewriting it. The cost of the rule now is a few function signatures; the cost of
 skipping it is the GUI.
 
-### When this becomes a workspace
+### What else splits out
 
 | Split out | When |
 |---|---|
-| `raven-gui` | there is a model worth showing — it consumes `colony-ui`, so it is cheap once the model exists |
+| `raven-gui` | done — there was a model worth showing, and it consumes `colony-ui`, which is what made it cheap |
 | `raven-daemon`, `raven-proto` | a privileged helper is needed for systems without unprivileged namespaces |
 | `raven-launch` | measurement shows CLI start-up cost matters on the `binfmt` path |
 | `raven-hive` | the hive corpus and its tests outgrow living alongside the binary |
 
 Each has a trigger, so the split is a decision rather than a drift. None of them
-is speculative — they are the four things already known to be coming.
+is speculative — they are the four things already known to be coming, and the
+first of them has arrived.
 
 ## Language
 

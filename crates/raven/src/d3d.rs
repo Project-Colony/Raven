@@ -96,7 +96,7 @@ impl Environment {
     pub fn install_d3d(&self, rt: &Runtime, source: &Path) -> Result<Vec<Shadow>, Error> {
         self.ensure_not_running()?;
         let (dir, _keep) = unpack(source)?;
-        let root = build_root(&dir)?;
+        let root = build_root(&dir, rt.key)?;
 
         // Plan every copy before performing any of it. Checking as we went
         // meant a refusal left the copies already made behind, and those then
@@ -132,8 +132,14 @@ impl Environment {
         }
 
         let mut written: Vec<String> = Vec::new();
+        let mut created: Vec<String> = Vec::new();
         let mut done = Vec::new();
         for (from, to, rel, dll, arch) in &plan {
+            // Whether this call is the reason the file is there. An upgrade
+            // copies over the previous install's libraries, and undoing that
+            // by deleting them would turn a failed upgrade into an uninstall
+            // of the build that was working.
+            let is_new = !to.exists();
             let copy = (|| {
                 if let Some(parent) = to.parent() {
                     std::fs::create_dir_all(parent)?;
@@ -143,10 +149,27 @@ impl Environment {
             if let Err(e) = copy {
                 // Undo the half-install rather than leave the environment in a
                 // state neither `dxvk` nor `--remove` can describe.
-                for r in &written {
+                for r in &created {
                     let _ = std::fs::remove_file(self.upper().join(r));
                 }
+                // An upgrade has by now overwritten some of the previous
+                // build's libraries in place, and those are not undone -
+                // deleting them would uninstall what was working. What is
+                // left is genuinely neither version, so the record stops
+                // naming one: `dxvk` says so, and reinstalling either build
+                // puts it right.
+                if !ours.is_empty() {
+                    let was = self.d3d_build(rt).unwrap_or_else(|| rt.key.to_string());
+                    let _ = write_manifest(
+                        &self.d3d_manifest_path(rt),
+                        &format!("{was} - interrupted upgrade, reinstall to settle it"),
+                        &ours,
+                    );
+                }
                 return Err(Error::Layer(to.clone(), e));
+            }
+            if is_new {
+                created.push(rel.clone());
             }
             written.push(rel.clone());
             done.push(Shadow {
@@ -158,6 +181,24 @@ impl Environment {
 
         written.sort();
         written.dedup();
+
+        // The record goes down as soon as the files exist, and describes a
+        // superset of them from here on. Everything below can fail - the
+        // superseded sweep, reading and rewriting user.reg - and until this
+        // was written first, a failure there left libraries in the upper
+        // layer that `dxvk` could not see, `--remove` could not remove, and
+        // the next install refused as somebody else's, telling the user to
+        // move aside files Raven had put there itself. `d3d` already skips
+        // manifest entries that are not files, so a superset is harmless.
+        let version = root
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "unknown".into());
+        let m = self.d3d_manifest_path(rt);
+        let mut described: Vec<String> = written.iter().chain(ours.iter()).cloned().collect();
+        described.sort();
+        described.dedup();
+        write_manifest(&m, &version, &described)?;
 
         // Installing over an older build is the normal way to update, and
         // upstream drops modules between versions - d3d10.dll went that way.
@@ -192,16 +233,9 @@ impl Environment {
         }
         text::write_atomic(&reg, &text)?;
 
-        // The build's own directory name is the only version DXVK ships in a
-        // release, and "which DXVK do I have" is the first question after "is
-        // it installed" - so it is recorded rather than left to be guessed.
-        let version = root
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "unknown".into());
-        let m = self.d3d_manifest_path(rt);
-        let body = format!("#build {version}\n{}\n", written.join("\n"));
-        std::fs::write(&m, body).map_err(|e| Error::Layer(m, e))?;
+        // Narrowed to exactly what is installed now that the superseded
+        // files are gone and the overrides agree with them.
+        write_manifest(&m, &version, &written)?;
         Ok(done)
     }
 
@@ -311,6 +345,14 @@ fn unique_dlls(done: &[Shadow]) -> Vec<String> {
     names
 }
 
+/// Records which libraries Raven has put in the environment, and which build
+/// they came from - "which DXVK do I have" being the first question after
+/// "is one installed".
+fn write_manifest(path: &std::path::Path, version: &str, files: &[String]) -> Result<(), Error> {
+    let body = format!("#build {version}\n{}\n", files.join("\n"));
+    std::fs::write(path, body).map_err(|e| Error::Layer(path.to_path_buf(), e))
+}
+
 /// A directory holding the DXVK build, plus a guard that deletes it again if we
 /// created it by extracting an archive.
 fn unpack(source: &Path) -> Result<(PathBuf, Option<TempDir>), Error> {
@@ -347,7 +389,7 @@ fn unpack(source: &Path) -> Result<(PathBuf, Option<TempDir>), Error> {
 /// Finds the directory that actually holds `x64/`, so both a release tarball
 /// (which nests everything under `dxvk-<version>/`) and an already-extracted
 /// build work without the caller having to know which they have.
-fn build_root(dir: &Path) -> Result<PathBuf, Error> {
+fn build_root(dir: &Path, key: &'static str) -> Result<PathBuf, Error> {
     if dir.join("x64").is_dir() {
         return Ok(dir.to_path_buf());
     }
@@ -359,7 +401,7 @@ fn build_root(dir: &Path) -> Result<PathBuf, Error> {
             }
         }
     }
-    Err(Error::NotAD3dBuild("", dir.to_path_buf()))
+    Err(Error::NotAD3dBuild(key, dir.to_path_buf()))
 }
 
 struct TempDir(PathBuf);
@@ -379,10 +421,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         // A release tarball extracts to dxvk-2.7/x64, not to x64.
         std::fs::create_dir_all(dir.join("dxvk-2.7/x64")).unwrap();
-        assert_eq!(build_root(&dir).unwrap(), dir.join("dxvk-2.7"));
+        assert_eq!(build_root(&dir, "dxvk").unwrap(), dir.join("dxvk-2.7"));
         // An already-extracted build works too.
         assert_eq!(
-            build_root(&dir.join("dxvk-2.7")).unwrap(),
+            build_root(&dir.join("dxvk-2.7"), "dxvk").unwrap(),
             dir.join("dxvk-2.7")
         );
         let _ = std::fs::remove_dir_all(&dir);
@@ -393,7 +435,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("raven-dxvkbad-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("lib")).unwrap();
-        assert!(matches!(build_root(&dir), Err(Error::NotAD3dBuild(_, _))));
+        assert!(matches!(
+            build_root(&dir, "dxvk"),
+            Err(Error::NotAD3dBuild("dxvk", _))
+        ));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

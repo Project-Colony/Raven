@@ -1,6 +1,6 @@
 # Packaging files
 
-What the package installs beyond the binary, wired together by
+What the package installs beyond the binaries, wired together by
 [`PKGBUILD`](PKGBUILD); the reasoning behind each file is in
 [../docs/internals/packaging.md](../docs/internals/packaging.md).
 
@@ -8,6 +8,7 @@ What the package installs beyond the binary, wired together by
 |---|---|---|
 | `raven.conf` | `/usr/lib/binfmt.d/` | makes the kernel hand `.exe` files to Raven, so `./program.exe` runs from a shell — pacman's `systemd-binfmt` hook applies it in the same transaction |
 | `raven.desktop` | `/usr/share/applications/` | makes a **file manager** open them, which `binfmt` alone does not do |
+| `raven-gui.desktop` | `/usr/share/applications/` | gives the window an application-menu entry — it manages bases and environments rather than opening a file, so it is launched by name and never resolved through a MIME type |
 | `wine-mask.conf` | `/etc/binfmt.d/wine.conf` | disables Wine's own `.exe` registration, which otherwise wins — an `/etc` file shadows Wine's `/usr/lib` one by name without touching a file the wine package owns |
 
 The two are needed for different things and neither replaces the other.

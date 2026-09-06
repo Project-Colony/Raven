@@ -82,6 +82,34 @@ fn a_process_left_in_the_namespace_is_found_and_stopped() {
         "the process inside the namespace must be visible from outside; saw {holders:?}"
     );
 
+    // The launch path does not ask who holds the environment - it asks
+    // whether the anchor it recorded still does, which is one process, not
+    // every process on the machine. The cheap question must give the same
+    // answer as the expensive one, or a warm launch either misses a live
+    // session or joins a dead one.
+    assert!(
+        env.holds(child.id()),
+        "the single-process check must agree with the scan that found it"
+    );
+    assert!(
+        !env.holds(1),
+        "a live process that holds nothing of ours is not a session"
+    );
+    // And the recorded pid is believed only when it is really a holder.
+    fs::write(env.session_file(), "1\n").unwrap();
+    assert_eq!(
+        env.session(),
+        None,
+        "a stale pid must not pass for a session"
+    );
+    fs::write(env.session_file(), format!("{}\n", child.id())).unwrap();
+    assert_eq!(
+        env.session(),
+        Some(child.id()),
+        "a real holder is the session"
+    );
+    let _ = fs::remove_file(env.session_file());
+
     let stopped = env.stop().expect("stop must release the environment");
     assert!(
         stopped.iter().any(|h| h.pid == child.id()),

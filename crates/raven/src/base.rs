@@ -39,6 +39,7 @@ impl Base {
             .map_err(|e| Error::Layer(dir.clone(), e))?
             .filter_map(Result::ok)
             .filter(|e| e.path().is_dir())
+            .filter(|e| is_base_dir(&e.file_name().to_string_lossy()))
             .map(|e| Base {
                 id: e.file_name().to_string_lossy().into_owned(),
                 path: e.path(),
@@ -50,7 +51,7 @@ impl Base {
 
     pub fn find(id: &str) -> Result<Base, Error> {
         let path = paths::bases_dir()?.join(paths::check_name(id)?);
-        if !path.is_dir() {
+        if !is_base_dir(id) || !path.is_dir() {
             return Err(Error::NoSuchBase(id.to_owned()));
         }
         Ok(Base {
@@ -129,35 +130,88 @@ fn parse_editions(text: &str) -> Vec<Edition> {
 /// Refuses to touch a base that already exists: bases are immutable, and
 /// "deploy over the top" is how an immutable thing quietly stops being one.
 pub fn deploy(image: &Path, index: u32, id: &str) -> Result<Base, Error> {
-    let dir = paths::bases_dir()?.join(paths::check_name(id)?);
+    let bases = paths::bases_dir()?;
+    let dir = bases.join(paths::check_name(id)?);
     if dir.exists() {
         return Err(Error::BaseExists(id.to_owned()));
     }
-    std::fs::create_dir_all(&dir).map_err(|e| Error::Layer(dir.clone(), e))?;
+    // Applied beside the real name and renamed only once it is whole. Ten
+    // minutes over 143 886 files is long enough to be interrupted, and the
+    // cleanup below cannot run when the interruption is the process dying:
+    // what was left then was a directory holding half a Windows under the
+    // name of a finished one, which `deploy` refused to overwrite and no
+    // command could remove.
+    let partial = bases.join(partial_name(id));
+    let _ = std::fs::remove_dir_all(&partial);
+    std::fs::create_dir_all(&partial).map_err(|e| Error::Layer(partial.clone(), e))?;
 
     let status = Command::new("wimlib-imagex")
         .arg("apply")
         .arg(image)
         .arg(index.to_string())
-        .arg(&dir)
+        .arg(&partial)
         .status()
         .map_err(|e| Error::Tool("wimlib-imagex", e))?;
 
     if !status.success() {
-        // A half-applied base is worse than none: it looks deployable.
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&partial);
         return Err(Error::ToolFailed(
             "wimlib-imagex apply",
             format!("exited with {status}"),
         ));
     }
 
-    let base = Base {
+    // Before the rename, so the name only ever appears on a base whose
+    // junctions already resolve inside it.
+    repoint_absolute_symlinks(&partial)?;
+    std::fs::rename(&partial, &dir).map_err(|e| Error::Layer(dir.clone(), e))?;
+    Ok(Base {
         id: id.to_owned(),
         path: dir,
-    };
-    repoint_absolute_symlinks(&base.path)?;
-    Ok(base)
+    })
+}
+
+/// The prefix a deploy works under before it has earned the real name.
+///
+/// A leading dot so the directory is hidden, and a word after it so the rule
+/// that skips it is exact: a name is only ever hidden from `list` when Raven
+/// wrote it, never because a user chose one starting with a dot.
+const PARTIAL: &str = ".partial-";
+
+/// The deploys that were interrupted, and the directories they left.
+///
+/// Applying an image into a partial directory means an interrupted deploy
+/// leaves one behind - several gigabytes of it - and hiding it from `list`
+/// would hide it from the user too. `raven doctor` reports these so the
+/// space is accountable; the next deploy of the same id clears one on its
+/// own.
+pub fn partials() -> Result<Vec<(String, PathBuf)>, Error> {
+    let dir = paths::bases_dir()?;
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut out: Vec<(String, PathBuf)> = std::fs::read_dir(&dir)
+        .map_err(|e| Error::Layer(dir.clone(), e))?
+        .filter_map(Result::ok)
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            name.strip_prefix(PARTIAL)
+                .map(|id| (id.to_owned(), e.path()))
+        })
+        .collect();
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(out)
+}
+
+/// Where a deploy applies before it has earned the real name.
+fn partial_name(id: &str) -> String {
+    format!("{PARTIAL}{id}")
+}
+
+/// Whether a directory in the bases folder is a deployed Windows.
+fn is_base_dir(name: &str) -> bool {
+    !name.starts_with(PARTIAL)
 }
 
 /// Rewrites the reparse points a WIM leaves behind as absolute symlinks.
@@ -215,6 +269,24 @@ fn relative_to(target: &Path, from: &Path) -> Option<PathBuf> {
         rel.push(c);
     }
     (!rel.as_os_str().is_empty()).then_some(rel)
+}
+
+#[cfg(test)]
+mod partial_tests {
+    use super::{is_base_dir, partial_name};
+
+    #[test]
+    fn a_half_applied_base_is_never_mistaken_for_a_finished_one() {
+        // A deploy applies into the partial name and renames only when it
+        // has finished, so an interrupted one leaves that directory behind.
+        // It must not be listed, offered to `env create`, or block a retry.
+        assert_eq!(partial_name("win11-26200-pro"), ".partial-win11-26200-pro");
+        assert!(!is_base_dir(&partial_name("win11-26200-pro")));
+        assert!(is_base_dir("win11-26200-pro"));
+        // Only Raven's own working directories are skipped. A base a user
+        // named with a leading dot was listed before this and still is.
+        assert!(is_base_dir(".anything"));
+    }
 }
 
 #[cfg(test)]

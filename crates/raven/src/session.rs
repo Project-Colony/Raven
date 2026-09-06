@@ -53,7 +53,7 @@ impl Environment {
             .trim()
             .parse()
             .ok()?;
-        self.holders().iter().any(|h| h.pid == pid).then_some(pid)
+        self.holds(pid).then_some(pid)
     }
 
     /// The pid of a session to join, starting one if none is running.
@@ -90,7 +90,7 @@ impl Environment {
                     // Somebody else is starting one. Wait for their session
                     // rather than racing it, and fall back to trying
                     // ourselves if their attempt died without cleaning up.
-                    if let Some(pid) = self.wait_for_session() {
+                    if let Some(pid) = self.wait_for_session(&lock) {
                         return Ok(pid);
                     }
                     let _ = std::fs::remove_file(&lock);
@@ -103,12 +103,22 @@ impl Environment {
         started
     }
 
-    /// Waits briefly for somebody else's anchor to come up.
-    fn wait_for_session(&self) -> Option<u32> {
+    /// Waits for somebody else's anchor to come up, or for them to give up.
+    ///
+    /// Both endings matter. Watching only for the session meant that when the
+    /// holder failed - a renamed base, a kernel that refuses the mount - it
+    /// dropped its lock within milliseconds and the waiter still sat out the
+    /// full thirty seconds before trying anything itself. The lock going away
+    /// is the holder saying it is no longer starting one, and it is the same
+    /// signal that clears a lock left behind by a launcher that was killed.
+    fn wait_for_session(&self, lock: &std::path::Path) -> Option<u32> {
         let deadline = std::time::Instant::now() + READY_TIMEOUT;
         while std::time::Instant::now() < deadline {
             if let Some(pid) = self.session() {
                 return Some(pid);
+            }
+            if !lock.exists() {
+                return None;
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
@@ -117,8 +127,7 @@ impl Environment {
 
     /// Starts an anchor and waits for it to report that the mount is up.
     fn start_session(&self) -> Result<u32, Error> {
-        let exe = std::env::current_exe().map_err(|e| Error::Tool("raven", e))?;
-        let mut cmd = Command::new(exe);
+        let mut cmd = Command::new(helper()?);
         cmd.arg("session-anchor")
             .arg(&self.name)
             .stdin(Stdio::null())
@@ -203,9 +212,63 @@ impl Environment {
         Ok(())
     }
 
+    /// Brings Wine's services up, so the next launch does not pay for them.
+    ///
+    /// Mounting is the cheap half - hundredths of a second. The seconds a
+    /// first launch pays are `wineserver`, `services.exe` and the rest
+    /// starting, and they only start when something runs. So the smallest
+    /// possible program is run: what matters is that they are standing when
+    /// the user arrives.
+    ///
+    /// Reports whether they came up. A failure is not the caller's problem:
+    /// the mount is up either way and the next launch simply pays what this
+    /// would have.
+    pub fn warm_up(&self) -> bool {
+        Command::new(match helper() {
+            Ok(exe) => exe,
+            Err(_) => return false,
+        })
+        .args(["run", &self.name, "--", "wine", "cmd", "/c", "exit"])
+        .env("WINEDEBUG", "-all")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+    }
+
     /// Forgets a session's record. The processes are `stop`'s business.
     pub fn clear_session(&self) {
         let _ = std::fs::remove_file(self.session_file());
+    }
+}
+
+/// The binary to re-run for the work the library cannot do in this process.
+///
+/// Two things are done by re-running Raven: holding a session open, and
+/// mounting for a registry import. Both need a process that will be replaced
+/// or will sleep for ever, so they cannot happen here - and both used to run
+/// `current_exe()`, which is right for the launcher and wrong for the window.
+/// The window can answer `session-anchor`, but `exec` would have it mount and
+/// exec over itself, so it refuses; running the CLI beside it instead means
+/// neither verb depends on which binary the user happened to start.
+pub(crate) fn helper() -> Result<PathBuf, Error> {
+    let exe = std::env::current_exe().map_err(|e| Error::Tool("raven", e))?;
+    Ok(helper_binary(&exe))
+}
+
+/// `raven` next to `exe` if there is one, else `exe` itself.
+///
+/// The package installs both binaries into `/usr/bin` and a cargo build puts
+/// both in `target/<profile>`, so the sibling exists in every layout Raven
+/// ships or is developed in. Where it does not, re-running ourselves is the
+/// old behaviour and still correct for the launcher.
+fn helper_binary(exe: &std::path::Path) -> PathBuf {
+    let sibling = exe.with_file_name("raven");
+    if sibling.is_file() {
+        sibling
+    } else {
+        exe.to_path_buf()
     }
 }
 
@@ -253,6 +316,131 @@ fn read_line_before(pipe: &std::process::ChildStdout, limit: std::time::Duration
         }
     }
     out
+}
+
+/// Holds a namespace open so later launches can join it.
+///
+/// Mounts, reports itself on stdout, then does nothing for as long as it is
+/// wanted. It must stay single-threaded until the mount is done - the kernel
+/// refuses `CLONE_NEWUSER` to a threaded process - which is why the readiness
+/// line is written only afterwards, and why a binary has to reach this before
+/// starting any runtime of its own.
+///
+/// In the library rather than the launcher because either binary may end up
+/// running it: `start_session` prefers the `raven` beside it, and falls back
+/// to whichever binary asked. The window asks too, and until it could answer,
+/// its Start started a second window instead, said nothing on the pipe, and
+/// was killed thirty seconds later with a message blaming the
+/// kernel.
+pub fn anchor(name: &str) -> ! {
+    use crate::mount::MountBackend as _;
+    use std::io::Write as _;
+    // Every failure has to leave through stdout: the launcher reads that pipe
+    // and nothing else, and the anchor's stderr goes to /dev/null because it
+    // outlives the terminal that started it. An error on stderr would reach
+    // nobody, and the launcher would report only silence.
+    let report = |what: std::fmt::Arguments<'_>| -> ! {
+        println!("{what}");
+        let _ = std::io::stdout().flush();
+        std::process::exit(1);
+    };
+    // `Error::Layer` reads "preparing the layer failed at <path>" and keeps
+    // the errno as a source, which anyhow prints for the CLI and `Display`
+    // drops. This line is all the launcher ever shows, and "permission
+    // denied" is the difference between a bug and a chmod.
+    let because = |e: &dyn std::error::Error| -> String {
+        let mut out = e.to_string();
+        let mut source = e.source();
+        while let Some(s) = source {
+            out.push_str(&format!(": {s}"));
+            source = s.source();
+        }
+        out
+    };
+    let e = match crate::env::Environment::open(name) {
+        Ok(e) => e,
+        Err(err) => report(format_args!("{err}")),
+    };
+    let spec = match e.spec() {
+        Ok(s) => s,
+        Err(err) => report(format_args!("{err}")),
+    };
+    if let Err(err) = std::fs::create_dir_all(&spec.target) {
+        report(format_args!(
+            "could not create the mount point {}: {err}",
+            spec.target.display()
+        ));
+    }
+    // Bring the layer's opaque markers in line with the current shadow set
+    // before mounting. An environment created when Windows/Fonts was masked
+    // would otherwise stay masked for ever, and a user should not have to
+    // rebuild to receive a fix.
+    if let Err(err) = crate::layer::reconcile(&e.layer()) {
+        report(format_args!(
+            "could not reconcile the layer: {}",
+            because(&err)
+        ));
+    }
+    if !crate::mount::UserNsOverlay::is_available() {
+        report(format_args!(
+            "this kernel restricts unprivileged user namespaces; run `raven doctor`"
+        ));
+    }
+    if let Err(err) = crate::mount::UserNsOverlay.mount(&spec) {
+        report(format_args!(
+            "could not mount the overlay: {}",
+            because(&err)
+        ));
+    }
+    let pid = std::process::id();
+    // Written only after the mount exists, so a reader of this file never
+    // sees a session that cannot be joined.
+    if let Err(err) = std::fs::write(e.session_file(), format!("{pid}\n")) {
+        report(format_args!(
+            "could not record the session at {}: {err}",
+            e.session_file().display()
+        ));
+    }
+    println!("ready {pid}");
+    let _ = std::io::stdout().flush();
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(3600));
+    }
+}
+
+#[cfg(test)]
+mod helper_tests {
+    use super::helper_binary;
+
+    #[test]
+    fn the_helper_is_the_cli_beside_us_when_there_is_one() {
+        // The library re-runs its own binary for `session-anchor` and for the
+        // `exec` behind a registry import. From the window that would be the
+        // window - which answers neither well - so a `raven` next to it is
+        // preferred. The package installs both into /usr/bin and a cargo
+        // build puts both in target/<profile>, so the sibling is there in
+        // every layout Raven ships or is developed in.
+        let dir = std::env::temp_dir().join(format!("raven-helper-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let gui = dir.join("raven-gui");
+        std::fs::write(&gui, b"").unwrap();
+
+        // No sibling yet: the only thing to re-run is ourselves.
+        assert_eq!(helper_binary(&gui), gui);
+
+        let cli = dir.join("raven");
+        std::fs::write(&cli, b"").unwrap();
+        assert_eq!(
+            helper_binary(&gui),
+            cli,
+            "the CLI beside us answers both verbs"
+        );
+        // The CLI itself is its own helper, not a self-reference through a
+        // path that happens to have the same name.
+        assert_eq!(helper_binary(&cli), cli);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 #[cfg(test)]

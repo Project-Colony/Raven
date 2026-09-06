@@ -1,26 +1,26 @@
-[package]
-name = "raven"
-description = "Run Windows programs on Linux against a real Windows installation mounted as C:"
+[workspace]
+resolver = "3"
+members = ["crates/raven", "crates/raven-gui"]
+
+# Shared by both crates so they cannot drift apart: the GUI is unusable
+# against a library of a different age, and release-please gives them one
+# version.
+[workspace.package]
 version = "0.3.0" # x-release-please-version
 license = "GPL-3.0-or-later"
 repository = "https://github.com/Project-Colony/Raven"
 edition = "2024"
 rust-version = "1.85"
 
-[dependencies]
-anyhow = "1.0.104"
-clap = { version = "4.6.6", features = ["derive"] }
-nt-hive = "0.3.0"
-rustix = { version = "1.1.4", features = ["mount", "thread", "process", "fs"] }
-serde = { version = "1.0.229", features = ["derive"] }
-thiserror = "2.0.20"
-toml = "1.1.4"
-
-[dev-dependencies]
-regf = "0.1.0"
-
-# raven runs once per .exe launch, so what matters is start-up and size, both
-# measured before and after (numbers in the commit that added this).
+# Two binaries share this profile now, and they are paid for by different
+# people. `raven` runs once per .exe launch, so start-up and size are all that
+# matter, and both were measured before and after (numbers in the commit that
+# added this). `raven-gui` gains nothing measurable from either setting - it is
+# opened by hand, once, and then stays open - and pays for them in compile
+# time, since it links wgpu and iced under one codegen unit. The settings are
+# kept anyway: they are here for the launcher, which is the binary on the hot
+# path, and a second profile for the window would buy a faster build at the
+# cost of two release binaries built two different ways.
 # `panic = "abort"` is deliberately not set: it trades backtraces away for
 # little, and that decision is recorded in docs/project/consolidation.md.
 [profile.release]

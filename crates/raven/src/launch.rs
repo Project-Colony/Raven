@@ -170,6 +170,45 @@ pub fn resolve(exe: &Path) -> Result<Environment, Error> {
     }
 }
 
+/// The program to run and the directory to run it from, both absolute.
+///
+/// `run` joins the session's mount namespace before it execs, and
+/// `setns(CLONE_NEWNS)` resets the process's working directory to that
+/// namespace's root. So every relative path is resolved against `/` by the
+/// time wine sees it - `demo/game.exe` is looked for at `/demo/game.exe`,
+/// and a bare `game.exe`, whose directory used to be left unset, at
+/// `/game.exe`. Settling both here, while the caller's directory is still
+/// ours, is what makes a relative path mean what the user meant.
+///
+/// Lexical, not `canonicalize`: a program inside a live environment is under
+/// a mount point that exists only in the anchor's namespace, so resolving
+/// through the filesystem would fail for exactly the paths that work.
+pub fn target(exe: &Path) -> Result<(PathBuf, PathBuf), Error> {
+    // An absolute path needs no directory to be resolved against, and asking
+    // for one would fail where the caller's own directory has been deleted -
+    // which a file manager launching by absolute path should not care about.
+    if exe.is_absolute() {
+        return Ok(resolve_against(Path::new("/"), exe));
+    }
+    let here = std::env::current_dir().map_err(|e| Error::Tool("raven", e))?;
+    Ok(resolve_against(&here, exe))
+}
+
+fn resolve_against(here: &Path, exe: &Path) -> (PathBuf, PathBuf) {
+    let mut full = PathBuf::new();
+    // `Component::CurDir` is dropped by pushing components; `..` is kept as
+    // written rather than collapsed, since collapsing it would change which
+    // directory a symlink means.
+    for c in here.join(exe).components() {
+        match c {
+            std::path::Component::CurDir => {}
+            other => full.push(other),
+        }
+    }
+    let dir = full.parent().unwrap_or(here).to_path_buf();
+    (full, dir)
+}
+
 /// The environment used for programs that are not inside one.
 pub fn default_environment() -> Result<Option<String>, Error> {
     let file = paths::config_dir()?.join("default-environment");
@@ -189,9 +228,72 @@ pub fn set_default_environment(name: &str) -> Result<(), Error> {
     std::fs::write(&file, name).map_err(|e| Error::Layer(file, e))
 }
 
-/// Where the packaged registration file belongs.
+/// Where a hand-written registration belongs, for a build that no package
+/// installed.
+///
+/// Not where the *package* puts its own: that goes to
+/// `/usr/lib/binfmt.d/raven.conf`, the directory for files a package owns,
+/// and `/etc` deliberately takes precedence over it - the same mechanism
+/// `packaging/wine-mask.conf` uses to shadow Wine's registration. So this
+/// path is right for `raven binfmt`, which prints what to install when
+/// nothing has installed it, and would silently override the package if it
+/// were used on a system that has one.
 pub fn conf_path() -> PathBuf {
     PathBuf::from("/etc/binfmt.d/raven.conf")
+}
+
+#[cfg(test)]
+mod target_tests {
+    use super::resolve_against;
+    use std::path::Path;
+
+    #[test]
+    fn a_relative_program_is_resolved_before_the_namespace_moves_underneath_it() {
+        // `run` joins the session's mount namespace before it execs, and
+        // `setns(CLONE_NEWNS)` resets the working directory to that
+        // namespace's root. Anything still relative by then is looked for
+        // under `/`, so every form has to be settled here, against the
+        // directory the user actually typed it in.
+        let here = Path::new("/home/u/games");
+        assert_eq!(
+            resolve_against(here, Path::new("demo/game.exe")),
+            (
+                Path::new("/home/u/games/demo/game.exe").to_path_buf(),
+                Path::new("/home/u/games/demo").to_path_buf()
+            )
+        );
+        // A bare name used to leave the directory unset, which after the
+        // join means `/` - the program's own files would be looked for at
+        // the root of the mount.
+        assert_eq!(
+            resolve_against(here, Path::new("game.exe")),
+            (
+                Path::new("/home/u/games/game.exe").to_path_buf(),
+                here.to_path_buf()
+            )
+        );
+        assert_eq!(
+            resolve_against(here, Path::new("./game.exe")),
+            (
+                Path::new("/home/u/games/game.exe").to_path_buf(),
+                here.to_path_buf()
+            )
+        );
+        // An absolute path is already what it means, whatever it is
+        // resolved against - which is what lets `target` skip asking for a
+        // working directory that may no longer exist.
+        assert_eq!(
+            resolve_against(Path::new("/"), Path::new("/opt/g/game.exe")),
+            resolve_against(here, Path::new("/opt/g/game.exe"))
+        );
+        assert_eq!(
+            resolve_against(here, Path::new("/opt/g/game.exe")),
+            (
+                Path::new("/opt/g/game.exe").to_path_buf(),
+                Path::new("/opt/g").to_path_buf()
+            )
+        );
+    }
 }
 
 #[cfg(test)]

@@ -215,6 +215,10 @@ fn main() -> Result<()> {
         Commands::Env(c) => env_cmd(c),
         Commands::Run { name, argv } => run(&name, argv, None),
         Commands::Launch { exe, args } => {
+            // Both absolute before anything joins a namespace: `setns` resets
+            // the working directory, so a relative path settled later is
+            // resolved against the mount's root instead of the user's.
+            let (exe, cwd) = launch::target(&exe)?;
             let e = launch::resolve(&exe)?;
             // The kernel invokes this with no terminal of its own, so when a
             // double-clicked program misbehaves there is nothing to look at.
@@ -231,14 +235,10 @@ fn main() -> Result<()> {
             let mut argv = vec!["wine".to_string(), exe.display().to_string()];
             argv.extend(args);
             // The program's own directory, as Windows would give it.
-            let cwd = exe
-                .parent()
-                .filter(|p| !p.as_os_str().is_empty())
-                .map(PathBuf::from);
-            run(&e.name, argv, cwd)
+            run(&e.name, argv, Some(cwd))
         }
         Commands::Binfmt => binfmt(),
-        Commands::SessionAnchor { name } => session_anchor(&name),
+        Commands::SessionAnchor { name } => raven::session::anchor(&name),
         Commands::Exec {
             lower,
             upper,
@@ -289,9 +289,9 @@ fn doctor() -> Result<()> {
         }
     );
     match raven::prefix::media_decoders() {
-        None => out!("media playback              : GStreamer decoders present"),
+        None => out!("media playback               : GStreamer decoders present"),
         Some(missing) => {
-            out!("media playback              : INCOMPLETE");
+            out!("media playback               : INCOMPLETE");
             for m in missing {
                 out!("  missing: {m}");
             }
@@ -306,6 +306,16 @@ fn doctor() -> Result<()> {
         "bases                        : {}",
         base::Base::list()?.len()
     );
+    // A deploy that was interrupted leaves several gigabytes under a hidden
+    // name that `base list` passes over on purpose. Nothing else would ever
+    // mention it, so the diagnostics do.
+    for (id, path) in base::partials()? {
+        out!(
+            "  interrupted deploy of {id:?}, still on disk at {}",
+            path.display()
+        );
+        out!("  deploy {id:?} again to finish it, or remove that directory");
+    }
     out!(
         "environments                 : {}",
         env::Environment::list()?.len()
@@ -496,7 +506,8 @@ fn env_cmd(cmd: EnvCmd) -> Result<()> {
                 let (n, s) = plural(holders.len());
                 out!("{name}: running - {n} process{s} holding its C:");
                 for h in &holders {
-                    out!("  {:>7}  {}", h.pid, h.comm);
+                    let role = if h.anchor { "  (session anchor)" } else { "" };
+                    out!("  {:>7}  {}{role}", h.pid, h.comm);
                 }
                 out!("Release it: raven env stop {name}");
             }
@@ -555,20 +566,15 @@ fn env_cmd(cmd: EnvCmd) -> Result<()> {
             // services.exe and the rest are standing when the user arrives.
             out!("Starting Wine's services so the first launch does not wait...");
             let started = std::time::Instant::now();
-            match std::process::Command::new(std::env::current_exe()?)
-                .args(["run", &name, "--", "wine", "cmd", "/c", "exit"])
-                .env("WINEDEBUG", "-all")
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status()
-            {
-                Ok(s) if s.success() => out!(
+            if e.warm_up() {
+                out!(
                     "{name} is ready in {:.1}s. Launches will be immediate.",
                     started.elapsed().as_secs_f32()
-                ),
+                );
+            } else {
                 // The mount is up either way, so this is a warning and not a
                 // failure: the next launch simply pays what this would have.
-                _ => out!("{name} is mounted, but Wine did not start; the first launch will."),
+                out!("{name} is mounted, but Wine did not start; the first launch will.");
             }
             Ok(())
         }
@@ -633,7 +639,11 @@ fn run(name: &str, argv: Vec<String>, cwd: Option<PathBuf>) -> Result<()> {
     let mut cmd = Command::new(&argv[0]);
     cmd.args(&argv[1..]);
     cmd.env("WINEPREFIX", e.prefix());
-    if let Some(d) = cwd {
+    // Tested inside the namespace, which is the only place the answer is
+    // true, and skipped rather than fatal: a directory that is not there is
+    // no reason to refuse to start the program. Setting it anyway makes
+    // `exec` fail with an ENOENT that reads as "wine is missing".
+    if let Some(d) = cwd.filter(|d| d.is_dir()) {
         cmd.current_dir(d);
     }
     Err(cmd.exec()).with_context(|| format!("could not run {}", argv[0]))
@@ -697,68 +707,6 @@ fn d3d_cmd(
         }
     }
     Ok(())
-}
-
-/// Holds a namespace open so later launches can join it.
-///
-/// Mounts, reports itself, then does nothing for as long as it is wanted. It
-/// must stay single-threaded until the mount is done - the kernel refuses
-/// `CLONE_NEWUSER` to a threaded process - which is why the readiness line is
-/// written only afterwards.
-fn session_anchor(name: &str) -> Result<()> {
-    use std::io::Write as _;
-    // Every failure below has to leave through stdout: the launcher reads that
-    // pipe and nothing else, and the anchor's stderr goes to /dev/null because
-    // it outlives the terminal that started it. A `?` here would print to a
-    // stderr nobody is holding and the launcher would report only silence.
-    let report = |what: std::fmt::Arguments<'_>| -> ! {
-        println!("{what}");
-        let _ = std::io::stdout().flush();
-        std::process::exit(1);
-    };
-    let e = match env::Environment::open(name) {
-        Ok(e) => e,
-        Err(err) => report(format_args!("{err}")),
-    };
-    let spec = match e.spec() {
-        Ok(s) => s,
-        Err(err) => report(format_args!("{err}")),
-    };
-    if let Err(err) = std::fs::create_dir_all(&spec.target) {
-        report(format_args!(
-            "could not create the mount point {}: {err}",
-            spec.target.display()
-        ));
-    }
-    // Bring the layer's opaque markers in line with the current shadow set
-    // before mounting. An environment created when Windows/Fonts was masked
-    // would otherwise stay masked for ever, and a user should not have to
-    // rebuild to receive a fix.
-    if let Err(err) = raven::layer::reconcile(&e.layer()) {
-        report(format_args!("could not reconcile the layer: {err}"));
-    }
-    if !UserNsOverlay::is_available() {
-        report(format_args!(
-            "this kernel restricts unprivileged user namespaces; run `raven doctor`"
-        ));
-    }
-    if let Err(err) = UserNsOverlay.mount(&spec) {
-        report(format_args!("could not mount the overlay: {err}"));
-    }
-    let pid = std::process::id();
-    // Written only after the mount exists, so a reader of this file never sees
-    // a session that cannot be joined.
-    std::fs::write(e.session_file(), format!("{pid}\n")).with_context(|| {
-        format!(
-            "could not record the session at {}",
-            e.session_file().display()
-        )
-    })?;
-    println!("ready {pid}");
-    let _ = std::io::stdout().flush();
-    loop {
-        std::thread::sleep(std::time::Duration::from_secs(3600));
-    }
 }
 
 fn exec(

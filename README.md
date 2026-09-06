@@ -28,16 +28,18 @@ that physically cannot be.
 > an official ISO, mounts as C:, a real installer wrote 256 MB into an
 > environment without touching a byte of the base — and the game it installs
 > runs from a double-click in a file manager to its title screen. The registry
-> projection carries 1 894 keys from the real hives, process spawn costs 1.19×
-> plain Wine (135 ms against 113, down from 2× after the fonts discovery), and
-> the shadow set has two entries, each backed by a measurement.
+> projection carries 1 894 keys from the real hives, a launch into an
+> already-running session costs about 2 ms of Raven's own overhead, and the
+> shadow set is down to a single entry — the fonts mask that bought the older
+> spawn figures was withdrawn, because a Windows declaring 961 fonts and having
+> none is not the real thing.
 >
-> What that does *not* mean: one game, 2D and software-rendered, which turned out to
-> render through GDI and never touch Direct3D at all; DXVK now installs and has
-> been shown to initialise and enumerate the GPU, but no game has rendered a
-> frame through it; one installer framework exercised; programs that keep
-> their strings in `.mui` files run mute. The honest ledger, including five
-> performance theories that measurement destroyed, is in
+> What that does *not* mean: two games, the first 2D and software-rendered,
+> which turned out to render through GDI and never touch Direct3D at all, the
+> second drawing on the GPU through DXVK and Direct3D 11; vkd3d-proton installs,
+> but no Direct3D 12 title has been tried; one installer framework exercised;
+> programs that keep their strings in `.mui` files run mute. The honest ledger,
+> including five performance theories that measurement destroyed, is in
 > [docs/project/status.md](docs/project/status.md) and
 > [docs/internals/performance.md](docs/internals/performance.md).
 
@@ -93,16 +95,20 @@ Raven's position is the one nobody occupies:
 
 ## Installation
 
-On Arch, the package in [packaging/](packaging/) installs the binary, registers
-`.exe` files with the kernel, and masks Wine's competing registration — be
-aware that **installing changes what every `.exe` on the machine does**, and
-uninstalling reverses it:
+On Arch, the package in [packaging/](packaging/) installs both binaries,
+registers `.exe` files with the kernel, and masks Wine's competing
+registration — be aware that **installing changes what every `.exe` on the
+machine does**, and uninstalling reverses it:
 
 ```bash
 git clone https://github.com/Project-Colony/Raven
 cd Raven/packaging
 makepkg -si
 ```
+
+There are two binaries because there are two front ends. `raven` is the command
+line and the primary interface; `raven-gui` is a window over the same library —
+environments, bases and diagnostics — and nothing here requires it.
 
 Everywhere else, build from source — short, but the `.exe` registration is then
 yours to install (`raven binfmt` prints it):

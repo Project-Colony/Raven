@@ -51,13 +51,21 @@ Three things have to agree or the icon silently does not appear:
 
 | | |
 |---|---|
-| `Icon=` in `packaging/raven.desktop` | `raven` |
-| the installed desktop file | `raven.desktop` |
+| `Icon=` in both desktop entries | `raven` |
+| the installed desktop files | `raven.desktop` and `raven-gui.desktop` |
 | the installed icon | `hicolor/<size>/apps/raven.png` |
 
 `packaging/PKGBUILD` installs all three. Before that it installed only the first
 two, which is why the desktop entry has always asked for an icon that was not
 there.
+
+A *window* needs a fourth. A compositor is not told which desktop file a running
+window came from - it matches the application id the window reports against a
+desktop file's basename - so `raven-gui` sets its `application_id` to
+`raven-gui`, the basename of `raven-gui.desktop`, in
+`crates/raven-gui/src/main.rs`. iced leaves that empty by default, which matches
+nothing: the menu entry would keep its icon while the window it launched showed
+the compositor's blank fallback, with nothing to say the two were one program.
 
 ## Colours
 
