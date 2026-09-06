@@ -52,6 +52,13 @@ jobs:
       - name: Test
         run: cargo test --verbose
 
+      # `--locked` here and nowhere else was the gap: the release workflow and
+      # the PKGBUILD both build locked, so a Cargo.lock that no longer agrees
+      # with Cargo.toml passed every check and then failed the release, where
+      # it is expensive and public. This is the cheap place to find that out.
+      - name: Build the way a release and a package do
+        run: cargo build --release --locked
+
   # The org rule is that every dependency sits on its latest release. This makes
   # drift visible in a diff rather than leaving it to be discovered later.
   outdated:

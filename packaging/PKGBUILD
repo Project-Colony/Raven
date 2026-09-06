@@ -22,7 +22,14 @@ sha256sums=('SKIP')
 
 pkgver() {
   cd Raven
-  printf "0.1.0.r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+  # Read rather than repeated: the literal was left at 0.1.0 through two
+  # releases, so every package built from a 0.3.0 tree called itself 0.1.0 and
+  # pacman saw an upgrade as a downgrade. `[workspace.package]` is where
+  # release-please writes it, and both crates inherit it from there.
+  local v
+  v=$(sed -n '/^\[workspace\.package\]/,/^\[/ s/^version = "\([^"]*\)".*/\1/p' Cargo.toml)
+  printf "%s.r%s.%s" "${v:?could not read the workspace version}" \
+    "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
 }
 
 build() {

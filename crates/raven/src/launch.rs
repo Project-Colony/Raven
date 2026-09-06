@@ -222,7 +222,16 @@ pub fn set_default_environment(name: &str) -> Result<(), Error> {
     std::fs::write(&file, name).map_err(|e| Error::Layer(file, e))
 }
 
-/// Where the packaged registration file belongs.
+/// Where a hand-written registration belongs, for a build that no package
+/// installed.
+///
+/// Not where the *package* puts its own: that goes to
+/// `/usr/lib/binfmt.d/raven.conf`, the directory for files a package owns,
+/// and `/etc` deliberately takes precedence over it - the same mechanism
+/// `packaging/wine-mask.conf` uses to shadow Wine's registration. So this
+/// path is right for `raven binfmt`, which prints what to install when
+/// nothing has installed it, and would silently override the package if it
+/// were used on a system that has one.
 pub fn conf_path() -> PathBuf {
     PathBuf::from("/etc/binfmt.d/raven.conf")
 }
