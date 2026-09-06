@@ -184,6 +184,12 @@ pub fn resolve(exe: &Path) -> Result<Environment, Error> {
 /// a mount point that exists only in the anchor's namespace, so resolving
 /// through the filesystem would fail for exactly the paths that work.
 pub fn target(exe: &Path) -> Result<(PathBuf, PathBuf), Error> {
+    // An absolute path needs no directory to be resolved against, and asking
+    // for one would fail where the caller's own directory has been deleted -
+    // which a file manager launching by absolute path should not care about.
+    if exe.is_absolute() {
+        return Ok(resolve_against(Path::new("/"), exe));
+    }
     let here = std::env::current_dir().map_err(|e| Error::Tool("raven", e))?;
     Ok(resolve_against(&here, exe))
 }
@@ -273,7 +279,13 @@ mod target_tests {
                 here.to_path_buf()
             )
         );
-        // An absolute path is already what it means.
+        // An absolute path is already what it means, whatever it is
+        // resolved against - which is what lets `target` skip asking for a
+        // working directory that may no longer exist.
+        assert_eq!(
+            resolve_against(Path::new("/"), Path::new("/opt/g/game.exe")),
+            resolve_against(here, Path::new("/opt/g/game.exe"))
+        );
         assert_eq!(
             resolve_against(here, Path::new("/opt/g/game.exe")),
             (
