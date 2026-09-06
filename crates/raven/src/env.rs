@@ -49,11 +49,17 @@ impl Environment {
         self.root.join("registry-rules.toml")
     }
 
+    /// An environment created before the file existed has none, and the
+    /// defaults are the right answer for it. Any other failure to read is
+    /// reported: the defaults are the *wider* set, so quietly substituting
+    /// them for a file someone narrowed by hand projects more of the base's
+    /// registry than its author allowed - and says nothing.
     pub fn rules(&self) -> Result<registry::Rules, Error> {
         match std::fs::read_to_string(self.rules_file()) {
             Ok(text) => registry::Rules::parse(&text)
                 .map_err(|e| Error::Manifest(self.rules_file(), e.to_string())),
-            Err(_) => Ok(registry::Rules::default()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(registry::Rules::default()),
+            Err(e) => Err(Error::Layer(self.rules_file(), e)),
         }
     }
 
@@ -422,9 +428,49 @@ pub fn create(name: &str, base_id: &str) -> Result<Environment, Error> {
     })();
 
     if built.is_err() {
-        let _ = std::fs::remove_dir_all(&root);
+        // `remove_tree`, not `remove_dir_all`: creating an environment mounts
+        // it - `project_registry` does - and overlayfs leaves a `work/work`
+        // with no permissions at all, which stops a plain removal after it
+        // has already deleted the upper layer. The wreck that leaves is
+        // refused by a second `create` and by every command that opens it.
+        let _ = remove_tree(&root);
     }
     built
+}
+
+#[cfg(test)]
+mod rules_tests {
+    use super::{Environment, Manifest};
+
+    #[test]
+    fn a_rules_file_that_cannot_be_read_is_not_silently_replaced() {
+        // The default rules are the *wider* set, so falling back to them
+        // when a hand-narrowed file cannot be read projects more of the
+        // base's registry than its author allowed - the opposite of the
+        // conservative direction, and invisible.
+        let root = std::env::temp_dir().join(format!("raven-rules-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let env = Environment {
+            name: "rules-test".into(),
+            manifest: Manifest {
+                base: "none".into(),
+            },
+            root: root.clone(),
+        };
+
+        // Absent is the one case that legitimately means "the defaults".
+        assert!(env.rules().is_ok(), "no file means the default rules");
+
+        // Not valid UTF-8: an editor saving a comment in Latin-1 is enough.
+        std::fs::write(env.rules_file(), [0xff, 0xfe, 0x41]).unwrap();
+        assert!(
+            env.rules().is_err(),
+            "a rules file that exists and cannot be read must be reported"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 #[cfg(test)]

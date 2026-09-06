@@ -35,7 +35,7 @@ fn fake_env(name: &str) -> Environment {
 }
 
 /// A directory shaped like a DXVK release, with the libraries it names.
-fn fake_build(root: &PathBuf, version: &str) -> PathBuf {
+fn fake_build(root: &std::path::Path, version: &str) -> PathBuf {
     let build = root.join(version);
     for arch in ["x64", "x32"] {
         let dir = build.join(arch);
@@ -92,18 +92,15 @@ fn a_failure_after_the_copies_leaves_libraries_raven_can_still_account_for() {
 fn a_failed_upgrade_does_not_take_the_working_build_with_it() {
     let env = fake_env("upgrade");
     let old = fake_build(&env.root, "dxvk-2.4");
-    env.install_d3d(&DXVK, &old).expect("the first install works");
+    env.install_d3d(&DXVK, &old)
+        .expect("the first install works");
     let installed: Vec<PathBuf> = env.d3d(&DXVK).into_iter().map(|s| s.path).collect();
     assert_eq!(installed.len(), 4, "two libraries, two architectures");
 
     // An upgrade whose second architecture cannot be read: x32 is there in
     // the plan and unreadable by the time it is copied.
     let new = fake_build(&env.root, "dxvk-2.7");
-    fs::set_permissions(
-        new.join("x32/dxgi.dll"),
-        fs::Permissions::from_mode(0o000),
-    )
-    .unwrap();
+    fs::set_permissions(new.join("x32/dxgi.dll"), fs::Permissions::from_mode(0o000)).unwrap();
     let outcome = env.install_d3d(&DXVK, &new);
     fs::set_permissions(new.join("x32/dxgi.dll"), fs::Permissions::from_mode(0o644)).unwrap();
     assert!(outcome.is_err(), "the upgrade could not be completed");
