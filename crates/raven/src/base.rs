@@ -171,17 +171,21 @@ pub fn deploy(image: &Path, index: u32, id: &str) -> Result<Base, Error> {
     })
 }
 
-/// Where a deploy applies before it has earned the real name.
+/// The prefix a deploy works under before it has earned the real name.
 ///
-/// Hidden, so `list` passes over it: a base is a finished Windows, and
-/// anything else under that directory is Raven's own working state.
+/// A leading dot so the directory is hidden, and a word after it so the rule
+/// that skips it is exact: a name is only ever hidden from `list` when Raven
+/// wrote it, never because a user chose one starting with a dot.
+const PARTIAL: &str = ".partial-";
+
+/// Where a deploy applies before it has earned the real name.
 fn partial_name(id: &str) -> String {
-    format!(".partial-{id}")
+    format!("{PARTIAL}{id}")
 }
 
 /// Whether a directory in the bases folder is a deployed Windows.
 fn is_base_dir(name: &str) -> bool {
-    !name.starts_with('.')
+    !name.starts_with(PARTIAL)
 }
 
 /// Rewrites the reparse points a WIM leaves behind as absolute symlinks.
@@ -253,8 +257,9 @@ mod partial_tests {
         assert_eq!(partial_name("win11-26200-pro"), ".partial-win11-26200-pro");
         assert!(!is_base_dir(&partial_name("win11-26200-pro")));
         assert!(is_base_dir("win11-26200-pro"));
-        // Nothing hidden is a base; that is what makes the partial name safe.
-        assert!(!is_base_dir(".anything"));
+        // Only Raven's own working directories are skipped. A base a user
+        // named with a leading dot was listed before this and still is.
+        assert!(is_base_dir(".anything"));
     }
 }
 
