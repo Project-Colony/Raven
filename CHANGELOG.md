@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.3.0](https://github.com/Project-Colony/Raven/compare/v0.2.0...v0.3.0) (2026-09-02)
+
+
+### Features
+
+* **doctor:** report when the system cannot decode a game's media ([23dcbc0](https://github.com/Project-Colony/Raven/commit/23dcbc0e3025b8eba694523c83350cc2becb7828))
+* environment sessions - the second launch is thirteen times faster ([d3117e6](https://github.com/Project-Colony/Raven/commit/d3117e633f0ca76427a96712a6edee6090ad5bb2))
+* raven env dxvk installs Direct3D-on-Vulkan into an environment ([61fbe3d](https://github.com/Project-Colony/Raven/commit/61fbe3db68bb6f1af90b5af91dae5a70780ff0c3))
+* Raven gets a mark - a raven's head cut through the mount stack ([05b0c5f](https://github.com/Project-Colony/Raven/commit/05b0c5f14f01cf1dbdce9f265a1719a361606187))
+* the fonts are back - a real Windows with hidden fonts is not one ([eceea7e](https://github.com/Project-Colony/Raven/commit/eceea7e7e8e67f9af7cd1bca9b6c1f24a09eeb2d))
+* vkd3d-proton for Direct3D 12, and env start to pay the wait up front ([4b3cb03](https://github.com/Project-Colony/Raven/commit/4b3cb03e40c1f598747e2c368a1455baa8c0c155))
+
+
+### Bug Fixes
+
+* a launched program starts in its own directory, as Windows gives it ([8d26822](https://github.com/Project-Colony/Raven/commit/8d2682279c2d88c63233665a63450d0f955451e3))
+* four defects an adversarial review found in sessions ([0c97b38](https://github.com/Project-Colony/Raven/commit/0c97b385c487d9bd023063ae058e1829c7b2f657))
+* restore the mark to concept 36 as it was drawn ([20c2ce8](https://github.com/Project-Colony/Raven/commit/20c2ce8e2417489393469cfa19e9b8306b31d4a6))
+* the readiness reader made setns refuse the join ([bd6d650](https://github.com/Project-Colony/Raven/commit/bd6d650b675d8f7109f508f2fe62072ad15fe0de))
+* updating DXVK no longer strands the modules the new build dropped ([54ac726](https://github.com/Project-Colony/Raven/commit/54ac7261b14bcd4959f8b6deabeed97690851c2f))
+
 ## [0.2.0](https://github.com/Project-Colony/Raven/compare/v0.1.0...v0.2.0) (2026-09-01)
 
 
