@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.4.0](https://github.com/Project-Colony/Raven/compare/v0.3.0...v0.4.0) (2026-09-06)
+
+
+### Features
+
+* Raven gets a window, and the audit that came with it ([958f38e](https://github.com/Project-Colony/Raven/commit/958f38ea5fd137872373052848ac239c399e4948))
+
+
+### Bug Fixes
+
+* a Direct3D install that fails part way can still be undone ([315d224](https://github.com/Project-Colony/Raven/commit/315d224dfa9f07c792fc517e77b3a68eb36560d4))
+* a program given by a relative path is found where the user meant it ([bebcaf7](https://github.com/Project-Colony/Raven/commit/bebcaf7c8cd1237e29d39b0c878d8c67ad4ee61d))
+* a session anchor is recognised by what it runs, not by its name ([37c15f2](https://github.com/Project-Colony/Raven/commit/37c15f26422da1a9adf1ce9d01da98c7655fe644))
+* an absolute program path does not need a working directory to exist ([1487679](https://github.com/Project-Colony/Raven/commit/1487679cd648f9249f0e3451e6733e19a114f23b))
+* an interrupted deploy no longer leaves a base nothing can finish ([1b26eb4](https://github.com/Project-Colony/Raven/commit/1b26eb47543802000dd1de1aa3639be07eb5f563))
+* detach touches only the drives Raven itself attached ([cc57745](https://github.com/Project-Colony/Raven/commit/cc577453a240cb0913b0f44451ecdfb5fe7fd452))
+* **gui:** Environments stays lit in the sidebar while a detail shows ([f599ff6](https://github.com/Project-Colony/Raven/commit/f599ff6e807a203f34b45d0031da4717a2c15194))
+* **gui:** Start works, because the window can be its own session anchor ([644765d](https://github.com/Project-Colony/Raven/commit/644765df88099daa547e15c86eb51e6480d9a038))
+* **gui:** the button that ends the user's programs says so ([d88aeef](https://github.com/Project-Colony/Raven/commit/d88aeeffb73e3639ac7e940659872f46be810b02))
+* only Raven's own working directories are hidden from base list ([68e0a0b](https://github.com/Project-Colony/Raven/commit/68e0a0b42d8e11ccd0997b7bc5e4c692ffdfa4ce))
+* release-please could not open a pull request against a virtual manifest ([15d7503](https://github.com/Project-Colony/Raven/commit/15d750346533034532038e4ae86530544d5f7674))
+* the projection example belongs to a crate again ([afb5b27](https://github.com/Project-Colony/Raven/commit/afb5b27e1d8e1b44cdc79e5ffdd4ebb40a026e1f))
+* the window can no longer be asked to do what only the launcher can ([053319e](https://github.com/Project-Colony/Raven/commit/053319e588d1005ec0fcce5251cba25edb2f1fd0))
+* the window could no longer stop an environment anything was using ([3ec536b](https://github.com/Project-Colony/Raven/commit/3ec536ba5a271d9159ed5217d67582c11ac4ae48))
+* the window reports the check that matters most, and says why things failed ([a7617cc](https://github.com/Project-Colony/Raven/commit/a7617cc2ad651a5ac84a2c7c047253f908630b5b))
+* the window's Start really starts, and three failures say more ([c2b728c](https://github.com/Project-Colony/Raven/commit/c2b728c4b482eef3949674338f51f3540d9b69f3))
+* two silent failures in creating and reading an environment ([4981d81](https://github.com/Project-Colony/Raven/commit/4981d813c8f103e42d64f6debc7a5388667155a4))
+
+
+### Performance Improvements
+
+* a warm launch no longer scans every process to find one of them ([838bf92](https://github.com/Project-Colony/Raven/commit/838bf920f68ae74c6d30d6dcda8b020ab0d379c0))
+* **gui:** the bases screen counts environments without reading them ([2b3b33d](https://github.com/Project-Colony/Raven/commit/2b3b33dc34fed63d91a14c29ddd77a6553686405))
+
 ## [0.3.0](https://github.com/Project-Colony/Raven/compare/v0.2.0...v0.3.0) (2026-09-02)
 
 
