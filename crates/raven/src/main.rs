@@ -289,9 +289,9 @@ fn doctor() -> Result<()> {
         }
     );
     match raven::prefix::media_decoders() {
-        None => out!("media playback              : GStreamer decoders present"),
+        None => out!("media playback               : GStreamer decoders present"),
         Some(missing) => {
-            out!("media playback              : INCOMPLETE");
+            out!("media playback               : INCOMPLETE");
             for m in missing {
                 out!("  missing: {m}");
             }

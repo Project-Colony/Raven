@@ -57,16 +57,29 @@ pub fn parse_progress(line: &str) -> Option<Progress> {
 
 /// The one line of a failed child's error output worth putting in a banner.
 ///
-/// The last line is the one that says why - both Raven and `wimlib-imagex`
-/// end with the sentence that matters. What follows it is usually blank, or a
-/// remnant of a progress line wimlib redrew with `\r`, so empty pieces are
-/// skipped rather than shown as an empty message.
+/// Raven's own failures reach stderr through anyhow, which prints the
+/// sentence first and its cause underneath:
+///
+/// ```text
+/// Error: could not read the image at /mnt/win.wim
+///
+/// Caused by:
+///     No such file or directory (os error 2)
+/// ```
+///
+/// The last line there is the errno, which says nothing about which file or
+/// what Raven was doing - so the `Error:` line wins when there is one. Only
+/// when there is not, as for `wimlib-imagex`'s own diagnostics, is the last
+/// line the one that says why. Empty pieces are skipped either way: wimlib
+/// redraws progress with `\r`, so a killed child can leave only whitespace.
 pub fn last_meaningful_line(stderr: &str) -> Option<String> {
-    stderr
-        .split(['\r', '\n'])
-        .map(str::trim)
-        .rfind(|line| !line.is_empty())
-        .map(str::to_owned)
+    let lines = || stderr.split(['\r', '\n']).map(str::trim);
+    if let Some(sentence) = lines().find_map(|l| l.strip_prefix("Error: ")) {
+        if !sentence.is_empty() {
+            return Some(sentence.to_owned());
+        }
+    }
+    lines().rfind(|line| !line.is_empty()).map(str::to_owned)
 }
 
 /// What `raven base deploy` needs, gathered from the bases screen's three
@@ -235,6 +248,19 @@ mod tests {
         assert_eq!(
             last_meaningful_line(said).as_deref(),
             Some("error: no space left on device while writing Windows/System32")
+        );
+    }
+
+    #[test]
+    fn ravens_own_failure_is_reported_by_its_sentence_and_not_its_errno() {
+        // anyhow prints the context first and the cause underneath, so the
+        // last line is "No such file or directory" - true of a thousand
+        // failures and a description of none of them.
+        let said = "Error: could not read the image at /mnt/win.wim\n\n\
+                    Caused by:\n    No such file or directory (os error 2)\n";
+        assert_eq!(
+            last_meaningful_line(said).as_deref(),
+            Some("could not read the image at /mnt/win.wim")
         );
     }
 

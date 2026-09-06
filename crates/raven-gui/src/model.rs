@@ -98,8 +98,8 @@ pub struct Check {
     pub detail: String,
 }
 
-/// The same four judgements `raven doctor` prints, from the same functions -
-/// a difference between the two would be a bug here, not a second opinion.
+/// The same judgements `raven doctor` prints, from the same functions - a
+/// difference between the two would be a bug here, not a second opinion.
 pub fn checks() -> Vec<Check> {
     use raven::mount::MountBackend as _;
     let userns = raven::mount::UserNsOverlay::is_available();
@@ -108,6 +108,7 @@ pub fn checks() -> Vec<Check> {
     let media = raven::prefix::media_decoders();
 
     vec![
+        exe_handler(),
         Check {
             label: "Unprivileged user namespaces".into(),
             ok: userns,
@@ -147,6 +148,51 @@ pub fn checks() -> Vec<Check> {
             },
         },
     ]
+}
+
+/// Who the kernel hands a double-clicked `.exe` to.
+///
+/// The check `raven doctor` leads with, and the one the window most needs:
+/// Wine registers a handler for the same `MZ` magic, the kernel silently
+/// picks the most recently registered, and losing that race looks exactly
+/// like Raven losing its prefix. Someone using the window rather than a
+/// terminal is precisely who would never find that out.
+fn exe_handler() -> Check {
+    let label = "Double-clicked .exe".to_string();
+    if !std::path::Path::new("/proc/sys/fs/binfmt_misc").exists() {
+        return Check {
+            label,
+            ok: false,
+            detail: "binfmt_misc is not mounted - a double-clicked .exe cannot run".into(),
+        };
+    }
+    let handlers = raven::launch::exe_handlers();
+    match handlers.iter().find(|h| h.enabled) {
+        None if handlers.is_empty() => Check {
+            label,
+            ok: false,
+            detail: "nothing claims .exe files - run `raven binfmt` to see what to register".into(),
+        },
+        None => Check {
+            label,
+            ok: false,
+            detail: "every handler is disabled - a double-clicked .exe will not run".into(),
+        },
+        Some(w) if w.name == raven::launch::BINFMT_NAME => Check {
+            label,
+            ok: true,
+            detail: format!("handled by {} -> {}", w.name, w.interpreter.display()),
+        },
+        Some(w) => Check {
+            label,
+            ok: false,
+            detail: format!(
+                "{} claims it first, not Raven: a double-clicked .exe runs against {}",
+                w.name,
+                w.interpreter.display()
+            ),
+        },
+    }
 }
 
 #[cfg(test)]
@@ -214,10 +260,13 @@ mod tests {
         // `Check` here and asserting on the string just typed would run none
         // of that.
         let checks = checks();
-        assert_eq!(
-            checks.len(),
-            4,
-            "raven doctor prints four judgements and the window shows the same four"
+        assert!(
+            checks.len() >= 5,
+            "the window shows what raven doctor judges, the .exe handler included"
+        );
+        assert!(
+            checks.iter().any(|c| c.label.contains(".exe")),
+            "the handler race is the failure that looks like Raven losing its prefix"
         );
         for c in &checks {
             assert!(!c.label.is_empty());

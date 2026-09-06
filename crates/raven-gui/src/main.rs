@@ -189,7 +189,20 @@ impl App {
                 }
             }
             Message::Start(name) => act(name, |e| e.ensure_session().map(|_| ())),
-            Message::Stop(name) => act(name, |e| e.stop().map(|_| ())),
+            Message::Stop(name) => act(name, |e| {
+                // The banner that offers this says "Stop the session", on the
+                // library's judgement that only Raven's own anchor holds the
+                // environment - and that banner is deliberately long-lived,
+                // exempt from the poll that clears the others. A game started
+                // in between would be killed by a button whose words promised
+                // it would not be. Asking again costs one read and lets the
+                // banner relabel itself instead.
+                match e.ensure_not_running() {
+                    // Nothing there, or nothing but our own anchor.
+                    Ok(()) | Err(raven::Error::SessionHolds(_)) => e.stop().map(|_| ()),
+                    Err(other) => Err(other),
+                }
+            }),
             Message::Acted(Ok(())) => {
                 self.dismiss_offer();
                 self.reload_environments()
