@@ -145,8 +145,13 @@ impl Environment {
 
         // Either half alone still counts: a detach that failed midway must
         // be re-runnable until nothing is left.
+        // Only entries Raven wrote are Raven's to remove. `attach` refuses a
+        // letter that already carries any mapping, so a `"d:"="cdrom"` the
+        // user made in winecfg was never ours - and deleting it here would
+        // be the destruction `attach` went out of its way to avoid.
+        // `disk_letters` matches exactly the form `attach` writes.
         let target = std::fs::read_link(&raw).ok();
-        if target.is_none() && !has_drive_entry(&text, letter) {
+        if target.is_none() && !disk_letters(&text).contains(&letter) {
             return Err(Error::NotAttached(letter));
         }
         let updated = edit_drives_section(&text, letter, None);
@@ -161,11 +166,17 @@ impl Environment {
         // therefore here. First drop every link that belongs to an
         // attachment (or to the device just detached), then re-wire.
         let mut owned: Vec<PathBuf> = target.into_iter().collect();
-        let survivors: Vec<(char, PathBuf)> = disk_letters(&updated)
+        // Rank among *every* remaining disk, not among the ones with a device
+        // behind them: mountmgr counts an entry whether or not anything is
+        // wired to it, which is what `attach` and `attachments` count too. A
+        // rank taken from the linked subset would wire a survivor to a number
+        // naming a different disk.
+        let survivors: Vec<(usize, PathBuf)> = disk_letters(&updated)
             .iter()
-            .filter_map(|&l| {
+            .enumerate()
+            .filter_map(|(rank, &l)| {
                 let t = std::fs::read_link(dos.join(format!("{l}::"))).ok()?;
-                Some((l, t))
+                Some((rank + 1, t))
             })
             .collect();
         owned.extend(survivors.iter().map(|(_, t)| t.clone()));
@@ -181,8 +192,8 @@ impl Environment {
                 }
             }
         }
-        for (rank, (_, t)) in survivors.iter().enumerate() {
-            let phys = dos.join(format!("physicaldrive{}", rank + 1));
+        for (number, t) in &survivors {
+            let phys = dos.join(format!("physicaldrive{number}"));
             std::os::unix::fs::symlink(t, &phys).map_err(|e| Error::Layer(phys, e))?;
         }
 

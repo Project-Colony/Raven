@@ -199,6 +199,89 @@ fn detaching_renumbers_the_disks_that_remain() {
 }
 
 #[test]
+fn detach_leaves_alone_a_drive_letter_raven_did_not_create() {
+    // winecfg's own mappings live in the same Drives section. `attach`
+    // refuses a letter that carries one; `detach` must not delete it either,
+    // and there is nothing of Raven's on that letter to report detaching.
+    let env = fake_env("foreign");
+    let reg = env.prefix().join("system.reg");
+    let text = fs::read_to_string(&reg).unwrap();
+    fs::write(
+        &reg,
+        format!("{text}\n[Software\\\\Wine\\\\Drives] 1700000000\n\"d:\"=\"cdrom\"\n"),
+    )
+    .unwrap();
+
+    assert!(
+        matches!(env.detach('d'), Err(raven::Error::NotAttached('d'))),
+        "a letter Raven never attached is not Raven's to detach"
+    );
+    assert!(
+        fs::read_to_string(&reg)
+            .unwrap()
+            .contains("\"d:\"=\"cdrom\""),
+        "the user's own mapping must survive"
+    );
+
+    let _ = fs::remove_dir_all(&env.root);
+}
+
+#[test]
+fn renumbering_counts_the_drives_mountmgr_counts() {
+    // mountmgr numbers by rank in the Drives section, and a floppy-typed
+    // entry with no raw link behind it - a half-finished attach, or one made
+    // by hand - still takes a number. `attach` counts it; `detach` has to
+    // count it too, or every later drive is wired to a number that names a
+    // different disk.
+    let devs = some_block_devices();
+    if devs.len() < 2 {
+        eprintln!("skipped: needs two block devices, found {}", devs.len());
+        return;
+    }
+    let env = fake_env("rank");
+    let dos = env.prefix().join("dosdevices");
+    let reg = env.prefix().join("system.reg");
+
+    let d = env.attach(&devs[0], 'd').unwrap();
+    let f = env.attach(&devs[1], 'f').unwrap();
+    assert_eq!((d.number, f.number), (1, 2));
+
+    // A floppy entry on e: with nothing behind it, sitting between them.
+    let text = fs::read_to_string(&reg).unwrap();
+    fs::write(
+        &reg,
+        text.replace("\"f:\"=\"floppy\"", "\"e:\"=\"floppy\"\n\"f:\"=\"floppy\""),
+    )
+    .unwrap();
+    assert_eq!(
+        env.attachments()
+            .iter()
+            .find(|a| a.letter == 'f')
+            .map(|a| a.number),
+        Some(3),
+        "f: is now the third disk, because e: takes a number"
+    );
+
+    env.detach('d').unwrap();
+    // d: is gone, so e: is first and f: second - and f: is the only one of
+    // them with a device behind it.
+    assert_eq!(
+        env.attachments()
+            .iter()
+            .find(|a| a.letter == 'f')
+            .map(|a| a.number),
+        Some(2)
+    );
+    assert_eq!(
+        fs::read_link(dos.join("physicaldrive2")).unwrap(),
+        devs[1],
+        "the link must carry the number attachments() reports"
+    );
+
+    let _ = fs::remove_dir_all(&env.root);
+}
+
+#[test]
 fn attach_refuses_what_would_eat_a_disk() {
     let env = fake_env("refuse");
 
