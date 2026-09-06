@@ -96,7 +96,7 @@ impl Environment {
     pub fn install_d3d(&self, rt: &Runtime, source: &Path) -> Result<Vec<Shadow>, Error> {
         self.ensure_not_running()?;
         let (dir, _keep) = unpack(source)?;
-        let root = build_root(&dir)?;
+        let root = build_root(&dir, rt.key)?;
 
         // Plan every copy before performing any of it. Checking as we went
         // meant a refusal left the copies already made behind, and those then
@@ -375,7 +375,7 @@ fn unpack(source: &Path) -> Result<(PathBuf, Option<TempDir>), Error> {
 /// Finds the directory that actually holds `x64/`, so both a release tarball
 /// (which nests everything under `dxvk-<version>/`) and an already-extracted
 /// build work without the caller having to know which they have.
-fn build_root(dir: &Path) -> Result<PathBuf, Error> {
+fn build_root(dir: &Path, key: &'static str) -> Result<PathBuf, Error> {
     if dir.join("x64").is_dir() {
         return Ok(dir.to_path_buf());
     }
@@ -387,7 +387,7 @@ fn build_root(dir: &Path) -> Result<PathBuf, Error> {
             }
         }
     }
-    Err(Error::NotAD3dBuild("", dir.to_path_buf()))
+    Err(Error::NotAD3dBuild(key, dir.to_path_buf()))
 }
 
 struct TempDir(PathBuf);
@@ -407,10 +407,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         // A release tarball extracts to dxvk-2.7/x64, not to x64.
         std::fs::create_dir_all(dir.join("dxvk-2.7/x64")).unwrap();
-        assert_eq!(build_root(&dir).unwrap(), dir.join("dxvk-2.7"));
+        assert_eq!(build_root(&dir, "dxvk").unwrap(), dir.join("dxvk-2.7"));
         // An already-extracted build works too.
         assert_eq!(
-            build_root(&dir.join("dxvk-2.7")).unwrap(),
+            build_root(&dir.join("dxvk-2.7"), "dxvk").unwrap(),
             dir.join("dxvk-2.7")
         );
         let _ = std::fs::remove_dir_all(&dir);
@@ -421,7 +421,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("raven-dxvkbad-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("lib")).unwrap();
-        assert!(matches!(build_root(&dir), Err(Error::NotAD3dBuild(_, _))));
+        assert!(matches!(
+            build_root(&dir, "dxvk"),
+            Err(Error::NotAD3dBuild("dxvk", _))
+        ));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -202,6 +202,31 @@ impl Environment {
         Ok(())
     }
 
+    /// Brings Wine's services up, so the next launch does not pay for them.
+    ///
+    /// Mounting is the cheap half - hundredths of a second. The seconds a
+    /// first launch pays are `wineserver`, `services.exe` and the rest
+    /// starting, and they only start when something runs. So the smallest
+    /// possible program is run: what matters is that they are standing when
+    /// the user arrives.
+    ///
+    /// Reports whether they came up. A failure is not the caller's problem:
+    /// the mount is up either way and the next launch simply pays what this
+    /// would have.
+    pub fn warm_up(&self) -> bool {
+        Command::new(match helper() {
+            Ok(exe) => exe,
+            Err(_) => return false,
+        })
+        .args(["run", &self.name, "--", "wine", "cmd", "/c", "exit"])
+        .env("WINEDEBUG", "-all")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+    }
+
     /// Forgets a session's record. The processes are `stop`'s business.
     pub fn clear_session(&self) {
         let _ = std::fs::remove_file(self.session_file());

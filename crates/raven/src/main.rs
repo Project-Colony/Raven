@@ -556,20 +556,15 @@ fn env_cmd(cmd: EnvCmd) -> Result<()> {
             // services.exe and the rest are standing when the user arrives.
             out!("Starting Wine's services so the first launch does not wait...");
             let started = std::time::Instant::now();
-            match std::process::Command::new(std::env::current_exe()?)
-                .args(["run", &name, "--", "wine", "cmd", "/c", "exit"])
-                .env("WINEDEBUG", "-all")
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status()
-            {
-                Ok(s) if s.success() => out!(
+            if e.warm_up() {
+                out!(
                     "{name} is ready in {:.1}s. Launches will be immediate.",
                     started.elapsed().as_secs_f32()
-                ),
+                );
+            } else {
                 // The mount is up either way, so this is a warning and not a
                 // failure: the next launch simply pays what this would have.
-                _ => out!("{name} is mounted, but Wine did not start; the first launch will."),
+                out!("{name} is mounted, but Wine did not start; the first launch will.");
             }
             Ok(())
         }

@@ -188,7 +188,18 @@ impl App {
                     self.reload_environments()
                 }
             }
-            Message::Start(name) => act(name, |e| e.ensure_session().map(|_| ())),
+            Message::Start(name) => act(name, |e| {
+                // Mounting is the cheap half. The card's Start exists because
+                // `env start` is what makes launches instant, and what makes
+                // them instant is Wine's services already standing - so this
+                // waits for them too, rather than flipping the card to
+                // "running" and leaving the first launch to pay the seconds
+                // the button was pressed to avoid. Their failure is not this
+                // action's failure: the session is up either way.
+                e.ensure_session()?;
+                e.warm_up();
+                Ok(())
+            }),
             Message::Stop(name) => act(name, |e| {
                 // The banner that offers this says "Stop the session", on the
                 // library's judgement that only Raven's own anchor holds the
