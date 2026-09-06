@@ -48,8 +48,9 @@ root.
 ### The library is the API, the CLI is a shell over it
 
 A GUI is a second caller of the same operations. Logic that ends up inside
-argument handlers has to be rewritten to add one. The rule costs a few function
-signatures now and saves the GUI later.
+argument handlers has to be rewritten to add one. The rule cost a few function
+signatures and has already paid for itself: `raven-gui` is that second caller,
+and adding it left the CLI untouched.
 
 ### Measurements come with their configuration
 
@@ -72,11 +73,11 @@ cargo build --release
 cargo test
 ```
 
-82 tests, no root required, no Windows base required.
+142 tests, no root required, no Windows base required.
 
 Two things that are true, and stay true:
 
-- `cargo test` at the crate root must work on a plain developer machine,
+- `cargo test` at the workspace root must work on a plain developer machine,
   without root and without a Windows base present. Tests that need either are
   gated behind a feature or a fixture, because a test command people learn to
   avoid is a test suite that stops running.

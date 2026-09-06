@@ -1,9 +1,9 @@
 # Performance
 
 What running against a real Windows costs, what it does not cost, what has
-been ruled out — and what has been fixed. The spawn overhead is attributed and
-mostly removed (fonts, masked); what stays deferred is the ~20 ms residual and
-an in-game frame-time measurement.
+been ruled out — and what has been fixed. The spawn overhead is attributed
+(fonts), though the mask that removed it has since been withdrawn on
+correctness grounds; what stays deferred is an in-game frame-time measurement.
 
 ## The wall-clock benchmark
 
@@ -24,8 +24,10 @@ the fonts mask; the fix it motivated is further down):
 
 About **+115 ms per process** at the time, consistent with the +95 ms measured
 earlier by a cruder method — twenty seconds of pure overhead for an installer
-spawning two hundred processes. With `Windows/Fonts` masked it is **~135 ms
-(1.19×), about +22 ms per process** — some four seconds for the same installer.
+spawning two hundred processes. With `Windows/Fonts` masked it fell to **~135
+ms (1.19×), about +22 ms per process** — some four seconds for the same
+installer — but that mask has since been withdrawn on correctness grounds, so
+the table above is what a spawn costs today.
 
 **Directory enumeration** (30 × `dir C:\windows\system32` inside one `cmd`,
 three samples each):
@@ -131,11 +133,14 @@ fontconfig), so plain Wine never pays this. One opaque-overlay mask on
 |---|---|---|---|
 | spawn, warm server | ~113 ms | ~227 ms | **~135 ms** |
 
-`Windows/Fonts` is now the shadow set's second measured entry (`layer.rs`),
-and the remaining ~20 ms is the overlay plus the rest of the real tree. Fonts
-still render — through fontconfig, exactly as under plain Wine — and the game
-still reaches its title screen with the mask on. The cost: programs that want
-Microsoft's font *files*, not just the faces, will not see them; the corpus
+`Windows/Fonts` became the shadow set's second measured entry for a while
+(`crates/raven/src/layer.rs`), leaving ~20 ms of overlay and the rest of the
+real tree. Fonts still rendered — through fontconfig, exactly as under plain
+Wine — and the game still reached its title screen with the mask on. The mask
+has since been withdrawn on correctness grounds, so the 227 ms column is what
+a spawn costs today; the reasoning is in [shadow-set.md](shadow-set.md). The
+cost it carried while it stood: programs that want Microsoft's font *files*,
+not just the faces, would not see them; the corpus
 will say whether such a program exists.
 
 The casefold side-benefit worth keeping: on a casefolding filesystem the
@@ -200,9 +205,22 @@ namespace is what admits it to the mount namespace.
 **Eight times faster after the first launch of the day**, which is the launch
 nobody counts. (0.16 s of that measurement was taken while `Windows/Fonts` was
 masked; the mask has since been removed on correctness grounds and the figure
-is 0.26 s - see [shadow-set.md](shadow-set.md).) The remaining 0.04 s over plain Wine's warm figure is
-`setns` plus the real Windows being larger than a Wine prefix, and is not worth
-chasing.
+is 0.26 s - see [shadow-set.md](shadow-set.md).) What remains over plain Wine's
+warm figure is `setns` plus the real Windows being larger than a Wine prefix.
+
+Raven's own share of that was measured directly afterwards, by running a
+trivial *native* program through the same path so Wine's start-up is excluded:
+
+| `raven run <env> -- /bin/true`, session up | |
+|---|---|
+| validating the anchor by scanning `/proc` | 33 35 32 32 32 33 30 ms |
+| validating it by reading one `mountinfo` | 2 2 2 2 2 2 2 ms |
+
+The question `session` asks is whether the *one* pid it recorded still holds
+the environment, and it answered it by reading `/proc/<pid>/mountinfo` for
+every process on the machine - 37 ms of a 32 ms launch, on 454 processes. The
+scan was the launch. Reading the one process's `mountinfo` gives the same
+answer, and what is left of Raven on a warm launch is about 2 ms.
 
 The crash property that motivated the old design is intact: the mount is still
 owned by the anchor's process tree, and killing the anchor was verified to take
@@ -289,9 +307,10 @@ it fails. A guarantee whose test cannot fail is not a guarantee.
 
 ## Where to start when this is picked up
 
-1. **The spawn cost is attributed and mostly fixed** — fonts, masked, 227 → 135
-   ms. The residual ~20 ms over plain Wine has no owner yet; profile it only if
-   an installer measurement says it matters.
+1. **The spawn cost is attributed, and the fix was given back** — fonts,
+   masked, 227 → 135 ms, then unmasked because a Windows declaring 961 fonts
+   and having none is not the real thing. It is the largest known cost and it
+   has no owner; profile it only if an installer measurement says it matters.
 2. **`casefold` is closed.** Tested on a casefolding tmpfs against identical
    control trees: detected by Wine, no gain, slight regression on directory
    listing — and one real benefit (the lowercase-shadow hazard becomes
@@ -322,12 +341,15 @@ anything left to win lives:
 - **A launch costs 0.26 s and almost none of it is Raven's code.** Argument
   parsing, a few dozen `stat` calls, one `setns` and an `exec`. The time is
   Wine's services and the kernel's mount.
-- **The one place Raven does real work is the registry projection** - a
-  hand-written parser over a 76 MB binary hive, 1 894 keys in 130 ms - and it
-  runs at environment creation and on `reproject`, not per launch.
+- **The one place Raven does real work is the registry projection** - the
+  `nt-hive` reader over a 76 MB binary hive, 1 894 keys in 82 ms measured
+  today - and it runs at environment creation and on `reproject`, not per
+  launch.
 - **The measurable wins so far were architectural, not compiler flags.**
-  Sessions took a launch from 2.07 s to 0.26 s; masking fonts was worth 92 ms
-  and was reverted anyway on correctness grounds.
+  Sessions took a launch from 2.07 s to 0.26 s, and asking about one process
+  instead of all of them took Raven's own share of a warm launch from 32 ms to
+  2; masking fonts was worth 92 ms and was reverted anyway on correctness
+  grounds.
 
 If the projection ever becomes the thing people wait on - a much larger hive, a
 base with far more installed software - that is where profiling should start.

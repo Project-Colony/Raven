@@ -43,7 +43,7 @@ statement about a class of them.
 | `media` | Audio or video missing while the game itself runs. Wine decodes through GStreamer, and a system with GStreamer's libraries but not its plugins fails silently | Not Raven's code, but Raven's job to report: `raven doctor` names the missing package |
 | `enumeration` | Discovers hardware through SetupDi device interfaces, which Wine never registers - Rufus is the type specimen | A Wine patch, not a Raven change |
 | `drm` | A copy-protection wrapper refuses before the program starts. Steam's is the common one: launched outside a running Steam client it aborts with `Application load error 5:0000065434` | Not Raven's to fix. Test a title without the wrapper, or run the store client itself |
-| `d3d` | A Direct3D problem: version unsupported, device creation fails, rendering wrong | Depends. D3D 8-11 is DXVK's; D3D12 needs vkd3d-proton, which Raven does not install |
+| `d3d` | A Direct3D problem: version unsupported, device creation fails, rendering wrong | Depends. D3D 8-11 is DXVK's; D3D12 needs vkd3d-proton, which `raven env vkd3d` installs |
 | `wine` | Fails identically under plain Wine - not Raven's doing | Upstream |
 | `raven` | Raven's own bug: the mount, the projection, the shadow set, the layer | **Yes - fix it** |
 
@@ -108,8 +108,9 @@ an evening rediscovering it.
 
 Named so the gaps are visible rather than merely absent:
 
-- **A Direct3D 12 title.** D3D12 is vkd3d-proton's, not DXVK's, and Raven
-  installs neither. Cyberpunk 2077 is the type specimen sitting untested.
+- **A Direct3D 12 title.** D3D12 is vkd3d-proton's, not DXVK's, and while
+  `raven env vkd3d` installs it, nothing has yet driven it. Cyberpunk 2077 is
+  the type specimen sitting untested.
 - **A 32-bit Direct3D title.** The x32 libraries are installed and unexercised.
 - **Anything using COM**, the category most likely to be broken by a design
   decision rather than a bug.

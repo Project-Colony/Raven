@@ -51,10 +51,10 @@ genuinely carries over:
 
 - `HKLM\Software\<vendor>\…` — where a program installed itself, its options,
   its licence state
-- `HKLM\Software\Classes\CLSID`, `Interface`, `TypeLib` — COM registrations
-  pointing at libraries that are present in the base
+- a named handful of Microsoft subtrees — `DirectX`, `.NETFramework`,
+  `NET Framework Setup`, `COM3`, `Ole`, `Windows Script Host` — allowed back
+  over the blanket refusal of `HKLM\Software\Microsoft`
 - `HKCU\Software\<vendor>\…` from `NTUSER.DAT` — per-user settings
-- `HKCU\Software\Classes` from `UsrClass.dat` — per-user COM and associations
 
 **Never projected** — the keys that describe a *machine*:
 
@@ -63,10 +63,18 @@ genuinely carries over:
 - the subtrees of `HKLM\Software\Microsoft\Windows NT\CurrentVersion` that record
   which physical installation this was
 
-**Rewritten or dropped** — values that name storage by device rather than by
-drive letter. `C:\Program Files\…` is correct, because C: *is* the base.
-`\Device\HarddiskVolume2\…` names a volume that does not exist and must not
-survive the projection.
+**Rewritten** — the drive letter a never-booted Windows records for itself. A
+base applied from a WIM has never run `specialize`, so its hive still describes
+the *setup* environment and `SystemRoot` reads `X:\Windows`. Under Raven the
+installation is C:, and `emit::rewrite_setup_drive` replaces every such letter
+on the way through.
+
+**Known and unhandled** — values that name storage by device rather than by
+drive letter. `C:\Program Files\…` is correct, because C: *is* the base, but
+`\Device\HarddiskVolume2\…` names a volume that does not exist. Nothing
+rewrites or drops those: the allow list reaches only `HKLM\Software` and
+`HKCU\Software`, where none has yet been seen, so the case is recorded here
+rather than handled. A projection that produced one would carry it through.
 
 ## How it is written
 
@@ -144,12 +152,16 @@ makes a cached projection safe to reuse.
 
 ## Testing
 
-- **Round-trip.** A known hive corpus projects to a known `.reg`, byte for byte.
-- **The deny list holds.** No output line falls under a denied subtree — asserted
-  against the output, not the intent, so a rules edit that widens the allow list
-  too far fails a test rather than shipping.
+- **What crosses, crosses.** A third-party vendor key and each named Microsoft
+  subtree reach the output, including through the 32-bit mirror.
+- **The deny list holds.** The OS version key and the machine's identity do not
+  appear — asserted against the output, not the intent, so a rules edit that
+  widens the allow list too far fails a test rather than shipping.
+- **The setup drive letter is rewritten.** `X:\` becomes `C:\` on the way
+  through.
 - **Idempotency.** Projecting twice produces identical output.
-- **Device paths do not survive.** No `\Device\` reference reaches the prefix.
+- **A hive that is not a hive is an error, not a panic.** The reader is fed
+  input a real ISO could hand it.
 
 The corpus was the awkward part, and it is settled: hives are Microsoft's and
 the repository cannot carry one, so the fixtures are **built at test time from a

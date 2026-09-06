@@ -17,19 +17,23 @@ because it is typed in front of every program launch, and three characters
 against five adds up over a day.
 
 `rvn` is a link rather than a second binary, so there is one thing to build, one
-to sign and one to update. Help output and diagnostics say `raven` under both
-names — the short name is a convenience, not a second identity.
+to sign and one to update. `--version` and the diagnostics say `raven` under
+both names, and only the usage line echoes the name it was invoked as — the
+short name is a convenience, not a second identity.
 
 ## `binfmt_misc` registration
 
 Making `./program.exe` run like any other binary means registering the PE magic
 with the kernel, and writing to `/proc/sys/fs/binfmt_misc/register` needs root.
 
-It is registered **once, at install time**, through `/etc/binfmt.d/raven.conf`
-applied by `systemd-binfmt` — the same mechanism the `wine` package uses. The
-package manager already holds root legitimately; Raven does not need to, and
-adding a privileged service to do at runtime what a config file does at boot
-would be trading a file for an attack surface.
+It is registered **once, at install time**, through
+`/usr/lib/binfmt.d/raven.conf` applied by `systemd-binfmt` — the same mechanism
+the `wine` package uses. That is the directory for files a package owns; a file
+of the same name in `/etc/binfmt.d/` takes precedence over it, which is why
+`raven binfmt` prints an `/etc` path for a hand-registration on a build no
+package installed. The package manager already holds root legitimately; Raven
+does not need to, and adding a privileged service to do at runtime what a config
+file does at boot would be trading a file for an attack surface.
 
 Uninstalling removes the file. A registration left behind pointing at a deleted
 binary would keep working on the kernel's open handle until the next reboot

@@ -108,7 +108,11 @@ help text. Traced with `WINEDEBUG=+file`: Wine opens **zero** `.mui` files. So
 Launching a process against the real Windows cost about **+95 ms** at first.
 The cause was measured — win32u re-checking ~340 real font files at every
 process start — and masking the base's `Windows\Fonts` brought it to **135 ms
-against plain Wine's 113 (1.19×)**. Four plausible theories were falsified on
+against plain Wine's 113 (1.19×)**. That mask has since been withdrawn: a
+Windows whose registry declares 961 fonts while `C:\Windows\Fonts` holds none
+is not the real thing, and sessions made the trade cheap to reverse, because
+the cost now falls once on the anchor rather than on every launch. Four
+plausible theories were falsified on
 the way, the `wineserver` excess turned out not to exist at all, and the whole
 investigation is in [../internals/performance.md](../internals/performance.md).
 
@@ -153,19 +157,22 @@ programs tested you cannot know what you have.
 
 ## Built
 
-Fifteen commands, counting each leaf subcommand once. The path from an
-installation image to `./program.exe` is complete, and so is recovery when
-something is left holding an environment.
+Twenty commands, counting each leaf subcommand once, and a window over the
+same library. The path from an installation image to `./program.exe` is
+complete, and so is recovery when something is left holding an environment.
 
 | | |
 |---|---|
 | `raven doctor` | namespaces, Wine, `ntsync`, what is deployed — and which handler the kernel gives `.exe` files to, with the fix when it is not Raven's |
 | `raven base editions` / `deploy` / `list` | the immutable Windows installations |
 | `raven env create` / `list` / `destroy` | environments, cheap and disposable |
-| `raven env status` / `stop` | who holds a running environment's mount, and releasing it |
+| `raven env status` / `stop` / `start` | who holds a running environment's mount, releasing it, and bringing one up before it is needed |
+| `raven env attach` / `detach` | a real block device wired in as a raw drive |
+| `raven env dxvk` / `vkd3d` | Direct3D on Vulkan, from a build you supply |
 | `raven env default` / `reproject` | which environment is used by default; re-run the projection |
 | `raven binfmt` | what to install so the kernel recognises `.exe` |
 | `raven launch` / `run` / `exec` | running a program, at three levels of explicitness |
+| `raven-gui` | a window over the same library: environments, bases, diagnostics |
 
 Measured against the real Windows 11 base:
 
@@ -187,11 +194,13 @@ rather than by extension, and eight projection tests against hives built by a
 
 ## Not built
 
-Coverage, more than mechanism. One installer framework has been exercised and
-one 2D game runs; NSIS, InstallShield, MSI, Squirrel, and anything touching
-Direct3D are all unexplored. Concurrent launches into one environment refuse
-cleanly instead of joining the running namespace. And a release has yet to
-produce its first signed asset — the machinery is wired, the proof is not.
+Coverage, more than mechanism. One installer framework has been exercised;
+NSIS, InstallShield, MSI and Squirrel are unexplored, as is COM, as is anything
+keeping its strings in `.mui` files. One game renders through Direct3D 11 and
+DXVK; vkd3d-proton installs and no Direct3D 12 title has driven it. Concurrent
+launches into one environment now join the running namespace rather than
+refusing — see 1.3 in
+[consolidation.md](consolidation.md).
 
 ## A real program, end to end
 
@@ -223,17 +232,20 @@ Ordered by how much damage a wrong assumption would do.
 | | Question | Why it matters |
 |---|---|---|
 | 1 | Can Wine be made to resolve `.mui` resources? | Without it every real Windows console utility is mute, and any program that keeps its strings in MUI — which is the modern default — shows blank text. This is now the largest known gap. |
-| 2 | Does the residual ~20 ms per process matter to a running game? | The fonts cost is fixed and `casefold` is tested and closed (Wine detects it on any filesystem and gains nothing). What remains needs a frame-time or input-to-response number in a real scene before it deserves an owner. |
+| 2 | Does the per-process spawn cost matter to a running game? | It is attributed — win32u re-checking the base's ~340 font files — and the mask that removed it was withdrawn on correctness grounds, so it is back at about +115 ms. `casefold` is tested and closed (Wine detects it on any filesystem and gains nothing). What remains needs a frame-time or input-to-response number in a real scene before it deserves an owner. |
 | 3 | Which Wine files must be in the upper lower-layer? | The shadow set, now expressed as "which paths does the Wine layer need to contain". See [../internals/shadow-set.md](../internals/shadow-set.md). |
-| 3 | Does the projection's `X:` to `C:` rewrite cover everything, or is a never-booted hive missing more? | `SystemRoot` was found by looking. What else describes the setup environment is unknown until something reads the whole hive. |
-| 4 | What do hardened systems need? | `linux-hardened`, Ubuntu's AppArmor policy and SELinux-enforcing systems all change the mount story. Rootless Podman solves this with `fuse-overlayfs` and `context=` labelling, so the answers exist; which one Raven needs is unmeasured. |
-| 5 | Does `overlayfs` accept an `ntfs3` lower layer? | Gates the "bring your own Windows partition" path only. The ISO path does not touch NTFS at all. |
-| 6 | Synthetic or locally-generated registry test corpus? | The repository cannot carry Microsoft's hives. Decide before the first test, not after. |
+| 4 | Does the projection's `X:` to `C:` rewrite cover everything, or is a never-booted hive missing more? | `SystemRoot` was found by looking. What else describes the setup environment is unknown until something reads the whole hive. |
+| 5 | What do hardened systems need? | `linux-hardened`, Ubuntu's AppArmor policy and SELinux-enforcing systems all change the mount story. Rootless Podman solves this with `fuse-overlayfs` and `context=` labelling, so the answers exist; which one Raven needs is unmeasured. |
+| 6 | Does `overlayfs` accept an `ntfs3` lower layer? | Gates the "bring your own Windows partition" path only. The ISO path does not touch NTFS at all. |
 | 7 | Do the dropped NTFS attributes matter? | 131 323 security descriptors, 83 967 short names and 14 287 xattr sets were discarded on deployment. Nothing is known to need them yet, and `--unix-data` is the lever if something does. |
 
-The question that used to sit at the top of this table — whether Wine would
-accept an `overlayfs` mount as its C: drive — is answered and has moved to
-**Measured**. It was the one that could have invalidated the design.
+Two have been answered since and moved out of the table. Whether Wine would
+accept an `overlayfs` mount as its C: drive was the one that could have
+invalidated the design. And the registry test corpus is settled: the
+repository cannot carry Microsoft's hives, so the fixtures are built at test
+time from a small `.reg` description by `regf` — a different implementation
+from the `nt-hive` reader Raven uses, which is what makes the test worth
+something.
 
 ## Carried upstream
 
@@ -243,8 +255,8 @@ One finding that is not Raven's to fix.
 iced crate. A command-line program with no user interface cannot use it without
 pulling in a GUI toolkit to compute `~/.local/share/Colony/Raven/`. Eidos hit
 this and worked around it with `eidos-paths`; Raven will carry its own
-`src/paths.rs` for the same reason, which makes it the second workaround rather
-than the first.
+`crates/raven/src/paths.rs` for the same reason, which makes it the second
+workaround rather than the first.
 
 The fix is a `colony-paths` crate that `colony-ui` re-exports, and it belongs in
 Project-Colony-Resources. Raised there, not solved here.

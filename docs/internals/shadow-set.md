@@ -103,9 +103,9 @@ and reviewed, rather than a string that has to be believed.
 merges on the exact byte path, so the trees stayed separate and the mount
 showed both. Wine's own case-insensitivity acts a layer above the filesystem
 and could not help. `env create` now renames the Wine layer to the base's
-spelling — `normalise_case` in `src/layer.rs`, 338 renames against a real
-Windows 11 base — after which the trees merge, and the merged mount is what
-carried a real installer and a running game end to end.
+spelling — `normalise_case` in `crates/raven/src/layer.rs`, 338 renames
+against a real Windows 11 base — after which the trees merge, and the merged
+mount is what carried a real installer and a running game end to end.
 
 ## The first measured entry, and it is not a library
 
@@ -147,17 +147,18 @@ investigation were Wine genuinely resolving activation contexts against the real
 store; and the reason a bare game exited while its dialog flashed was the same
 machinery failing earlier.
 
-## The second measured entry, also not a library
+## The second measured entry, also not a library, and since withdrawn
 
-**`Windows\Fonts` is shadowed.** win32u re-enumerates and re-checks every font
+**`Windows\Fonts` was shadowed.** win32u re-enumerates and re-checks every font
 file at every process start; the real base carries ~340 of them, and that was
 92 of the 105 milliseconds each process spawn cost over plain Wine (227 → 135
 ms with the mask — the full attribution is in
 [performance.md](performance.md)). Wine's own `Fonts` directory is empty and
-text renders through the host's fontconfig, so the mask restores exactly the
-plain-Wine situation, and the game still reaches its title screen under it.
-What the entry costs: a program that reads Microsoft's font *files* — not just
-the faces — will not find them. None has been seen yet; the corpus will say.
+text renders through the host's fontconfig, so the mask restored exactly the
+plain-Wine situation, and the game still reached its title screen under it.
+What the entry cost: a program that reads Microsoft's font *files* — not just
+the faces — would not find them. None was ever seen. The cost that withdrew
+the entry was a different one, set out below.
 
 ## The two mechanisms
 

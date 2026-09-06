@@ -107,7 +107,7 @@ Doing it deliberately means three things Wine has no reason to build:
    [../internals/registry-projection.md](../internals/registry-projection.md).
 3. **The library shadow must be exact.** Some libraries must be Wine's for
    reasons of physics, some may be Microsoft's, and the line is only beginning
-   to be measured — two entries so far, neither of them a DLL. See
+   to be measured — one entry so far, and it is not a DLL. See
    [../internals/shadow-set.md](../internals/shadow-set.md).
 
 That third point is the part of Raven that is genuinely new. The first two are

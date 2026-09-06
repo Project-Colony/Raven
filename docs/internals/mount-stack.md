@@ -113,7 +113,8 @@ assumption to build on.
 The overlay is mounted **without root**, inside a user namespace:
 
 ```
-unshare -Urm  →  mount -t overlay  →  exec wine
+unshare -Urm  →  mount -t overlay  →  hold      the anchor
+setns         →  exec wine                      every launch
 ```
 
 This was measured rather than assumed, and measured end to end with Wine in the
@@ -136,15 +137,16 @@ Nothing has to hold privilege while Raven runs.
 
 Two consequences worth stating:
 
-- **Concurrent independent launches into one environment are not supported at
-  first.** `overlayfs` does not support two live mounts sharing an `upperdir`,
-  and the simple path — mount, exec, exit — gives one mount per process tree.
-  If launching two unrelated programs into the same environment turns out to
-  matter, the fix is a keeper process holding the namespace with others joining
-  by `nsenter`, which is proven to work. It is not built until it is needed.
-- **`binfmt_misc` still needs root, once.** It is a file in `/etc/binfmt.d/`
-  applied by `systemd-binfmt` at boot — a packaging concern, handled by the
-  package manager, not a service that runs.
+- **Concurrent independent launches into one environment join it.**
+  `overlayfs` does not support two live mounts sharing an `upperdir`, and the
+  simple path — mount, exec, exit — gave one mount per process tree, so a
+  second independent launch failed. The keeper process that fixes it is built:
+  an *anchor* creates the namespace, mounts the overlay and stays alive, and
+  every launch `setns`es into it. It was built for speed rather than for
+  concurrency — see [performance.md](performance.md) — and got both.
+- **`binfmt_misc` still needs root, once.** It is a file in
+  `/usr/lib/binfmt.d/` applied by `systemd-binfmt` at boot — a packaging
+  concern, handled by the package manager, not a service that runs.
 
 Where unprivileged namespaces are unavailable — `linux-hardened`, Ubuntu's
 AppArmor policy, some enterprise configurations — the mount goes through a
@@ -158,8 +160,8 @@ Four conceptual verbs, and how they map onto the real commands:
 | | | |
 |---|---|---|
 | **create** | `raven env create` | allocate `upper/` and `work/`, build the Wine prefix, normalise the layer's casing, set the shadow masks, project the registry |
-| **activate** | implicit in `run` / `launch` | the overlay mounts when a program starts, in that program's namespace |
-| **deactivate** | the program exiting — or `raven env stop` | the mount dies with the process tree; `env status` names anything still holding it |
+| **activate** | implicit in `run` / `launch`, or `raven env start` | the first launch starts an anchor that mounts the overlay and holds it; every later one joins that namespace |
+| **deactivate** | `raven env stop` | the mount dies with the anchor's process tree, so it outlives any one program; `env status` names everything holding it and marks the anchor |
 | **destroy** | `raven env destroy` | refuse if held, then delete the environment directory; the base is untouched |
 
 Nothing in that list writes to a base. That is checkable, and it should be
