@@ -215,6 +215,10 @@ fn main() -> Result<()> {
         Commands::Env(c) => env_cmd(c),
         Commands::Run { name, argv } => run(&name, argv, None),
         Commands::Launch { exe, args } => {
+            // Both absolute before anything joins a namespace: `setns` resets
+            // the working directory, so a relative path settled later is
+            // resolved against the mount's root instead of the user's.
+            let (exe, cwd) = launch::target(&exe)?;
             let e = launch::resolve(&exe)?;
             // The kernel invokes this with no terminal of its own, so when a
             // double-clicked program misbehaves there is nothing to look at.
@@ -231,11 +235,7 @@ fn main() -> Result<()> {
             let mut argv = vec!["wine".to_string(), exe.display().to_string()];
             argv.extend(args);
             // The program's own directory, as Windows would give it.
-            let cwd = exe
-                .parent()
-                .filter(|p| !p.as_os_str().is_empty())
-                .map(PathBuf::from);
-            run(&e.name, argv, cwd)
+            run(&e.name, argv, Some(cwd))
         }
         Commands::Binfmt => binfmt(),
         Commands::SessionAnchor { name } => raven::session::anchor(&name),
@@ -634,7 +634,11 @@ fn run(name: &str, argv: Vec<String>, cwd: Option<PathBuf>) -> Result<()> {
     let mut cmd = Command::new(&argv[0]);
     cmd.args(&argv[1..]);
     cmd.env("WINEPREFIX", e.prefix());
-    if let Some(d) = cwd {
+    // Tested inside the namespace, which is the only place the answer is
+    // true, and skipped rather than fatal: a directory that is not there is
+    // no reason to refuse to start the program. Setting it anyway makes
+    // `exec` fail with an ENOENT that reads as "wine is missing".
+    if let Some(d) = cwd.filter(|d| d.is_dir()) {
         cmd.current_dir(d);
     }
     Err(cmd.exec()).with_context(|| format!("could not run {}", argv[0]))
