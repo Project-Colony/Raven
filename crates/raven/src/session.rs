@@ -53,7 +53,7 @@ impl Environment {
             .trim()
             .parse()
             .ok()?;
-        self.holders().iter().any(|h| h.pid == pid).then_some(pid)
+        self.holds(pid).then_some(pid)
     }
 
     /// The pid of a session to join, starting one if none is running.
