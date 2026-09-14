@@ -78,6 +78,27 @@ fn a_named_microsoft_subtree_crosses() {
 }
 
 #[test]
+fn windows_fonts_cross_without_the_os_identity() {
+    let bytes = hive_from(&format!(
+        "{SOFTWARE}\n[HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts]\n\"Arial (TrueType)\"=\"arial.ttf\"\n"
+    ));
+    let keys = hive::project(&bytes, r"HKLM\Software", &Rules::default()).unwrap();
+    let fonts = keys
+        .iter()
+        .find(|k| k.path.ends_with(r"Windows NT\CurrentVersion\Fonts"))
+        .expect("DirectWrite needs the registrations for the base's font files");
+    assert!(
+        fonts.values.iter().any(|v| v.name == "Arial (TrueType)"
+            && v.data == raven::registry::Data::Sz("arial.ttf".into()))
+    );
+    assert!(
+        !keys
+            .iter()
+            .any(|k| k.values.iter().any(|v| v.name == "ProductName"))
+    );
+}
+
+#[test]
 fn the_os_version_key_does_not_cross() {
     assert!(
         !paths().iter().any(|p| p.contains("Windows NT")),
