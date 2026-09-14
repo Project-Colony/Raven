@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/Project-Colony/Raven/compare/v0.4.0...v0.4.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* project Windows font registrations for DirectWrite ([dfb6e42](https://github.com/Project-Colony/Raven/commit/dfb6e4280bda54a8432062ec1ed2e75be9fe7602))
+* project Windows font registrations for DirectWrite ([2ce2449](https://github.com/Project-Colony/Raven/commit/2ce244944d6809169a34d2b441b12eff1c4967b5))
+
 ## [0.4.0](https://github.com/Project-Colony/Raven/compare/v0.3.0...v0.4.0) (2026-09-06)
 
 
