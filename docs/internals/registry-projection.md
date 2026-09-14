@@ -76,6 +76,22 @@ rewrites or drops those: the allow list reaches only `HKLM\Software` and
 `HKCU\Software`, where none has yet been seen, so the case is recorded here
 rather than handled. A projection that produced one would carry it through.
 
+## Font registrations
+
+`HKLM\Software\Microsoft\Windows NT\CurrentVersion\Fonts` crosses by default.
+The base's font files are visible in `C:\Windows\Fonts`, but DirectWrite also
+needs their registrations. BS_SoSR 1.15 (NW.js 0.103.1 / Chromium 140) exposed
+this gap: Chromium aborted in `CreateLoadingFallbackFontData` because no
+fallback face was found. Registering the existing `arial.ttf` alone let the
+game initialize WebGL. The projection carries the base's font registrations
+instead of downloading fonts or special-casing this game.
+
+Existing environments keep their saved rules. Add
+`'HKLM\Software\Microsoft\Windows NT\CurrentVersion\Fonts'` to the `allow`
+array in their `registry-rules.toml`, close their programs, stop the environment,
+and run `raven env reproject <name>`. This narrow exception does not allow the
+parent OS identity key or the machine's services.
+
 ## How it is written
 
 Two decisions that keep this maintainable.

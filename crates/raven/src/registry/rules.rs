@@ -107,6 +107,10 @@ impl Default for Rules {
                 r"HKLM\Software\Microsoft\COM3",
                 r"HKLM\Software\Microsoft\Ole",
                 r"HKLM\Software\Microsoft\Windows Script Host",
+                // DirectWrite enumerates registered fonts, not just files in
+                // C:\Windows\Fonts. Without these, Chromium can fail to find
+                // even Arial and abort while loading a game's web fonts.
+                r"HKLM\Software\Microsoft\Windows NT\CurrentVersion\Fonts",
             ]
             .iter()
             .map(|s| s.to_string())
