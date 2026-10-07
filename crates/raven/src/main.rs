@@ -138,7 +138,7 @@ enum EnvCmd {
     Status { name: String },
     /// Release an environment: terminate every process holding its mount.
     Stop { name: String },
-    /// Bring an environment up before you need it, so nothing waits later.
+    /// Bring an environment up so the first launch does not wait for Wine to start.
     ///
     /// Mounting costs 0.04s; Wine's services cost about 1.7s and then serve
     /// every launch. Paying that here means the first double-click does not.
@@ -568,7 +568,7 @@ fn env_cmd(cmd: EnvCmd) -> Result<()> {
             let started = std::time::Instant::now();
             if e.warm_up() {
                 out!(
-                    "{name} is ready in {:.1}s. Launches will be immediate.",
+                    "{name} is ready in {:.1}s. Launches will join it instead of starting Wine.",
                     started.elapsed().as_secs_f32()
                 );
             } else {

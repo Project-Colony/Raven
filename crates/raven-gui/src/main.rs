@@ -1,7 +1,7 @@
 //! Raven's administration window.
 //!
 //! A second caller of the same library the command line uses - see
-//! docs/superpowers/specs/2026-09-01-raven-gui-design.md. Nothing here decides
+//! docs/internals/gui.md. Nothing here decides
 //! anything about environments; it draws what the library reports and asks the
 //! library to act.
 

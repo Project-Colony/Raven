@@ -130,7 +130,7 @@ as `design/navigation.md` describes.
 
 One card per environment: name, base, whether a session holds it, and what it
 contains. **Start and Stop are on the card itself**, because starting is the
-most frequent action and `env start` is what makes launches instant.
+most frequent action and `env start` is what makes launches fast.
 
 Selecting a card opens its detail:
 

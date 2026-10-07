@@ -21,6 +21,7 @@ Sorted by who is reading, not by subject.
 | [internals/packaging.md](internals/packaging.md) | how it is installed, and the two steps that need root |
 | [internals/performance.md](internals/performance.md) | what a real Windows costs at launch, and the theories already ruled out |
 | [internals/device-passthrough.md](internals/device-passthrough.md) | what it takes for a disk utility to see real hardware, and which tier each goal sits in |
+| [internals/gui.md](internals/gui.md) | the design of `raven-gui`, the administration window over the same library |
 | [internals/system-dependencies.md](internals/system-dependencies.md) | what to install, and a log of what development has installed |
 | [internals/contributing.md](internals/contributing.md) | building, testing, and the conventions inherited from the org |
 

@@ -254,13 +254,14 @@ fontconfig. Three things are nevertheless lost.
   a layout tuned to the real ones will shift. Proton bundles `liberation-fonts`
   precisely to supply metric-compatible substitutes, which Raven does not.
 
-**It was re-decided, and the fonts are back.** The 92 ms was decisive when
-every launch paid a full cold start of about two seconds. Re-measured with
-sessions in place: a launch costs **0.16 s masked and 0.257 s unmasked** - the
-same 92 ms, now a fraction of a much smaller number and still eight times
-better than the two seconds that preceded sessions.
+**It was re-decided, and the fonts are back.** Re-measured with sessions in
+place, a warm launch costs **0.16 s masked and 0.257 s unmasked** - about the
+same 92 ms, which is now over a third of a warm launch rather than a small part
+of a two-second cold one. Unmasked, a warm launch is still seven to eight times
+faster than the 1.89-2.07 s every launch paid before sessions, and about twice
+plain Wine's warm 0.12 s.
 
-The argument that settled it was not the arithmetic, though. Raven's premise is
+What settled it was not the arithmetic but the premise. Raven's premise is
 that a program runs against a *real* Windows; an installation whose fonts are
 hidden is not one, and the registry declaring 961 faces whose files do not
 exist is an incoherence no measurement justifies. `SHADOWED` is one entry

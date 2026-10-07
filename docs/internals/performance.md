@@ -51,10 +51,10 @@ contamination is asymmetric: the fixed cost spreads over 6× more entries under
 Raven, so leaving it in *flatters the overlay* (it read ~11% before the
 correction). Review caught it; the direction survived, the number did not.
 
-So the honest summary is: per-process launch cost was doubled until the fonts
-mask and is now ~19% (113 → 135 ms), and the sustained filesystem path is
-modestly slower. What this benchmark does *not*
-answer is whether a running game feels any of it — that needs a frame-time or
+So the honest summary is: per-process launch cost is doubled (113 → 228 ms).
+The fonts mask brought it to ~19% (113 → 135 ms) while it stood, and it no
+longer stands. The sustained filesystem path is modestly slower. What this
+benchmark does *not* answer is whether a running game feels any of it — that needs a frame-time or
 input-to-response measurement in the same scene, which no one has made yet.
 
 ## The wineserver phantom
@@ -172,9 +172,11 @@ one and the other a Raven environment over a real Windows.
 | Raven, trivial program | 1.89-2.07 s | **not reachable** |
 | *ShineHill* to its first GPU device | plain 2.29 s | plain **0.78 s**, Raven **2.71 s** |
 
-Cold against cold, Raven costs about **1.2x** - the same figure the spawn
-benchmark gives, so nothing new is wrong. The gap a user actually feels is a
-different quantity: **plain Wine keeps its `wineserver` alive between launches
+Cold against cold, Raven costs about **1.2-1.3x** for the trivial program
+(1.89-2.07 s against 1.54 s) and about 1.2x for *ShineHill* (2.71 s against
+2.29 s). That is less than the 2.0x of the spawn benchmark above, which times a
+process start against an already-running server. The gap a user actually feels
+is a different quantity: **plain Wine keeps its `wineserver` alive between launches
 and Raven cannot.** Wine amortises start-up across every subsequent program and
 drops thirteenfold doing it; Raven mounts its overlay in a user namespace that
 dies with the process tree, so the server dies with it and the next launch pays
@@ -182,8 +184,8 @@ the full cold price again.
 
 That property is not an accident - it is the one that guarantees no stale mounts
 after a crash, written down in [mount-stack.md](mount-stack.md) as a feature.
-It is also, on this measurement, the single largest thing standing between
-Raven and feeling instant.
+It is also, on this measurement, the largest single cost Raven added to a
+launch.
 
 ### The session, and what it bought
 
@@ -202,11 +204,15 @@ namespace is what admits it to the mount namespace.
 | *ShineHill* to its first GPU device | 2.71 s | **0.92 s** |
 | plain Wine, for comparison | 1.54 s cold, 0.12 s warm | unchanged |
 
-**Eight times faster after the first launch of the day**, which is the launch
-nobody counts. (0.16 s of that measurement was taken while `Windows/Fonts` was
+For the trivial program, **every launch after the first is seven to eight
+times faster** (1.89-2.07 s cold against 0.26 s); for *ShineHill* to its first
+GPU device, about three times (2.71 s against 0.92 s). The first launch is
+unchanged. (The session was first measured at 0.16 s while `Windows/Fonts` was
 masked; the mask has since been removed on correctness grounds and the figure
-is 0.26 s - see [shadow-set.md](shadow-set.md).) What remains over plain Wine's
-warm figure is `setns` plus the real Windows being larger than a Wine prefix.
+is 0.26 s - see [shadow-set.md](shadow-set.md).) A warm launch still costs
+about twice plain Wine's warm 0.12 s. Raven's own share of the difference is
+about 2 ms (below); about 0.1 s is the font files the mask used to hide, and the
+rest is the real Windows being larger than a Wine prefix.
 
 Raven's own share of that was measured directly afterwards, by running a
 trivial *native* program through the same path so Wine's start-up is excluded:
@@ -300,7 +306,7 @@ it - a second launch now joins what is already there.
 Everything in [architecture.md](architecture.md) is now a description rather
 than a plan: base deployment, environments, the registry projection, the
 shadow set as a filesystem layer, `binfmt` registration, and recovery of a
-held environment. 82 tests pass, and the one that matters still asserts the
+held environment. 144 tests pass, and the one that matters still asserts the
 central claim — a write through the overlay leaves the base byte-identical —
 and was checked against a deliberately broken mount: with the overlay disabled
 it fails. A guarantee whose test cannot fail is not a guarantee.
@@ -338,18 +344,21 @@ is already `lto = "fat"`, `codegen-units = 1`, `strip = "symbols"`, and the
 package builds `--release --locked`. That is worth keeping, but it is not where
 anything left to win lives:
 
-- **A launch costs 0.26 s and almost none of it is Raven's code.** Argument
-  parsing, a few dozen `stat` calls, one `setns` and an `exec`. The time is
-  Wine's services and the kernel's mount.
+- **A warm launch costs 0.26 s and about 2 ms of it is Raven's code.**
+  Argument parsing, a few dozen `stat` calls, one `setns` and an `exec`. The
+  rest is Wine starting a process against the real Windows, which costs about
+  twice what it does in a plain prefix (0.12 s). A first launch costs about 2 s,
+  nearly all of it Wine's services starting.
 - **The one place Raven does real work is the registry projection** - the
   `nt-hive` reader over a 76 MB binary hive, 1 894 keys in 82 ms measured
   today - and it runs at environment creation and on `reproject`, not per
   launch.
 - **The measurable wins so far were architectural, not compiler flags.**
-  Sessions took a launch from 2.07 s to 0.26 s, and asking about one process
-  instead of all of them took Raven's own share of a warm launch from 32 ms to
-  2; masking fonts was worth 92 ms and was reverted anyway on correctness
-  grounds.
+  Sessions took every launch after the first from about 2 s (1.89-2.07 s) to
+  0.26 s, leaving the first one where it was; asking about one process instead
+  of all of them took Raven's own share of a warm launch from 32 ms to 2;
+  masking fonts was worth 92 ms per process start and was reverted anyway on
+  correctness grounds.
 
 If the projection ever becomes the thing people wait on - a much larger hive, a
 base with far more installed software - that is where profiling should start.

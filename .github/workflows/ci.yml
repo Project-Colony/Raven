@@ -11,6 +11,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -47,7 +50,14 @@ jobs:
         run: |
           echo "max_user_namespaces: $(cat /proc/sys/user/max_user_namespaces 2>/dev/null || echo unavailable)"
           echo "apparmor userns restriction: $(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo none)"
-          echo "If the first is 0 or the second is 1, the mount tests below skipped."
+          echo "If the first is 0, the mount tests below skip; the second is lifted by the next step."
+
+      # Ubuntu runners restrict unprivileged user namespaces through AppArmor,
+      # and the mount tests need them. Lift the restriction for this job so they
+      # run rather than skip; the step above still records what the runner
+      # allowed before it.
+      - name: Allow unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       # `--locked` was the gap: the release workflow and the PKGBUILD both
       # build locked, so a Cargo.lock that no longer agreed with Cargo.toml
