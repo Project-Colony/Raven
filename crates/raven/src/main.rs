@@ -138,10 +138,11 @@ enum EnvCmd {
     Status { name: String },
     /// Release an environment: terminate every process holding its mount.
     Stop { name: String },
-    /// Bring an environment up before you need it, so nothing waits later.
+    /// Bring an environment up: mount it and start Wine's services.
     ///
-    /// Mounting costs 0.04s; Wine's services cost about 1.7s and then serve
-    /// every launch. Paying that here means the first double-click does not.
+    /// Mounting costs 0.04s and lasts until `env stop`. Wine's services cost
+    /// about 1.7s and exit a few seconds after the last program does, so only
+    /// a launch made within those seconds skips them.
     Start { name: String },
     /// Attach a block device to an environment as a raw drive.
     ///
@@ -560,15 +561,16 @@ fn env_cmd(cmd: EnvCmd) -> Result<()> {
             }
             let anchor = e.ensure_session()?;
             out!("Mounted {name} (session {anchor}).");
-            // The mount is the cheap half. Wine's services are the two seconds
-            // a first launch pays, and they are brought up here by running the
-            // smallest possible program: what matters is that wineserver,
-            // services.exe and the rest are standing when the user arrives.
-            out!("Starting Wine's services so the first launch does not wait...");
+            // The mount is the cheap half, and it lasts until `env stop`.
+            // Wine's services are the two seconds a first launch pays; they
+            // are brought up here by running the smallest possible program.
+            // Nothing makes wineserver persistent, so they exit three to six
+            // seconds after it, and only a launch within that window joins them.
+            out!("Starting Wine's services...");
             let started = std::time::Instant::now();
             if e.warm_up() {
                 out!(
-                    "{name} is ready in {:.1}s. Launches will be immediate.",
+                    "{name} is ready in {:.1}s. A launch within a few seconds joins Wine's services; a later one starts them again.",
                     started.elapsed().as_secs_f32()
                 );
             } else {
@@ -631,8 +633,9 @@ fn run(name: &str, argv: Vec<String>, cwd: Option<PathBuf>) -> Result<()> {
     let e = env::Environment::open(name)?;
     // Join the environment's session rather than building a world of our own.
     // The first launch of the day starts the anchor and pays for the mount;
-    // every later one lands in a namespace that already has a warm wineserver
-    // in it, which is where plain Wine's thirteenfold advantage came from.
+    // every later one lands in that namespace, and one made within seconds of
+    // the last finds a warm wineserver in it, which is where plain Wine's
+    // thirteenfold advantage came from.
     let anchor = e.ensure_session()?;
     e.join_session(anchor)?;
 

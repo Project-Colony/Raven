@@ -130,7 +130,8 @@ as `design/navigation.md` describes.
 
 One card per environment: name, base, whether a session holds it, and what it
 contains. **Start and Stop are on the card itself**, because starting is the
-most frequent action and `env start` is what makes launches instant.
+most frequent action. `env start` mounts the environment and starts Wine's
+services, which makes a launch soon after it fast.
 
 Selecting a card opens its detail:
 

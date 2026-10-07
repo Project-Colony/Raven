@@ -212,13 +212,14 @@ impl Environment {
         Ok(())
     }
 
-    /// Brings Wine's services up, so the next launch does not pay for them.
+    /// Brings Wine's services up, so a launch right after does not pay for them.
     ///
     /// Mounting is the cheap half - hundredths of a second. The seconds a
     /// first launch pays are `wineserver`, `services.exe` and the rest
     /// starting, and they only start when something runs. So the smallest
-    /// possible program is run: what matters is that they are standing when
-    /// the user arrives.
+    /// possible program is run. Nothing makes `wineserver` persistent, so they
+    /// exit again three to six seconds after it does; only a launch within
+    /// that window finds them standing.
     ///
     /// Reports whether they came up. A failure is not the caller's problem:
     /// the mount is up either way and the next launch simply pays what this

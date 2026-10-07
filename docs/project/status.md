@@ -105,15 +105,14 @@ them, and `choice.exe` has only a 2 KB `.rsrc` section, far too small for its ow
 help text. Traced with `WINEDEBUG=+file`: Wine opens **zero** `.mui` files. So
 `LoadString` finds nothing and the program prints nothing.
 
-Launching a process against the real Windows cost about **+95 ms** at first.
-The cause was measured — win32u re-checking ~340 real font files at every
-process start — and masking the base's `Windows\Fonts` brought it to **135 ms
-against plain Wine's 113 (1.19×)**. That mask has since been withdrawn: a
-Windows whose registry declares 961 fonts while `C:\Windows\Fonts` holds none
-is not the real thing, and sessions made the trade cheap to reverse: a launch
-costs about a quarter of a second rather than two, so the same per-process 92
-ms is a much smaller share of it than it was. Four
-plausible theories were falsified on
+Launching a process against the real Windows costs about **+115 ms** (228 ms
+against plain Wine's 113, 2.0×). The cause was measured - win32u re-checking
+~340 real font files at every process start - and masking the base's
+`Windows\Fonts` brought it to **135 ms (1.19×)**. That mask has since been
+withdrawn: a Windows whose registry declares 961 fonts while
+`C:\Windows\Fonts` holds none is not the real thing. It was not free to
+reverse: with sessions a warm launch costs about a quarter of a second, and the
+fonts are over a third of that. Four plausible theories were falsified on
 the way, the `wineserver` excess turned out not to exist at all, and the whole
 investigation is in [../internals/performance.md](../internals/performance.md).
 
@@ -138,10 +137,14 @@ DXVK and WineD3D also coexisted correctly in the same process: dxdiag's
 DirectDraw probe went through Wine's own OpenGL path, which DXVK does not
 provide, while its Direct3D 9 probe went through DXVK.
 
-**What this is not.** No game has rendered a frame through it, and nothing
-has been benchmarked. Initialisation is the gate, not the proof - it says
-the door opens, not that the room is furnished. The first attempt to measure
-it failed for an instructive reason, recorded below.
+**What this was not, at the time.** No game had rendered a frame through it,
+and nothing had been benchmarked. Initialisation is the gate, not the proof -
+it says the door opens, not that the room is furnished. The first attempt to
+measure it failed for an instructive reason, recorded below. A game has since
+drawn through it: *ShineHill*, Direct3D 11, created its device through DXVK
+and reached its window ([corpus.md](corpus.md)), and its start-up was timed
+([../internals/performance.md](../internals/performance.md)). Frame time and
+in-game performance are still unmeasured.
 
 ### The corpus problem, made concrete
 
@@ -184,8 +187,8 @@ Measured against the real Windows 11 base:
   to the prefix, and no `X:` left anywhere.
 - After a full cycle the base holds **143 886 files, none modified**.
 
-**82 tests pass** and `clippy -D warnings` is clean. The ones carrying the
-design: base immutability under a real write (checked against a sabotaged mount,
+**144 tests pass** (`cargo test`, both crates) and `clippy -D warnings` is
+clean. The ones carrying the design: base immutability under a real write (checked against a sabotaged mount,
 so it can fail), layer precedence with two read-only layers, finding and
 stopping the processes that hold a live mount — through an upper path
 containing every character the kernel escapes — removal of a mounted
@@ -255,9 +258,10 @@ One finding that is not Raven's to fix.
 `colony_ui::paths` is the org's canonical filesystem helper, and it lives in an
 iced crate. A command-line program with no user interface cannot use it without
 pulling in a GUI toolkit to compute `~/.local/share/Colony/Raven/`. Eidos hit
-this and worked around it with `eidos-paths`; Raven will carry its own
+this and worked around it with `eidos-paths`; Raven carries its own
 `crates/raven/src/paths.rs` for the same reason, which makes it the second
 workaround rather than the first.
 
 The fix is a `colony-paths` crate that `colony-ui` re-exports, and it belongs in
-Project-Colony-Resources. Raised there, not solved here.
+Project-Colony-Resources. It has not been raised there yet, and it is not
+solved here.

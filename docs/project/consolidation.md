@@ -193,12 +193,14 @@ registration belongs to the package, and why `doctor` diagnoses that state.
 
 ### 3.3 Releases
 
-The org machinery is wired: release-please for tagging, the release workflow
-for the one signed Linux asset Raven's platform story allows, `colony.json`
-marked `signed` for the launcher.
+The org machinery is wired and has run: release-please for tagging, the
+release workflow for the signed Linux assets Raven's platform story allows,
+`colony.json` marked `signed` for the launcher. Every tag from v0.1.0 to v0.4.1
+produced a release, and v0.4.1 carries `raven-linux` and `raven-gui-linux`, each
+with its `.sig`.
 
-**Still done when:** a tag has actually produced a signed asset that Colony
-can install — the machinery has yet to run once.
+**Still done when:** Colony has installed one of those assets and verified its
+signature - that end of the chain has not been checked.
 
 ---
 
@@ -209,9 +211,10 @@ without text and ignore every click. `Windows\Fonts` was the second and has
 been given back: masking it saved ~92 ms of every process start (227 → 135 ms
 measured) because `win32u` re-checks ~340 font files at each one, but a Windows
 whose registry declares 961 fonts while `C:\Windows\Fonts` holds none is
-incoherent, and a real Windows is the whole premise. Sessions made the trade
-cheap to reverse: a launch costs about a quarter of a second rather than two,
-so the same per-process 92 ms is a much smaller share of it than it was.
+incoherent, and a real Windows is the whole premise. The trade is not cheap in
+proportion: with sessions a warm launch costs about a quarter of a second, so
+the same ~92 ms is over a third of it (0.16 s masked, 0.26 s unmasked). It was
+reversed on correctness, not because sessions made it small.
 `layer::reconcile` un-masks the directory before every mount, so environments
 created under the mask healed themselves. That is the whole list.
 

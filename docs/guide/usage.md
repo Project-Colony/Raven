@@ -138,23 +138,31 @@ politeness: CachyOS's Proton and Valve's both carry these two projects as
 **unpatched upstream submodules**. What a Proton distribution forks is Wine.
 There is no distinct "CachyOS DXVK" to prefer.
 
-## Why the second launch is instant
+## Why the second launch is faster
 
 The first program you run in an environment starts a **session**: Raven mounts
 C: once and keeps it, so every later launch joins what is already there instead
-of building a world of its own. The first launch of the day costs about two
-seconds; the ones after it cost about a quarter of one.
+of building a world of its own. Measured with a trivial program, the first
+launch of the day costs about two seconds and a launch that follows another
+within a few seconds about a quarter of one - still about twice plain Wine's
+0.12 s once its own server is warm. A
+real program adds its own start-up on top: a Direct3D 11 game took 7.7 to 9.5
+seconds to show its window, against 7.9 under plain Wine. The figures are in
+[../internals/performance.md](../internals/performance.md).
 
-You can also bring an environment up before you need it, so nothing waits at
-all:
+You can also bring an environment up before you need it:
 
 ```bash
 raven env start games
 ```
 
-Mounting costs four hundredths of a second; Wine's services cost about 1.7 and
-then serve every launch. `start` pays that up front - after it, even the first
-double-click is immediate.
+Mounting costs four hundredths of a second, and the session keeps the mount
+until you stop it. `start` also brings Wine's services up, which costs about
+1.7 seconds, but they do not stay: Wine shuts them down three to six seconds
+after the last program in the environment exits, and Raven does not keep them
+running. A launch within those few seconds joins them and costs about a quarter
+of a second plus the program's own start-up; a later one starts them again. A
+launch some time after `start` has not been measured.
 
 The session holds C: until you release it:
 
