@@ -203,8 +203,8 @@ impl App {
             }
             Message::Start(name) => act(name, |e| {
                 // Mounting is the cheap half. The card's Start exists because
-                // `env start` is what makes launches instant, and what makes
-                // them instant is Wine's services already standing - so this
+                // `env start` makes a launch soon after it fast, and what makes
+                // it fast is Wine's services already standing - so this
                 // waits for them too, rather than flipping the card to
                 // "running" and leaving the first launch to pay the seconds
                 // the button was pressed to avoid. Their failure is not this

@@ -200,12 +200,13 @@ namespace is what admits it to the mount namespace.
 | | before | after |
 |---|---|---|
 | trivial program, first launch | 2.07 s | 2.05 s |
-| trivial program, every later launch | 2.07 s | **0.26 s** |
+| trivial program, next launch within seconds | 2.07 s | **0.26 s** |
 | *ShineHill* to its first GPU device | 2.71 s | **0.92 s** |
 | plain Wine, for comparison | 1.54 s cold, 0.12 s warm | unchanged |
 
-For the trivial program, **every launch after the first is seven to eight
-times faster** (1.89-2.07 s cold against 0.26 s); for *ShineHill* to its first
+For the trivial program, **a launch that follows another within a few seconds
+is seven to eight times faster** (1.89-2.07 s cold against 0.26 s); for
+*ShineHill* to its first
 GPU device, about three times (2.71 s against 0.92 s). The first launch is
 unchanged. (The session was first measured at 0.16 s while `Windows/Fonts` was
 masked; the mask has since been removed on correctness grounds and the figure
@@ -261,13 +262,22 @@ the mount timed apart from Wine:
 `overlayfs` never reads the tree it stacks; its cost is in the number of
 layers, not the number of files, so a 500 GB base would mount in the same
 0.04 s. The two seconds are `wineserver`, `services.exe`, `plugplay.exe`,
-`explorer.exe` and `rpcss.exe` coming up - and once up they serve every later
-launch, which is what the session made possible.
+`explorer.exe` and `rpcss.exe` coming up - and once up they serve any launch
+that arrives while they are still running, which is what the session made
+possible. Nothing keeps them running: Raven does not make `wineserver`
+persistent, so with Wine's default it exits, and the services with it, three to
+six seconds after the last program closes (see the refusal window below). The
+session keeps the mount, not Wine.
 
 The obvious lever is therefore to bring those services up *before* the user
-asks for a program: a session started at login, or by hand, would leave
-nothing for the first double-click to pay. Nothing in the design prevents it -
-the anchor already exists and does nothing after mounting.
+asks for a program, and to keep them up. `raven env start` does the first half
+by running the smallest possible program in the session, which on its own helps
+only a launch made within those few seconds. A session started at login, or by
+hand, would leave the first double-click paying only a warm launch, about
+0.26 s, plus the program's own start-up - once the session also holds a
+persistent `wineserver` (`wineserver -p`), which it does not yet. Nothing in the
+design prevents it - the anchor already exists and does nothing after mounting.
+A launch made some time after `env start` has not been measured.
 
 ### What a game's start-up actually costs, and how little of it is Raven
 
@@ -354,8 +364,8 @@ anything left to win lives:
   today - and it runs at environment creation and on `reproject`, not per
   launch.
 - **The measurable wins so far were architectural, not compiler flags.**
-  Sessions took every launch after the first from about 2 s (1.89-2.07 s) to
-  0.26 s, leaving the first one where it was; asking about one process instead
+  Sessions took a launch that follows another within seconds from about 2 s
+  (1.89-2.07 s) to 0.26 s, leaving the first one where it was; asking about one process instead
   of all of them took Raven's own share of a warm launch from 32 ms to 2;
   masking fonts was worth 92 ms per process start and was reverted anyway on
   correctness grounds.

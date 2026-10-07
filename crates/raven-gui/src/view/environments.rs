@@ -1,5 +1,5 @@
 //! One card per environment. Start and Stop sit on the card because starting
-//! is the most frequent action and `env start` is what makes launches instant.
+//! is the most frequent action and `env start` makes a launch soon after it fast.
 
 use iced::widget::{Space, button, column, container, row, scrollable, text};
 use iced::{Element, Length};
