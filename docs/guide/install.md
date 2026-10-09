@@ -1,8 +1,10 @@
 # Installing
 
 On Arch, a package builds from [`packaging/PKGBUILD`](../../packaging/PKGBUILD);
-everywhere else, build from source. **Installing the package changes what every
-`.exe` on the machine does** - the kernel hands them to Raven instead of Wine's
+everywhere else, build from source. Signed binaries also come from Colony and
+the release page; [Installation](../../README.md#installation) in the README
+covers both. **Installing the package changes what every `.exe` on the machine
+does** - the kernel hands them to Raven instead of Wine's
 default prefix - and uninstalling reverses it. `wine program.exe` keeps working
 either way.
 

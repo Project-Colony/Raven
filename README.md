@@ -95,6 +95,46 @@ Raven's position is the one nobody occupies:
 
 ## Installation
 
+There are two binaries because there are two front ends. `raven` is the command
+line and the primary interface; `raven-gui` is a window over the same library -
+environments, bases and diagnostics - and nothing here requires it. Whichever
+way you install, Raven needs `wine` and `wimlib` at runtime.
+
+### Via Colony (recommended)
+
+Search for **Raven** in [Colony](https://github.com/Project-Colony/Colony) and
+install it. Colony installs `raven-linux`, the command line, checks its
+signatures and keeps it updated.
+
+Two things Colony does not do. It does not register `.exe` files with the
+kernel: that needs root once, through the Arch package below or the lines
+`raven binfmt` prints. And it does not install `raven-gui`: take that from the
+release page if you want the window.
+
+### Direct binary download
+
+Grab the assets from the [latest release](../../releases/latest):
+
+| Asset | What it is | Signature files |
+|---|---|---|
+| `raven-linux` | the command line, `raven` | `raven-linux.sig`, `raven-linux.meta`, `raven-linux.meta.sig` |
+| `raven-gui-linux` | the window, `raven-gui` | `raven-gui-linux.sig`, `raven-gui-linux.meta`, `raven-gui-linux.meta.sig` |
+
+`raven-gui` runs `raven` from your `PATH`, so install the command line under
+that name:
+
+```bash
+install -Dm755 raven-linux ~/.local/bin/raven
+install -Dm755 raven-gui-linux ~/.local/bin/raven-gui
+raven doctor
+```
+
+[Code signing policy](#code-signing-policy) shows how to check the signatures
+before you run them. As with Colony, the `.exe` registration is then yours to
+install (`raven binfmt` prints it).
+
+### Build from source
+
 On Arch, the package in [packaging/](packaging/) installs both binaries,
 registers `.exe` files with the kernel, and masks Wine's competing
 registration - be aware that **installing changes what every `.exe` on the
@@ -106,11 +146,7 @@ cd Raven/packaging
 makepkg -si
 ```
 
-There are two binaries because there are two front ends. `raven` is the command
-line and the primary interface; `raven-gui` is a window over the same library -
-environments, bases and diagnostics - and nothing here requires it.
-
-Everywhere else, build from source - short, but the `.exe` registration is then
+Everywhere else, build with cargo - short, but the `.exe` registration is then
 yours to install (`raven binfmt` prints it):
 
 ```bash
@@ -136,6 +172,73 @@ The two pages that carry the argument are
 [project/landscape.md](docs/project/landscape.md), for why this is worth
 building at all, and [internals/architecture.md](docs/internals/architecture.md),
 for how it is put together.
+
+## Code signing policy
+
+Every release asset is signed by the Project Colony organisation in CI, never on
+a developer machine. Next to each asset on the release page:
+
+| File | What it is |
+|---|---|
+| `<asset>.sig` | an ed25519 signature over the asset, made with the organisation's release key |
+| `<asset>.meta` | three lines binding the asset to its file name, its sha256 and the release version |
+| `<asset>.meta.sig` | an ed25519 signature over the `.meta` |
+
+Releases up to v0.4.1 were signed by an older workflow and carry only
+`<asset>.sig`.
+
+The private key is an organisation secret, used only by the shared
+[sign-and-publish workflow](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/.github/workflows/sign-and-publish.yml)
+in a job that builds nothing; the jobs that compile Raven never see it.
+Colony checks all three files before it installs or updates Raven, and
+refuses a release older than the one installed. To check a download yourself
+with OpenSSL 3 (the same commands work for every asset):
+
+```bash
+cat > colony-release.pub <<'EOF'
+-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEARNjg3Nn8H6/aBg1unwGjkUTcrdTxERNefVaqU8cFu0s=
+-----END PUBLIC KEY-----
+EOF
+a=raven-linux
+openssl pkeyutl -verify -pubin -inkey colony-release.pub -rawin -in "$a" -sigfile "$a.sig"
+openssl pkeyutl -verify -pubin -inkey colony-release.pub -rawin -in "$a.meta" -sigfile "$a.meta.sig"
+cat "$a.meta"     # version=<tag>, asset=<file name>, sha256=<digest>
+sha256sum "$a"    # the digest must equal the sha256 line
+```
+
+How releases are built, signed and published:
+[design/releases.md](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/design/releases.md#5-signing).
+
+## Privacy
+
+Raven sends no telemetry, no analytics and no crash reports. It has no network
+client at all: neither binary opens a connection, checks for updates or talks
+to any server.
+
+| Data | Stored or sent | Where, and why |
+|---|---|---|
+| Default environment | stored | `~/.config/Colony/Raven/default-environment`: the environment a `.exe` that belongs to none runs in |
+| Windows bases | stored | `~/.local/share/Colony/Raven/bases/`: the installations deployed from images you supply |
+| Environments | stored | `~/.local/share/Colony/Raven/environments/`: each environment's overlay layer, Wine prefix, registry rules and projected registry |
+| DXVK and vkd3d archives | stored briefly | `~/.cache/Colony/Raven/unpack/`: unpacked in a private directory, copied into the environment, then removed |
+| Mount points | while running | `$XDG_RUNTIME_DIR/raven/<environment>/c`: where an environment's C: is mounted; runtime state, gone at reboot |
+| Windows registry | read | the hives of the Windows image you supply; only the allow-listed subtrees are copied into the environment's prefix, nothing leaves the machine |
+
+The `~/.config`, `~/.local/share` and `~/.cache` paths follow `XDG_CONFIG_HOME`,
+`XDG_DATA_HOME` and `XDG_CACHE_HOME` when they are set.
+
+What Raven makes possible, beyond its own files:
+
+- **The Windows programs it launches** are ordinary programs. They can use the
+  network, and read and write your files, like any program you run; Raven does
+  not filter or watch what they do.
+- **`raven env attach`** links a real host block device into an environment
+  when you ask for it. Every program in that environment then has raw sector
+  access to that device, within the permissions you grant on its device node.
+- **The binfmt registration** (installed by the Arch package, or by hand from
+  what `raven binfmt` prints) changes what every `.exe` on the machine does:
+  the kernel hands it to Raven instead of Wine's default prefix.
 
 ## License
 
