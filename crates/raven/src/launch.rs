@@ -1,7 +1,7 @@
 //! Making `./program.exe` run like any other executable.
 //!
 //! The kernel already knows how to do this. `binfmt_misc` maps a file's magic
-//! bytes to an interpreter, and a PE executable starts with `MZ` — the initials
+//! bytes to an interpreter, and a PE executable starts with `MZ` - the initials
 //! of Mark Zbikowski, who designed the format in 1983 and whose name has been at
 //! the front of every DOS and Windows binary since.
 //!
@@ -22,7 +22,7 @@ pub const BINFMT_NAME: &str = "raven-pe";
 /// The fields are name, type (Magic), offset, magic, mask, interpreter, flags.
 /// The `F` flag makes the kernel open the interpreter at registration time and
 /// hold it open, so the registration keeps working inside a mount namespace
-/// where `/usr/bin` may not be what it was — which is precisely the situation
+/// where `/usr/bin` may not be what it was - which is precisely the situation
 /// Raven creates for every program it runs.
 pub fn binfmt_line(interpreter: &Path) -> String {
     format!(":{BINFMT_NAME}:M::MZ::{}:F", interpreter.display())
@@ -39,7 +39,7 @@ pub fn registered() -> bool {
 ///
 /// Wine ships one of these too, and when both are present the kernel picks
 /// one silently. The evening that cost an hour, every `.exe` ran against
-/// `~/.wine` and the failure looked like Raven losing its prefix — so
+/// `~/.wine` and the failure looked like Raven losing its prefix - so
 /// `raven doctor` reports every claimant, not just Raven's.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ExeHandler {
@@ -47,7 +47,7 @@ pub struct ExeHandler {
     pub enabled: bool,
     pub interpreter: PathBuf,
     /// The `F` flag. The kernel holds the interpreter open from registration
-    /// on, so deleting the binary leaves the registration working — until the
+    /// on, so deleting the binary leaves the registration working - until the
     /// next boot registers from the conf file again and finds nothing.
     pub held_open: bool,
 }
@@ -130,7 +130,7 @@ fn parse_handler(name: &str, text: &str) -> Option<ExeHandler> {
 /// Whether a path is a Windows executable, by reading its first two bytes.
 ///
 /// `binfmt_misc` invokes its interpreter as `interpreter <file> <args…>`, with
-/// no way to pass a subcommand — so `raven` is handed a path where it expects a
+/// no way to pass a subcommand - so `raven` is handed a path where it expects a
 /// verb. Checking the magic is what makes that unambiguous: a subcommand name is
 /// never a readable file starting with `MZ`, so nothing a user types can be
 /// mistaken for a program, and no program can be mistaken for a verb.

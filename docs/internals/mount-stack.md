@@ -8,7 +8,7 @@ writable environments on top of it.
 Raven distinguishes the base it deployed from the base it was handed, because
 they carry very different risk.
 
-### Deployed from an ISO — the primary path
+### Deployed from an ISO: the primary path
 
 An official Microsoft ISO contains `sources/install.wim`. `wimlib-imagex apply`
 writes an image out of it to an ordinary directory, from Linux, without a
@@ -18,17 +18,17 @@ hypervisor and without booting anything:
 wimlib-imagex apply install.wim <edition-index> <base>/
 ```
 
-The base then lives on **whatever Linux filesystem you like** — btrfs for
+The base then lives on **whatever Linux filesystem you like** - btrfs for
 snapshots, ext4 otherwise. No NTFS is involved anywhere, which removes an entire
 category of risk before it exists.
 
 What this produces is a Windows that has never run: the hives are in their
 pre-`specialize` state, and no user profile has been created. Whether that is a
-liability or an advantage is genuinely open — a machine-specific hive is mostly
-noise to a projection that deliberately drops the machine-specific keys — and it
+liability or an advantage is genuinely open - a machine-specific hive is mostly
+noise to a projection that deliberately drops the machine-specific keys - and it
 is the first thing to establish empirically.
 
-### An existing Windows partition — the secondary path
+### An existing Windows partition: the secondary path
 
 Pointing Raven at a Windows already installed on an NTFS partition is the case
 people ask for, and it is the one that carries the hazards:
@@ -76,7 +76,7 @@ stale mount point in a data directory after a crash is worse than finding
 nothing.
 
 `overlayfs` needs an upper layer on a filesystem that supports extended
-attributes — ext4, xfs and btrfs all do — which is another reason the deployed
+attributes - ext4, xfs and btrfs all do - which is another reason the deployed
 base is the path of least resistance.
 
 ## Case sensitivity
@@ -89,8 +89,8 @@ this working.
 
 Raven inherits that solution and adds one rename pass: the Wine layer is
 renamed to the base's spelling at `env create` so the two trees merge at all.
-The lookup cost was profiled and attributed — to fonts, not to case
-resolution — and `casefold` was tested and closed: Wine detects it on any
+The lookup cost was profiled and attributed - to fonts, not to case
+resolution - and `casefold` was tested and closed: Wine detects it on any
 filesystem and gains nothing (see
 [performance.md](performance.md)). Its one real benefit is that the
 lowercase-shadow hazard becomes impossible, worth remembering if base
@@ -103,8 +103,8 @@ points at `C:\Users`, and `Application Data` inside a profile points at
 `AppData\Roaming`. Software still follows these paths.
 
 A WIM stores reparse points, and applying one to a POSIX filesystem has to decide
-what to turn them into. The translation at least suffices for what has run —
-a deployed base carried a real installer and a running game end to end —
+what to turn them into. The translation at least suffices for what has run -
+a deployed base carried a real installer and a running game end to end -
 and whether an edge of it bites a future program is a corpus question, not an
 assumption to build on.
 
@@ -121,7 +121,7 @@ This was measured rather than assumed, and measured end to end with Wine in the
 loop rather than with shell commands standing in for it. A prefix whose
 `dosdevices/c:` points at the mount gives Wine a working C: drive: `wine cmd`
 lists it, writes a file to it, and reads that file back. The write lands in
-`upper/`; the spike's base — 1896 files — was unchanged and did not contain
+`upper/`; the spike's base - 1896 files - was unchanged and did not contain
 it. The full-scale version of the same proof now exists: a real installer
 wrote 256 MB plus registry keys through the overlay, and 0 of the deployed
 base's 143 886 files were modified.
@@ -139,17 +139,17 @@ Two consequences worth stating:
 
 - **Concurrent independent launches into one environment join it.**
   `overlayfs` does not support two live mounts sharing an `upperdir`, and the
-  simple path — mount, exec, exit — gave one mount per process tree, so a
+  simple path - mount, exec, exit - gave one mount per process tree, so a
   second independent launch failed. The keeper process that fixes it is built:
   an *anchor* creates the namespace, mounts the overlay and stays alive, and
   every launch `setns`es into it. It was built for speed rather than for
-  concurrency — see [performance.md](performance.md) — and got both.
+  concurrency - see [performance.md](performance.md) - and got both.
 - **`binfmt_misc` still needs root, once.** It is a file in
-  `/usr/lib/binfmt.d/` applied by `systemd-binfmt` at boot — a packaging
+  `/usr/lib/binfmt.d/` applied by `systemd-binfmt` at boot - a packaging
   concern, handled by the package manager, not a service that runs.
 
-Where unprivileged namespaces are unavailable — `linux-hardened`, Ubuntu's
-AppArmor policy, some enterprise configurations — the mount goes through a
+Where unprivileged namespaces are unavailable - `linux-hardened`, Ubuntu's
+AppArmor policy, some enterprise configurations - the mount goes through a
 different backend behind the same interface. See
 [architecture.md](architecture.md).
 
@@ -165,7 +165,7 @@ Four conceptual verbs, and how they map onto the real commands:
 | **destroy** | `raven env destroy` | refuse if held, then delete the environment directory; the base is untouched |
 
 Nothing in that list writes to a base. That is checkable, and it should be
-checked by a test rather than by reading the code — the test that a write through
+checked by a test rather than by reading the code - the test that a write through
 the overlay leaves the lower layer byte-identical is the one that guards the
 whole design.
 

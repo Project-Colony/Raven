@@ -79,6 +79,6 @@ projection output is derived data that stays local and is regenerated rather
 than distributed.
 
 What Raven must not do is carry a hive corpus in the repository for testing
-purposes — those are Microsoft's files, and a test fixture is distribution. This
+purposes - those are Microsoft's files, and a test fixture is distribution. This
 is why the test corpus question in [status.md](status.md) is open rather than
 answered with "commit a real hive."

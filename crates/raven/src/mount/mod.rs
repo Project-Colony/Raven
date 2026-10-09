@@ -6,7 +6,7 @@
 //!
 //! There is deliberately an interface here rather than a direct call to
 //! `unshare` and `mount`. Unprivileged user namespaces are exactly the feature
-//! hardened kernels disable — `linux-hardened`, Ubuntu's AppArmor policy — so
+//! hardened kernels disable - `linux-hardened`, Ubuntu's AppArmor policy - so
 //! more than one backend will eventually exist. Only [`UserNsOverlay`] is
 //! implemented; the others are additions behind this trait rather than a rewrite
 //! of everything that mounts.
@@ -113,7 +113,7 @@ impl OverlaySpec {
 
 /// overlayfs separates options with commas and layers with colons, and escapes
 /// with a backslash. A path containing either character silently corrupts the
-/// option string unless it is escaped — a comma truncates a path, and a colon
+/// option string unless it is escaped - a comma truncates a path, and a colon
 /// splits one layer into two that do not exist.
 ///
 /// `pub(crate)` because this escaped form is also what the kernel *stores*:

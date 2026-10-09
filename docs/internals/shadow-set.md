@@ -41,8 +41,8 @@ In practice they are coupled to two things Wine owns:
 - **`ntdll`'s internals.** They call into it constantly, and not only through the
   documented surface. Microsoft's `kernel32` is built against Microsoft's
   `ntdll`, including behaviour that was never contracted.
-- **`wineserver`.** Wine implements NT's object model — processes, threads,
-  handles, sections, synchronization — in a separate server process. Wine's
+- **`wineserver`.** Wine implements NT's object model - processes, threads,
+  handles, sections, synchronization - in a separate server process. Wine's
   `kernel32` talks to it. Microsoft's talks to a kernel that is absent.
 
 The expectation is that these stay Wine's. That expectation should still be
@@ -65,7 +65,7 @@ experiment rather than a checklist.
 ## The top, which is already settled
 
 Microsoft's `ucrtbase` and `msvcr*`, the DirectX redistributables, `.NET`, media
-codecs, `xinput` — these work under Wine today. This is not a hypothesis:
+codecs, `xinput` - these work under Wine today. This is not a hypothesis:
 `winetricks` has been installing exactly these, as genuine Microsoft
 redistributables into Wine prefixes, for over fifteen years, and it is the
 standard fix for a large class of problems.
@@ -90,7 +90,7 @@ lowerdir=<wine-skeleton>:<real-windows>
 ```
 
 gives Wine's files precedence wherever they exist and Microsoft's everywhere
-else — and that *is* the shadow set, expressed as a filesystem layer. Measured:
+else - and that *is* the shadow set, expressed as a filesystem layer. Measured:
 `ntdll.dll` read through such a mount is Wine's 770 139 bytes rather than
 Microsoft's 2 522 008.
 
@@ -103,8 +103,8 @@ and reviewed, rather than a string that has to be believed.
 merges on the exact byte path, so the trees stayed separate and the mount
 showed both. Wine's own case-insensitivity acts a layer above the filesystem
 and could not help. `env create` now renames the Wine layer to the base's
-spelling — `normalise_case` in `crates/raven/src/layer.rs`, 338 renames
-against a real Windows 11 base — after which the trees merge, and the merged
+spelling - `normalise_case` in `crates/raven/src/layer.rs`, 338 renames
+against a real Windows 11 base - after which the trees merge, and the merged
 mount is what carried a real installer and a running game end to end.
 
 ## The first measured entry, and it is not a library
@@ -114,8 +114,8 @@ provide, and it turned out to be an entire assembly store rather than a DLL.
 
 **`Windows\WinSxS` is shadowed.** A real Windows carries a populated
 side-by-side store. An installer whose manifest asks for
-`Microsoft.Windows.Common-Controls` version 6.0 — which Inno Setup, and a large
-share of Windows installers, do — gets Microsoft's `comctl32` out of it. That
+`Microsoft.Windows.Common-Controls` version 6.0 - which Inno Setup, and a large
+share of Windows installers, do - gets Microsoft's `comctl32` out of it. That
 library loads, and then does not work against Wine's `user32`.
 
 The symptom is precise and thoroughly misleading:
@@ -138,7 +138,7 @@ governs. The override was the obvious remedy and it was measured to be useless.
 
 Hiding the store fixes it completely: the wizard renders its text and its buttons
 answer clicks. The mask sits in the read-only layer, so an installer that
-registers its *own* assemblies into the environment is unaffected — only the
+registers its *own* assemblies into the environment is unaffected - only the
 base's store disappears.
 
 Two earlier findings turn out to have been the same thing seen from different
@@ -152,12 +152,12 @@ machinery failing earlier.
 **`Windows\Fonts` was shadowed.** win32u re-enumerates and re-checks every font
 file at every process start; the real base carries ~340 of them, and that was
 92 of the 105 milliseconds each process spawn cost over plain Wine (227 → 135
-ms with the mask — the full attribution is in
+ms with the mask - the full attribution is in
 [performance.md](performance.md)). Wine's own `Fonts` directory is empty and
 text renders through the host's fontconfig, so the mask restored exactly the
 plain-Wine situation, and the game still reached its title screen under it.
-What the entry cost: a program that reads Microsoft's font *files* — not just
-the faces — would not find them. None was ever seen. The cost that withdrew
+What the entry cost: a program that reads Microsoft's font *files* - not just
+the faces - would not find them. None was ever seen. The cost that withdrew
 the entry was a different one, set out below.
 
 ## The two mechanisms
@@ -168,7 +168,7 @@ the entry was a different one, set out below.
 WINEDLLOVERRIDES="ole32,oleaut32=n,b;comctl32=b"
 ```
 
-`n` selects native — Microsoft's file, the one in the base. `b` selects Wine's
+`n` selects native - Microsoft's file, the one in the base. `b` selects Wine's
 builtin. `n,b` means try native and fall back. This is Wine's own supported
 interface and it is the right tool for everything above the floor.
 
@@ -182,8 +182,8 @@ shadowed file is a divergence from the base that is easy to forget about.
 
 ## Measuring it
 
-The naive experiment — flip each library to native, one at a time, see what
-breaks — answers the wrong question, because these libraries interact. `ole32`
+The naive experiment - flip each library to native, one at a time, see what
+breaks - answers the wrong question, because these libraries interact. `ole32`
 native with `rpcrt4` builtin is a different system from both-native, and a
 per-library result that ignores that will be confidently wrong.
 
@@ -193,7 +193,7 @@ The shape of a real measurement:
    Wine's. That is approximately Wine's behaviour today, with the real files
    merely present, and it is the configuration most likely to work at all. It is
    the baseline.
-2. **Fix a corpus** of programs with observable success criteria — starts,
+2. **Fix a corpus** of programs with observable success criteria - starts,
    reaches a known state, produces a known output. A corpus of "seems to work"
    measures nothing.
 3. **Move candidates to native in groups that are used together**, not one at a
@@ -201,7 +201,7 @@ The shape of a real measurement:
 4. **Record the whole configuration with each result.** The output of this work
    is a table of (Windows build, library set, corpus outcome), and a result
    without its configuration is not a result.
-5. **Diagnose failures with `WINEDEBUG` first** — the `loaddll` and `relay`
+5. **Diagnose failures with `WINEDEBUG` first** - the `loaddll` and `relay`
    channels report what was loaded and what was called, and they are already
    there. Only if those prove insufficient does instrumenting Wine from the
    inside become worth its cost, and that instrument would be a Wine DLL, in C.
@@ -220,7 +220,7 @@ versions cannot be used, and that the honest shadow set is nearly as large as
 Wine's default.
 
 That would mean Raven's value rests on the real registry, the real application
-libraries and the immutable base — which is still worth having — rather than on
+libraries and the immutable base - which is still worth having - rather than on
 a thin shadow set. It would also be the first published measurement of where
 that line falls, which is worth having regardless of which side of it the answer
 lands on.

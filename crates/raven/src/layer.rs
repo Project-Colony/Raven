@@ -3,7 +3,7 @@
 //! `overlayfs` merges two directories only when their paths are identical byte
 //! for byte. Wine's prefix skeleton spells things `windows`, `users` and
 //! `system32`; a real Windows spells them `Windows`, `Users` and `System32`.
-//! Stacked as they come, the two trees do not merge at all — the mount shows
+//! Stacked as they come, the two trees do not merge at all - the mount shows
 //! both, and Wine's files shadow nothing.
 //!
 //! Wine's own case-insensitive path resolution cannot help: it operates on
@@ -23,7 +23,7 @@ use crate::Error;
 /// differ only by case. Returns how many paths were renamed.
 ///
 /// Only `layer` is modified; `reference` is read. Entries with no
-/// case-insensitive counterpart in `reference` are left exactly as they are —
+/// case-insensitive counterpart in `reference` are left exactly as they are -
 /// Wine ships files a real Windows does not have, and those must survive.
 pub fn normalise_case(layer: &Path, reference: &Path) -> Result<usize, Error> {
     let mut renamed = 0;
@@ -78,7 +78,7 @@ fn walk(layer: &Path, reference: &Path, renamed: &mut usize) -> Result<(), Error
 /// Hides a directory of the base behind an empty one in this layer.
 ///
 /// `overlayfs` normally *merges* directories, so a layer can only add to what
-/// the base provides. An opaque marker makes it replace instead — everything the
+/// the base provides. An opaque marker makes it replace instead - everything the
 /// base has at that path becomes invisible.
 ///
 /// This is the shadow set applied to a whole subtree rather than a single file,
@@ -86,13 +86,13 @@ fn walk(layer: &Path, reference: &Path, renamed: &mut usize) -> Result<(), Error
 ///
 /// **`Windows\WinSxS`.** A real Windows carries a populated side-by-side
 /// assembly store. An installer whose manifest asks for
-/// `Microsoft.Windows.Common-Controls` 6.0 gets Microsoft's `comctl32` from it —
+/// `Microsoft.Windows.Common-Controls` 6.0 gets Microsoft's `comctl32` from it -
 /// which loads, and then does not work against Wine's `user32`. The symptom is
 /// precise and misleading: the window and its bitmaps draw, every control is
 /// created, and nothing has any text or answers a click.
 ///
 /// `WINEDLLOVERRIDES` cannot fix it. Side-by-side resolution goes through the
-/// activation context, not the loader search path the override governs — which
+/// activation context, not the loader search path the override governs - which
 /// is why forcing `comctl32=b` changes nothing and hiding the store changes
 /// everything.
 ///
@@ -116,7 +116,7 @@ pub fn shadow(layer: &Path, relative: &str) -> Result<(), Error> {
 /// Subtrees of the base that a layer hides, and why.
 ///
 /// Deliberately short. Each entry costs the environment something real, so one
-/// goes in only when a measurement says it must — see `shadow`.
+/// goes in only when a measurement says it must - see `shadow`.
 ///
 /// `WinSxS`: unmasked, installers render without text and ignore clicks.
 ///

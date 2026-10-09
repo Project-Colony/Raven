@@ -6,10 +6,10 @@ What the package installs beyond the binaries, wired together by
 
 | File | Installed to | Why |
 |---|---|---|
-| `raven.conf` | `/usr/lib/binfmt.d/` | makes the kernel hand `.exe` files to Raven, so `./program.exe` runs from a shell — pacman's `systemd-binfmt` hook applies it in the same transaction |
+| `raven.conf` | `/usr/lib/binfmt.d/` | makes the kernel hand `.exe` files to Raven, so `./program.exe` runs from a shell - pacman's `systemd-binfmt` hook applies it in the same transaction |
 | `raven.desktop` | `/usr/share/applications/` | makes a **file manager** open them, which `binfmt` alone does not do |
-| `raven-gui.desktop` | `/usr/share/applications/` | gives the window an application-menu entry — it manages bases and environments rather than opening a file, so it is launched by name and never resolved through a MIME type |
-| `wine-mask.conf` | `/etc/binfmt.d/wine.conf` | disables Wine's own `.exe` registration, which otherwise wins — an `/etc` file shadows Wine's `/usr/lib` one by name without touching a file the wine package owns |
+| `raven-gui.desktop` | `/usr/share/applications/` | gives the window an application-menu entry - it manages bases and environments rather than opening a file, so it is launched by name and never resolved through a MIME type |
+| `wine-mask.conf` | `/etc/binfmt.d/wine.conf` | disables Wine's own `.exe` registration, which otherwise wins - an `/etc` file shadows Wine's `/usr/lib` one by name without touching a file the wine package owns |
 
 The two are needed for different things and neither replaces the other.
 `binfmt_misc` answers "the kernel is asked to execute this file"; a desktop entry
@@ -19,7 +19,7 @@ through MIME types without ever asking the kernel to execute anything.
 ## Raven cannot share the registration with Wine
 
 Wine's own package installs `/usr/lib/binfmt.d/wine.conf`, registering `:DOSWin:`
-for the same `MZ` magic. Two handlers for one magic is not a merge — the kernel
+for the same `MZ` magic. Two handlers for one magic is not a merge - the kernel
 silently picks the most recently registered one (verified by experiment:
 last-registered wins), so a Wine package update can take every `.exe` back at
 any time. When Wine's wins, every double-clicked `.exe` runs against the
@@ -40,7 +40,7 @@ discovering: **installing Raven changes what every `.exe` on the machine does**.
 type, not something anybody launches on its own.
 
 The package also installs `rvn` as a symlink to `raven`, and removing it
-removes `raven.conf` with it — a registration left pointing at a deleted binary
+removes `raven.conf` with it - a registration left pointing at a deleted binary
 makes every `.exe` on the machine fail in a way nobody would connect to Raven.
 `raven doctor` diagnoses exactly that state, and the package makes it
 impossible by ownership: the registration lives and dies with the binary.

@@ -2,7 +2,7 @@
 //!
 //! Raven's central claim is that a program writing to C: cannot damage the
 //! Windows base it runs against. That is not a property to verify by reading the
-//! code — it is the one thing that must be checked by running it.
+//! code - it is the one thing that must be checked by running it.
 //!
 //! This drives the real `raven` binary rather than calling the library directly,
 //! because mounting enters namespaces the calling process can never leave, and

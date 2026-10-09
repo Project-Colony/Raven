@@ -7,8 +7,8 @@
 //! The canonical helper is `colony_ui::paths`, and it is not used here. It lives
 //! in an iced crate, so a command-line program would pull a GUI toolkit in to
 //! compute a directory name. Eidos hit the same wall and wrote `eidos-paths`;
-//! this is the second workaround, and the real fix — a `colony-paths` crate that
-//! `colony-ui` re-exports — belongs upstream.
+//! this is the second workaround, and the real fix - a `colony-paths` crate that
+//! `colony-ui` re-exports - belongs upstream.
 //!
 //! Raven is Linux-only, so this implements the XDG rules directly rather than
 //! taking a dependency to abstract over platforms that will never be targeted.
@@ -20,19 +20,19 @@ use crate::Error;
 const ORG: &str = "Colony";
 const PROGRAM: &str = "Raven";
 
-/// `~/.config/Colony/Raven/` — what the user chose and would want to keep.
+/// `~/.config/Colony/Raven/` - what the user chose and would want to keep.
 pub fn config_dir() -> Result<PathBuf, Error> {
     Ok(xdg("XDG_CONFIG_HOME", ".config")?.join(ORG).join(PROGRAM))
 }
 
-/// `~/.local/share/Colony/Raven/` — what Raven produced and cannot re-derive.
+/// `~/.local/share/Colony/Raven/` - what Raven produced and cannot re-derive.
 pub fn data_dir() -> Result<PathBuf, Error> {
     Ok(xdg("XDG_DATA_HOME", ".local/share")?
         .join(ORG)
         .join(PROGRAM))
 }
 
-/// `~/.cache/Colony/Raven/` — deleting all of this must cost only time.
+/// `~/.cache/Colony/Raven/` - deleting all of this must cost only time.
 pub fn cache_dir() -> Result<PathBuf, Error> {
     Ok(xdg("XDG_CACHE_HOME", ".cache")?.join(ORG).join(PROGRAM))
 }
@@ -71,7 +71,7 @@ fn xdg(var: &str, fallback: &str) -> Result<PathBuf, Error> {
 ///
 /// Reading the environment inside this would make it untestable without
 /// mutating process-global state, and `std::env::set_var` races with any other
-/// thread — including the ones the test harness runs tests on.
+/// thread - including the ones the test harness runs tests on.
 fn resolve(
     value: Option<std::ffi::OsString>,
     home: Option<std::ffi::OsString>,

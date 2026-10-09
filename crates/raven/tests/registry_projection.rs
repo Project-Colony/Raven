@@ -1,7 +1,7 @@
 //! The registry projection, tested against hives this repository builds itself.
 //!
-//! Raven cannot ship a Microsoft hive — that would be distributing Microsoft's
-//! software — so the fixtures are synthetic, built at test time from a small
+//! Raven cannot ship a Microsoft hive - that would be distributing Microsoft's
+//! software - so the fixtures are synthetic, built at test time from a small
 //! `.reg` description by an **independent** implementation. That independence is
 //! the point: if Raven both wrote and read the fixtures, a shared
 //! misunderstanding of the format would pass every test and fail on a real

@@ -4,7 +4,7 @@
 //! any deny rule beats every allow rule.
 //!
 //! The reason for that asymmetry is `HKLM\System`. It describes a *specific
-//! physical machine* — its driver and service database, the devices that were
+//! physical machine* - its driver and service database, the devices that were
 //! present, its disk layout. Wine fills its own `HKLM\System` with a description
 //! of the synthetic environment it actually provides. Overwriting one with the
 //! other replaces a true account of the running system with a true account of a
@@ -27,7 +27,7 @@ impl Rules {
     /// Whether `path` may be projected.
     ///
     /// **The most specific rule wins**, and a path no rule names is refused.
-    /// Blanket precedence — deny always beating allow — cannot express the shape
+    /// Blanket precedence - deny always beating allow - cannot express the shape
     /// the registry actually has: *all of `Software` except `Microsoft`, but
     /// `Microsoft\\DirectX` after all*. Longest match can, and each exception is
     /// then one line in the rules file instead of a change to the engine.

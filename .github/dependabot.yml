@@ -1,6 +1,6 @@
 # Keep the supply chain current: GitHub Actions and Cargo dependencies.
 #
-# Dependabot opening a PR is not the rule being followed — merging it is. See
+# Dependabot opening a PR is not the rule being followed - merging it is. See
 # design/dependencies.md: everything is on its latest release, always.
 version: 2
 updates:
@@ -20,6 +20,6 @@ updates:
     open-pull-requests-limit: 5
     groups:
       # Minor and patch bumps arrive as one PR, so a routine week is one review
-      # rather than fifteen. Majors stay separate — they deserve their own read.
+      # rather than fifteen. Majors stay separate - they deserve their own read.
       cargo-minor:
         update-types: ["minor", "patch"]

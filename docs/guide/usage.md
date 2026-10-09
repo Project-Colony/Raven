@@ -22,7 +22,7 @@ raven base deploy --image install.wim --edition 6 --name win11-pro
 ```
 
 This writes about 14 GB and takes a few minutes. No hypervisor is involved and
-Windows never boots — booting is what would bind the installation to hardware
+Windows never boots - booting is what would bind the installation to hardware
 that is not there.
 
 ## 2. Create an environment
@@ -67,24 +67,24 @@ everything else.
 
 ## Giving a program a real disk
 
-Some tools want a device, not files — sector editors, imaging tools, anything
+Some tools want a device, not files - sector editors, imaging tools, anything
 that opens `\\.\PhysicalDriveN`. Wire one in:
 
 ```bash
 raven env attach games /dev/sdc
 ```
 
-The device appears as `d:` and `\\.\PhysicalDrive1` — the exact number is
+The device appears as `d:` and `\\.\PhysicalDrive1` - the exact number is
 printed; Raven numbers disks the way Wine's own mountmgr does, counting from
-1 because PhysicalDrive0 is a stub Wine pre-creates — with **raw read and
+1 because PhysicalDrive0 is a stub Wine pre-creates - with **raw read and
 write access to its sectors**. Attach a disk whose contents you are prepared
 to lose to the program you are about to run. Raven never changes the device
 node's permissions; if you cannot open it, `attach` prints the `setfacl`
 command that grants it. `raven env detach games` undoes the whole thing, and
 the environment must be stopped for either direction.
 
-What this does and does not make visible — tools that *enumerate* disks
-instead of opening them by name will still show an empty list — is in
+What this does and does not make visible - tools that *enumerate* disks
+instead of opening them by name will still show an empty list - is in
 [../internals/device-passthrough.md](../internals/device-passthrough.md).
 
 ## Direct3D through Vulkan
@@ -201,6 +201,6 @@ Windows registry cross into it. Edit it, then:
 raven env reproject games
 ```
 
-What the defaults do and why — including why the COM registry is deliberately
-switched off — is in
+What the defaults do and why - including why the COM registry is deliberately
+switched off - is in
 [../internals/registry-projection.md](../internals/registry-projection.md).

@@ -2,8 +2,8 @@
 //!
 //! Windows keeps the registry in binary hive files; Wine keeps it as text. The
 //! bridge between them is deliberately **selective**: the keys describing
-//! installed *software* cross, and the keys describing a *machine* — its
-//! drivers, its services, its devices — do not. Importing the latter replaces
+//! installed *software* cross, and the keys describing a *machine* - its
+//! drivers, its services, its devices - do not. Importing the latter replaces
 //! Wine's true account of the environment it provides with a true account of a
 //! different, absent one.
 //!
@@ -25,8 +25,8 @@ pub use rules::Rules;
 
 /// Which hive file supplies which part of the registry.
 ///
-/// A hive does not record where it belongs — that is decided by whoever loads
-/// it — so the mapping lives here.
+/// A hive does not record where it belongs - that is decided by whoever loads
+/// it - so the mapping lives here.
 pub const SOURCES: &[(&str, &str)] = &[
     ("Windows/System32/config/SOFTWARE", r"HKLM\Software"),
     ("Users/Default/NTUSER.DAT", r"HKCU"),
@@ -54,7 +54,7 @@ pub fn project_base(base: &Path, rules: &Rules) -> Result<String, Error> {
 /// `regedit` is a Windows program like any other: it needs a working
 /// `C:\Windows\System32` to load `kernel32` from. Once an environment's
 /// `dosdevices/c:` points at the runtime mount, that path exists only while the
-/// overlay is mounted — so the import runs inside a mount rather than beside it.
+/// overlay is mounted - so the import runs inside a mount rather than beside it.
 ///
 /// The mount can only happen in a process that is about to be replaced by the
 /// program, so this spawns `raven exec` rather than mounting here. `WINEPREFIX`

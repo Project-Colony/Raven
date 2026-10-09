@@ -1,7 +1,7 @@
 //! Environments: one Windows base, one Wine layer over it, one place for writes.
 //!
-//! An environment is deliberately cheap. Everything expensive — the deployed
-//! Windows — is shared and immutable, so creating one copies only Wine's
+//! An environment is deliberately cheap. Everything expensive - the deployed
+//! Windows - is shared and immutable, so creating one copies only Wine's
 //! skeleton, and destroying one deletes a directory. A broken installation is
 //! recovered by throwing the environment away, not by repairing it.
 
@@ -43,7 +43,7 @@ impl Environment {
     /// The rules governing what crosses from the base's registry.
     ///
     /// Written into the environment rather than compiled in, so it can be read
-    /// and changed by someone who does not read Rust — which is the point, since
+    /// and changed by someone who does not read Rust - which is the point, since
     /// what crosses is a correctness decision.
     pub fn rules_file(&self) -> PathBuf {
         self.root.join("registry-rules.toml")
@@ -67,7 +67,7 @@ impl Environment {
     ///
     /// Idempotent: same base, same rules, same result. That is what makes it
     /// safe to run again after editing the rules, and it is why the output is
-    /// never edited by hand — a projection someone corrected is one nobody can
+    /// never edited by hand - a projection someone corrected is one nobody can
     /// reproduce.
     pub fn project_registry(&self) -> Result<usize, Error> {
         // The import mounts the overlay, and a running environment holds it.
@@ -153,7 +153,7 @@ impl Environment {
     /// The processes still holding this environment's C: mounted.
     ///
     /// The mount lives in a private mount namespace and is invisible from
-    /// outside — but each process's own view is in `/proc/<pid>/mountinfo`,
+    /// outside - but each process's own view is in `/proc/<pid>/mountinfo`,
     /// and one that names this environment's upper layer is inside. Killing a
     /// program's window often leaves `wineserver` and a handful of Wine
     /// services alive this way, and they keep the upper layer busy.
@@ -179,7 +179,7 @@ impl Environment {
     /// Refuses while the environment is held by live processes.
     ///
     /// overlayfs will not mount the same upper layer twice, so a second
-    /// launch can only fail — and the raw failure is `EBUSY`, which names
+    /// launch can only fail - and the raw failure is `EBUSY`, which names
     /// neither the environment nor the processes. This names both.
     pub fn ensure_not_running(&self) -> Result<(), Error> {
         let holders = self.holders();
@@ -201,8 +201,8 @@ impl Environment {
     /// Releases the environment: asks every holder to exit, then insists.
     ///
     /// Returns the processes that were terminated. `wineserver -k` from
-    /// outside cannot do this — the server inside the namespace is a
-    /// different one — so the holders are signalled directly.
+    /// outside cannot do this - the server inside the namespace is a
+    /// different one - so the holders are signalled directly.
     pub fn stop(&self) -> Result<Vec<Holder>, Error> {
         let holders = self.holders();
         // The session record goes first: whatever happens to the processes
@@ -305,8 +305,8 @@ fn is_anchor_cmdline(cmdline: &[u8]) -> bool {
 /// What this upper directory looks like inside `/proc/<pid>/mountinfo`.
 ///
 /// Two escapings stack, and both matter. The option string handed to
-/// `mount(2)` was already escaped once by [`crate::mount::escape`] — a
-/// backslash before `\`, `,` and `:` — and the kernel octal-escapes what it
+/// `mount(2)` was already escaped once by [`crate::mount::escape`] - a
+/// backslash before `\`, `,` and `:` - and the kernel octal-escapes what it
 /// then displays: space, tab, newline, backslash and comma. A needle built
 /// from the raw path silently misses any path containing those characters,
 /// an environment name may legally contain a comma, and a missed holder is
@@ -334,7 +334,7 @@ fn mountinfo_needle(upper: &std::path::Path) -> String {
 ///
 /// A plain `remove_dir_all` cannot delete an environment that has ever been
 /// mounted: `overlayfs` creates `work/work` with no permissions at all, and the
-/// removal stops there — after having already deleted the upper layer. That
+/// removal stops there - after having already deleted the upper layer. That
 /// leaves an environment that cannot be destroyed and cannot be recreated,
 /// which is the worst of both.
 fn remove_tree(root: &std::path::Path) -> Result<(), Error> {

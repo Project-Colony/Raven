@@ -18,19 +18,19 @@ created, a registry Wine wrote as a text file, and reimplementations of the
 libraries a program expects to find. It works remarkably well, and it is why the
 prefix is disposable. It also means the program's whole world is a reconstruction.
 
-Raven keeps Wine where Wine is irreplaceable — translating NT calls into Linux
-syscalls — and replaces everything above it with a genuine Windows installation
+Raven keeps Wine where Wine is irreplaceable - translating NT calls into Linux
+syscalls - and replaces everything above it with a genuine Windows installation
 that you deploy, mount read-only, and write to through an overlay. The registry
 comes from real hives. The libraries are Microsoft's, except for the precise set
 that physically cannot be.
 
 > **Status:** the end-to-end story exists. A real Windows 11 Pro deploys from
 > an official ISO, mounts as C:, a real installer wrote 256 MB into an
-> environment without touching a byte of the base — and the game it installs
+> environment without touching a byte of the base - and the game it installs
 > runs from a double-click in a file manager to its title screen. The registry
 > projection carries 1 894 keys from the real hives, a launch into an
 > already-running session costs about 2 ms of Raven's own overhead, and the
-> shadow set is down to a single entry — the fonts mask that bought the older
+> shadow set is down to a single entry - the fonts mask that bought the older
 > spawn figures was withdrawn, because a Windows declaring 961 fonts and having
 > none is not the real thing.
 >
@@ -47,15 +47,15 @@ that physically cannot be.
 
 What you would otherwise reach for, and where it stops:
 
-- **Wine / Proton** — the program runs at native speed, but inside an invented
+- **Wine / Proton** - the program runs at native speed, but inside an invented
   Windows. Software that reads its own installation state, resolves COM servers
   it registered at install time, or expects a library Wine has only partly
   reimplemented, finds an environment that does not quite add up.
-- **A virtual machine** — perfect fidelity, because it is really Windows. It is
+- **A virtual machine** - perfect fidelity, because it is really Windows. It is
   also a second computer: its own RAM, its own filesystem, its own GPU story, and
   a window that is a screen rather than an application. That is isolation, which
   is the opposite of what Raven is for.
-- **Bottles, Lutris, umu** — the best tooling that exists around a Wine prefix:
+- **Bottles, Lutris, umu** - the best tooling that exists around a Wine prefix:
   runner and DXVK versions, dependency installers, store integration, and years
   of accumulated per-title fixes. Raven has none of that and is not competing for
   it. They make a synthetic Windows far easier to live with; they do not change
@@ -97,7 +97,7 @@ Raven's position is the one nobody occupies:
 
 On Arch, the package in [packaging/](packaging/) installs both binaries,
 registers `.exe` files with the kernel, and masks Wine's competing
-registration — be aware that **installing changes what every `.exe` on the
+registration - be aware that **installing changes what every `.exe` on the
 machine does**, and uninstalling reverses it:
 
 ```bash
@@ -107,10 +107,10 @@ makepkg -si
 ```
 
 There are two binaries because there are two front ends. `raven` is the command
-line and the primary interface; `raven-gui` is a window over the same library —
-environments, bases and diagnostics — and nothing here requires it.
+line and the primary interface; `raven-gui` is a window over the same library -
+environments, bases and diagnostics - and nothing here requires it.
 
-Everywhere else, build from source — short, but the `.exe` registration is then
+Everywhere else, build from source - short, but the `.exe` registration is then
 yours to install (`raven binfmt` prints it):
 
 ```bash
@@ -122,7 +122,7 @@ cargo build --release
 Requires Rust 1.85 or newer, plus `wine` and `wimlib` at runtime. The full list,
 and what each is for, is in
 [docs/internals/system-dependencies.md](docs/internals/system-dependencies.md);
-`raven doctor` reports what is missing — including who actually gets a
+`raven doctor` reports what is missing - including who actually gets a
 double-clicked `.exe`.
 
 Then [docs/guide/usage.md](docs/guide/usage.md) walks from an ISO to a running
@@ -130,7 +130,7 @@ program.
 
 ## Documentation
 
-Full documentation is in [docs/](docs/) — start at [docs/README.md](docs/README.md).
+Full documentation is in [docs/](docs/) - start at [docs/README.md](docs/README.md).
 
 The two pages that carry the argument are
 [project/landscape.md](docs/project/landscape.md), for why this is worth

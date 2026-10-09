@@ -4,7 +4,7 @@
 //! running inside the mount namespace, the upper layer stays busy, and the
 //! next launch fails. `Environment::holders` must find those processes from
 //! outside the namespace, and `Environment::stop` must actually release the
-//! mount — properties only a real mount can demonstrate.
+//! mount - properties only a real mount can demonstrate.
 
 use std::fs;
 use std::path::PathBuf;

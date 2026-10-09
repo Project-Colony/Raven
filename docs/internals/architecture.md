@@ -21,7 +21,7 @@ no compatibility shim and no amount of engineering that changes this. **The
 bottom of the stack is Wine's, permanently.**
 
 Everything Raven does is above that line. The design question is not whether to
-use Wine — it is what Wine should be looking at when it looks up.
+use Wine - it is what Wine should be looking at when it looks up.
 
 ## The layer model
 
@@ -29,14 +29,14 @@ use Wine — it is what Wine should be looking at when it looks up.
    the program's own code          native x86, nothing between it and the CPU
    ────────────────────────────────────────────────────────────────────────
    application libraries           Microsoft's, from the real installation
-   framework libraries             Microsoft's — ucrtbase, msvcr*, .NET, D3DX
+   framework libraries             Microsoft's - ucrtbase, msvcr*, .NET, D3DX
    ────────────────────────────────────────────────────────────────────────
    the negotiable middle           ole32, rpcrt4, shell32, ws2_32, comctl32
-                                   — some Microsoft's, some Wine's, MEASURED
+                                   - some Microsoft's, some Wine's, MEASURED
    ────────────────────────────────────────────────────────────────────────
    coupled to the NT object model  kernel32, kernelbase, user32, gdi32,
-                                   advapi32 — Wine's; they talk to wineserver
-   the syscall boundary            ntdll, win32u — Wine's, by physics
+                                   advapi32 - Wine's; they talk to wineserver
+   the syscall boundary            ntdll, win32u - Wine's, by physics
    ────────────────────────────────────────────────────────────────────────
    NT semantics in the kernel      ntsync, where the kernel provides it
    the Linux kernel                the only kernel present
@@ -45,12 +45,12 @@ use Wine — it is what Wine should be looking at when it looks up.
 Two of these bands are settled by the constraint above. One is settled by
 fifteen years of `winetricks` evidence that Microsoft's redistributable
 frameworks work fine under Wine. **The middle band is unmeasured**, and
-narrowing it is the research content of the project — see
+narrowing it is the research content of the project - see
 [shadow-set.md](shadow-set.md).
 
 ## The five components
 
-### 1. The base — a real Windows, deployed without a VM
+### 1. The base: a real Windows, deployed without a VM
 
 An official Microsoft ISO contains `sources/install.wim`, a filesystem image.
 `wimlib-imagex apply` writes it to a directory from Linux, with no hypervisor
@@ -60,7 +60,7 @@ and no boot:
 wimlib-imagex apply install.wim 1 <base>/
 ```
 
-The result is a genuine Windows tree — `Windows\System32` with Microsoft's
+The result is a genuine Windows tree - `Windows\System32` with Microsoft's
 libraries, and `Windows\System32\config\` with the real registry hives. That it
 never boots is the point: booting is what would bind it to hardware that is not
 there.
@@ -68,7 +68,7 @@ there.
 A base is content-addressed by its Windows edition and build, stored once, and
 shared by every environment built on it.
 
-### 2. The mount stack — immutable base, disposable environments
+### 2. The mount stack: immutable base, disposable environments
 
 The base is mounted **read-only**, always. Writes go to an `overlayfs` upper
 layer, one per environment.
@@ -79,7 +79,7 @@ environments share one base without duplicating it, and a base on btrfs snapshot
 for free. Full reasoning and the lifecycle in
 [mount-stack.md](mount-stack.md).
 
-### 3. The registry projection — hives in, Wine registry out
+### 3. The registry projection: hives in, Wine registry out
 
 Windows stores the registry as binary hive files. Wine stores it as text. Raven
 reads the former and writes the latter, **selectively**: the keys describing
@@ -88,13 +88,13 @@ NT service database are not, because importing them overwrites Wine's account of
 its own synthetic environment and breaks the prefix outright.
 
 The projection is derived, idempotent and driven by a rules file that is
-reviewable — it is never hand-edited output. This is the same
+reviewable - it is never hand-edited output. This is the same
 source-of-truth-plus-generator shape the org already uses for design tokens, for
 the same reason: a generated artifact someone edited by hand is an artifact
 nobody can regenerate. See
 [registry-projection.md](registry-projection.md).
 
-### 4. The shadow set — the libraries Wine must win
+### 4. The shadow set: the libraries Wine must win
 
 The prefix must resolve the bottom two bands to Wine's implementations even
 though Microsoft's are physically present in the mounted base. Wine's
@@ -103,14 +103,14 @@ read-only Wine layer can shadow a file or directory outright where the
 override is not enough.
 
 Today the shadow set is a short, measurement-justified constant in
-`crates/raven/src/layer.rs` — one directory mask, `Windows/WinSxS`.
+`crates/raven/src/layer.rs` - one directory mask, `Windows/WinSxS`.
 `Windows/Fonts` was masked there too and has been withdrawn: the spawn time it
 bought was not worth a Windows that declared 961 fonts and had none. The
 per-library table the corpus will produce is planned as a data file keyed
 by Windows build. It is the thing the project exists to shrink. See
 [shadow-set.md](shadow-set.md).
 
-### 5. Launch — the kernel recognises `.exe`
+### 5. Launch: the kernel recognises `.exe`
 
 `binfmt_misc` registers the PE magic (`MZ`) against a Raven handler, so
 `./program.exe` executes like any other binary. The handler resolves which
@@ -131,9 +131,9 @@ component:
 | Operation | Needs root? |
 |---|---|
 | Mount the overlay | **No.** `unshare -Urm` puts it in a user namespace. |
-| Does that mount leak to the host? | No — invisible outside the namespace. |
+| Does that mount leak to the host? | No - invisible outside the namespace. |
 | Join the namespace later | **No.** `nsenter --preserve-credentials`. |
-| Register `binfmt_misc` | Yes — but once, at install time. |
+| Register `binfmt_misc` | Yes - but once, at install time. |
 
 So the runtime path is unprivileged end to end: `unshare`, mount the overlay,
 `exec` Wine. Child processes inherit the namespace, so a launcher starting a game
@@ -153,7 +153,7 @@ default since 23.10. Debian did so for years. On SELinux-enforcing systems the
 namespace works but the mount is subject to policy, and overlayfs has real
 interactions with SELinux labelling.
 
-None of that is speculative and none of it is fatal — **rootless Podman does
+None of that is speculative and none of it is fatal - **rootless Podman does
 precisely this, on SELinux-enforcing systems, every day.** The known answers are
 `fuse-overlayfs` where native overlayfs in a namespace is refused, and the
 `context=` mount option for labelling.
@@ -162,14 +162,14 @@ Raven therefore does not call `unshare` and `mount` from wherever it happens to
 need a filesystem. Acquiring a mounted C: is **one interface with room for three
 backings**:
 
-1. **native `overlayfs` in a user namespace** — the primary path, and the only
+1. **native `overlayfs` in a user namespace** - the primary path, and the only
    one Phase 1 implements
-2. **`fuse-overlayfs` in a user namespace** — where policy refuses the native one
-3. **a privileged helper** — where unprivileged namespaces are unavailable
+2. **`fuse-overlayfs` in a user namespace** - where policy refuses the native one
+3. **a privileged helper** - where unprivileged namespaces are unavailable
    entirely
 
 Only the first exists at first. The seam exists from the first commit, so the
-other two are additions rather than a rewrite — and the privileged helper, if it
+other two are additions rather than a rewrite - and the privileged helper, if it
 is ever built, inherits the rule that was going to govern the daemon: it accepts
 **named operations, never caller-supplied paths**, because a service that mounts
 an arbitrary source onto an arbitrary target as root is a privilege escalation
@@ -185,14 +185,14 @@ Raven is a workspace of **two crates**: the library with its command line, and
 the window.
 
 [The org rule](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/design/repository-layout.md)
-is that a workspace is for a real boundary — a separate process, a different
-build target, a library something else genuinely consumes — and that splitting
+is that a workspace is for a real boundary - a separate process, a different
+build target, a library something else genuinely consumes - and that splitting
 by layer buys nothing but a dependency graph. Once the privileged daemon
 disappeared, Raven became one program in one process, which is the case the rule
 answers with a single crate and subsystems as directories under `src/`, and that
 is what it stayed until the window arrived. A second binary, with its own
 dependency tree, is a real boundary rather than a layer. The root manifest is
-virtual — nothing of its own but the member list and the one version both crates
+virtual - nothing of its own but the member list and the one version both crates
 inherit, because a window and a library of different ages are not shippable
 together.
 
@@ -237,13 +237,13 @@ skipping it is the GUI.
 
 | Split out | When |
 |---|---|
-| `raven-gui` | done — there was a model worth showing, and it consumes `colony-ui`, which is what made it cheap |
+| `raven-gui` | done - there was a model worth showing, and it consumes `colony-ui`, which is what made it cheap |
 | `raven-daemon`, `raven-proto` | a privileged helper is needed for systems without unprivileged namespaces |
 | `raven-launch` | measurement shows CLI start-up cost matters on the `binfmt` path |
 | `raven-hive` | the hive corpus and its tests outgrow living alongside the binary |
 
 Each has a trigger, so the split is a decision rather than a drift. None of them
-is speculative — they are the four things already known to be coming, and the
+is speculative - they are the four things already known to be coming, and the
 first of them has arrived.
 
 ## Language
@@ -259,7 +259,7 @@ Rust throughout. Phase 1 needs no C at all, which was not obvious in advance:
 | PE inspection, when needed | `goblin` / `pelite`, pure Rust |
 
 `wimlib` is a C library, but it ships a well-behaved command-line tool, and
-binding it through FFI would buy nothing over invoking it — the interface is
+binding it through FFI would buy nothing over invoking it - the interface is
 "apply this image to this directory," which a subprocess expresses exactly.
 
 The one place C could still appear is the shadow-set investigation: if
@@ -267,6 +267,6 @@ narrowing the middle band requires instrumenting Wine from the inside, that
 instrument is a Wine DLL, and Wine is C. That is a research tool rather than a
 shipped component, and it stays isolated from the workspace if it happens at all.
 
-Dependency versions are not pinned in this document deliberately — the org rule
+Dependency versions are not pinned in this document deliberately - the org rule
 is that every dependency sits on its latest release at the moment it is added,
 and a version written into prose is a version that starts rotting immediately.

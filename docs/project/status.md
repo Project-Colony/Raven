@@ -8,9 +8,9 @@ stays current or gets deleted.
 - The approach is settled: a real Windows installation as an immutable base, an
   `overlayfs` upper layer per environment, a selective registry projection, and
   the smallest possible set of libraries forced to Wine's implementations.
-- The alternatives were examined and rejected for stated reasons —
+- The alternatives were examined and rejected for stated reasons -
   [landscape.md](landscape.md).
-- The design is written down — [../internals/architecture.md](../internals/architecture.md)
+- The design is written down - [../internals/architecture.md](../internals/architecture.md)
   and the three pages it links.
 - The repository follows the org conventions: layout, filesystem, documentation
   and dependency rules from
@@ -37,17 +37,17 @@ rather than a seven-crate workspace with a privileged process in it.
 ### Deploying a real Windows
 
 A Windows 11 Pro, build 26200 (25H2), was applied from an official ISO with
-`wimlib-imagex` — 143 886 files, 14 GB on disk, no hypervisor and no boot.
+`wimlib-imagex` - 143 886 files, 14 GB on disk, no hypervisor and no boot.
 
 | Finding | Consequence |
 |---|---|
 | It applies cleanly to an ordinary Linux filesystem | the ISO path never touches NTFS, so the `ntfs3` question gates only the secondary path |
-| All five hives are present and `hivex` reads them | `SOFTWARE` is 76 MB and carries `Classes`, `WOW6432Node`, `Microsoft`, `OEM` and more — there is real material to project even before first boot |
+| All five hives are present and `hivex` reads them | `SOFTWARE` is 76 MB and carries `Classes`, `WOW6432Node`, `Microsoft`, `OEM` and more - there is real material to project even before first boot |
 | `SystemRoot` reads `X:\Windows` and `InstallDate` is zero | a never-booted Windows describes the *setup* environment. The projection has to rewrite this, and that is now a known requirement rather than a surprise |
 | The legacy junctions are absent | `Documents and Settings` and `ProgramData\Application Data` are made at first boot. Software that still uses those paths will not find them |
-| Reparse points survive as **absolute** symlinks | `Users\All Users` points at `/ProgramData` — the *Linux* root. Only two exist in the whole tree, and deployment must rewrite them relative |
+| Reparse points survive as **absolute** symlinks | `Users\All Users` points at `/ProgramData` - the *Linux* root. Only two exist in the whole tree, and deployment must rewrite them relative |
 | `wimlib` drops NT security descriptors (131 323 files), DOS attributes, 8.3 names (83 967 files) and xattrs (14 287 files) | whether any of that matters is unmeasured; `--unix-data` mode is the lever if it does |
-| Casing is genuinely mixed | `KernelBase.dll`, `Windows`, `Users`. Wine resolves Windows paths case-insensitively, but *overlayfs merges on the exact byte path* — see below |
+| Casing is genuinely mixed | `KernelBase.dll`, `Windows`, `Users`. Wine resolves Windows paths case-insensitively, but *overlayfs merges on the exact byte path* - see below |
 
 ### Wine will not run against a bare real Windows
 
@@ -61,7 +61,7 @@ belongs, Wine concludes the prefix needs rebuilding. The `+loaddll` trace shows
 **`overlayfs` stacks multiple lower layers, and the leftmost wins.** With
 `lowerdir=<wine-skeleton>:<real-windows>`, Wine's files take precedence where
 they exist and Microsoft's fill in everywhere else. Measured: `ntdll.dll` through
-such a mount is 770 139 bytes — Wine's — not Microsoft's 2 522 008.
+such a mount is 770 139 bytes - Wine's - not Microsoft's 2 522 008.
 
 That is the shadow set expressed as a filesystem layer rather than as an
 environment variable, and it is a better mechanism than `WINEDLLOVERRIDES`
@@ -86,7 +86,7 @@ Loaded L"C:\Windows\System32\forfiles.exe" at 0000000140000000: native
 
 `native` means the PE came from the base, not from Wine's own directory. A real
 Windows, deployed from an ISO without a hypervisor and without ever booting,
-mounted as C:, running its own binaries under Wine — with the base still
+mounted as C:, running its own binaries under Wine - with the base still
 byte-identical afterwards.
 
 **A caution that cost time and is worth writing down:** `whoami.exe` and
@@ -100,7 +100,7 @@ it.
 
 **Console utilities print nothing, and the cause is MUI.** `choice.exe` and
 `forfiles.exe` load, run, and exit zero with empty output. Modern Windows keeps
-program strings in separate `.mui` resource files — the base holds 10 416 of
+program strings in separate `.mui` resource files - the base holds 10 416 of
 them, and `choice.exe` has only a 2 KB `.rsrc` section, far too small for its own
 help text. Traced with `WINEDEBUG=+file`: Wine opens **zero** `.mui` files. So
 `LoadString` finds nothing and the program prints nothing.
@@ -167,7 +167,7 @@ complete, and so is recovery when something is left holding an environment.
 
 | | |
 |---|---|
-| `raven doctor` | namespaces, Wine, `ntsync`, what is deployed — and which handler the kernel gives `.exe` files to, with the fix when it is not Raven's |
+| `raven doctor` | namespaces, Wine, `ntsync`, what is deployed - and which handler the kernel gives `.exe` files to, with the fix when it is not Raven's |
 | `raven base editions` / `deploy` / `list` | the immutable Windows installations |
 | `raven env create` / `list` / `destroy` | environments, cheap and disposable |
 | `raven env status` / `stop` / `start` | who holds a running environment's mount, releasing it, and bringing one up before it is needed |
@@ -190,8 +190,8 @@ Measured against the real Windows 11 base:
 **148 tests pass** (`cargo test`, both crates) and `clippy -D warnings` is
 clean. The ones carrying the design: base immutability under a real write (checked against a sabotaged mount,
 so it can fail), layer precedence with two read-only layers, finding and
-stopping the processes that hold a live mount — through an upper path
-containing every character the kernel escapes — removal of a mounted
+stopping the processes that hold a live mount - through an upper path
+containing every character the kernel escapes - removal of a mounted
 environment that `remove_dir_all` cannot delete, PE recognition by magic bytes
 rather than by extension, and eight projection tests against hives built by a
 **different implementation** from the reader.
@@ -203,7 +203,7 @@ NSIS, InstallShield, MSI and Squirrel are unexplored, as is COM, as is anything
 keeping its strings in `.mui` files. One game renders through Direct3D 11 and
 DXVK; vkd3d-proton installs and no Direct3D 12 title has driven it. Concurrent
 launches into one environment now join the running namespace rather than
-refusing — see 1.3 in
+refusing - see 1.3 in
 [consolidation.md](consolidation.md).
 
 ## A real program, end to end
@@ -212,7 +212,7 @@ The first third-party software run against Raven, and the chain completed:
 
 1. A real Windows 11 Pro, deployed from an official ISO, never booted.
 2. Mounted as C:, with Wine's layer above it.
-3. **A real Windows installer ran** — Inno Setup, 32-bit — and wrote 850 files
+3. **A real Windows installer ran** - Inno Setup, 32-bit - and wrote 850 files
    and 256 MB into `Program Files (x86)`, plus its own registry key at
    `HKLM\Software\Wow6432Node\Enterbrain\RGSS3\RTP`.
 4. A 32-bit RPG Maker game then found its runtime and reached its title screen.
@@ -226,7 +226,7 @@ without text and ignore every click. The full account is in
 
 Two things this does *not* show. The game is 2D and makes no 3D calls, so
 nothing here says anything about Direct3D. And one installer working is one data
-point — Inno Setup is common, but so are half a dozen other installer
+point - Inno Setup is common, but so are half a dozen other installer
 frameworks, and none has been tried.
 
 ## Open questions
@@ -235,8 +235,8 @@ Ordered by how much damage a wrong assumption would do.
 
 | | Question | Why it matters |
 |---|---|---|
-| 1 | Can Wine be made to resolve `.mui` resources? | Without it every real Windows console utility is mute, and any program that keeps its strings in MUI — which is the modern default — shows blank text. This is now the largest known gap. |
-| 2 | Does the per-process spawn cost matter to a running game? | It is attributed — win32u re-checking the base's ~340 font files — and the mask that removed it was withdrawn on correctness grounds, so it is back at about +115 ms. `casefold` is tested and closed (Wine detects it on any filesystem and gains nothing). What remains needs a frame-time or input-to-response number in a real scene before it deserves an owner. |
+| 1 | Can Wine be made to resolve `.mui` resources? | Without it every real Windows console utility is mute, and any program that keeps its strings in MUI - which is the modern default - shows blank text. This is now the largest known gap. |
+| 2 | Does the per-process spawn cost matter to a running game? | It is attributed - win32u re-checking the base's ~340 font files - and the mask that removed it was withdrawn on correctness grounds, so it is back at about +115 ms. `casefold` is tested and closed (Wine detects it on any filesystem and gains nothing). What remains needs a frame-time or input-to-response number in a real scene before it deserves an owner. |
 | 3 | Which Wine files must be in the upper lower-layer? | The shadow set, now expressed as "which paths does the Wine layer need to contain". See [../internals/shadow-set.md](../internals/shadow-set.md). |
 | 4 | Does the projection's `X:` to `C:` rewrite cover everything, or is a never-booted hive missing more? | `SystemRoot` was found by looking. What else describes the setup environment is unknown until something reads the whole hive. |
 | 5 | What do hardened systems need? | `linux-hardened`, Ubuntu's AppArmor policy and SELinux-enforcing systems all change the mount story. Rootless Podman solves this with `fuse-overlayfs` and `context=` labelling, so the answers exist; which one Raven needs is unmeasured. |
@@ -247,7 +247,7 @@ Two have been answered since and moved out of the table. Whether Wine would
 accept an `overlayfs` mount as its C: drive was the one that could have
 invalidated the design. And the registry test corpus is settled: the
 repository cannot carry Microsoft's hives, so the fixtures are built at test
-time from a small `.reg` description by `regf` — a different implementation
+time from a small `.reg` description by `regf` - a different implementation
 from the `nt-hive` reader Raven uses, which is what makes the test worth
 something.
 
