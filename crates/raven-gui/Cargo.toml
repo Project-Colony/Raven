@@ -8,7 +8,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-raven = { path = "../raven" }
-colony-ui = "0.1.5"
-iced = { version = "0.14.0", features = ["tokio", "advanced"] }
-tokio = { version = "1", features = ["rt"] }
+raven.workspace = true
+colony-ui.workspace = true
+iced = { workspace = true, features = ["tokio", "advanced"] }
+tokio = { workspace = true, features = ["rt"] }
