@@ -1,7 +1,7 @@
 # When something looks wrong
 
 Failure modes that have actually happened, and what they mean. Anything not
-listed here has not been seen yet — if you hit it, it is new.
+listed here has not been seen yet - if you hit it, it is new.
 
 ## `raven doctor` says user namespaces are unavailable
 
@@ -10,7 +10,7 @@ restricts them through AppArmor by default, and some hardened configurations
 turn them off deliberately.
 
 Raven's only implemented mount backend needs them. Two other backends are
-designed for exactly this case — `fuse-overlayfs`, and a privileged helper — and
+designed for exactly this case - `fuse-overlayfs`, and a privileged helper - and
 neither is built yet. Until one is, Raven cannot run on such a kernel.
 
 ## A program starts, exits cleanly, and prints nothing
@@ -20,7 +20,7 @@ Expected, for now, and it is not your setup.
 Modern Windows keeps program strings in separate `.mui` resource files rather
 than inside the executable. A base holds around ten thousand of them, and Wine
 does not open them. `LoadString` finds nothing, so the program prints an empty
-message and exits zero. It ran — it just has nothing to say.
+message and exits zero. It ran - it just has nothing to say.
 
 This is the largest known gap. See
 [../project/status.md](../project/status.md).
@@ -40,7 +40,7 @@ Wine's own.
 ## Every `.exe` runs against `~/.wine` instead of your environment
 
 Wine's package registers a handler for the same `MZ` magic, and when both are
-present the kernel picks one silently — the failure looks like Raven losing
+present the kernel picks one silently - the failure looks like Raven losing
 your prefix, and it once cost an hour. The package prevents it by masking
 Wine's registration; if you assembled things by hand:
 
@@ -54,7 +54,7 @@ pick, and prints the masking fix when it is not Raven's.
 ## A second launch fails, or a program will not start again
 
 A launch into an environment that already has a session joins it rather than
-refusing — that is what a session is for — so this is no longer what an
+refusing - that is what a session is for - so this is no longer what an
 ordinary second launch does. What still holds an environment busy is the
 wreckage of a session: when the anchor dies, `wineserver` and a handful of Wine
 services stay alive inside the mount namespace for a few seconds afterwards,
@@ -77,20 +77,20 @@ refuses with exactly these two commands rather than a bare
 
 ## Launching feels slower than Proton
 
-Slightly — about 20 ms per process over plain Wine (135 ms against 113,
+Slightly - about 20 ms per process over plain Wine (135 ms against 113,
 measured). It used to be 2× worse until the cause was found: Wine re-checks
 every font file in the base's `C:\windows\fonts` at every process start, and
 masking that directory removed 92 of the 105 milliseconds. Four plausible
-explanations were measured and destroyed before that one —
+explanations were measured and destroyed before that one -
 [../internals/performance.md](../internals/performance.md) has the numbers, so
 nobody repeats them.
 
 ## An environment will not delete
 
-If `destroy` refused because the environment is running, that is deliberate —
+If `destroy` refused because the environment is running, that is deliberate -
 it named the processes holding the mount, and `raven env stop <name>` releases
 it. For anything else: `overlayfs` leaves a `work/work` directory with no permissions at all,
-which a plain recursive delete cannot enter — and it stops *after* removing the
+which a plain recursive delete cannot enter - and it stops *after* removing the
 upper layer, leaving something that can neither be destroyed nor recreated.
 
 `raven env destroy` restores permissions as it descends and handles this. If you
@@ -104,7 +104,7 @@ to Linux.
 
 Expected, under any Wine, forever. Tools like Rufus *enumerate* disks through
 SetupDi device interfaces, and nothing in Wine ever registers the disk
-interface class — the list is empty regardless of configuration. What **can**
+interface class - the list is empty regardless of configuration. What **can**
 work is a tool that opens a device by name (`\\.\PhysicalDriveN`, `\\.\D:`)
 instead of asking for a list: `raven env attach <env> /dev/sdX` wires a real
 block device in for exactly that, with genuine sector read/write. The
@@ -120,10 +120,10 @@ renders. Real-Windows worlds sometimes fix programs, not just break them.
 ## Anti-cheat refuses to start the game
 
 If the publisher has enabled Easy Anti-Cheat or BattlEye's Linux support, the
-game should work — and if it works under Proton but not Raven, that is a bug
+game should work - and if it works under Proton but not Raven, that is a bug
 worth reporting.
 
-If the publisher has not enabled it — PUBG, Fortnite, Valorant — the game does
+If the publisher has not enabled it - PUBG, Fortnite, Valorant - the game does
 not run on Linux at all, under anything. That is a decision at the publisher, and
 Raven will not work around it: these systems ban on detecting tampering, so a
 tool that tried would get you banned. See

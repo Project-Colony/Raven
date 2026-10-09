@@ -12,7 +12,7 @@ use crate::Error;
 
 /// Reads one hive and returns the keys the rules permit, with their values.
 ///
-/// `mount` is where this hive's contents live in the registry — `HKLM\Software`
+/// `mount` is where this hive's contents live in the registry - `HKLM\Software`
 /// for the `SOFTWARE` hive, `HKCU` for a user's `NTUSER.DAT`. A hive file does
 /// not record where it belongs; whoever loads it decides, which is why it has to
 /// be passed in.
@@ -55,7 +55,7 @@ fn walk(node: &KeyNode<'_, &[u8]>, path: &str, rules: &Rules, out: &mut Vec<Key>
 
         // Descend even where this node is not itself allowed: an allowed subtree
         // can sit beneath a path that is merely unnamed, and pruning here would
-        // lose it. What is *denied*, though, is abandoned at its root — without
+        // lose it. What is *denied*, though, is abandoned at its root - without
         // that, the walk visits every key in a 76 MB hive.
         if rules.permits(&child) || could_contain_allowed(rules, &child) {
             walk(&sub, &child, rules, out, depth + 1);
@@ -67,7 +67,7 @@ fn walk(node: &KeyNode<'_, &[u8]>, path: &str, rules: &Rules, out: &mut Vec<Key>
 /// something.
 ///
 /// Deliberately ignores the deny list. An earlier version short-circuited on a
-/// denied ancestor, which silently dropped every allow rule nested inside one —
+/// denied ancestor, which silently dropped every allow rule nested inside one -
 /// `HKLM\Software\Classes` is refused wholesale and `…\Classes\CLSID` is allowed
 /// back, and the whole COM registry, 6 860 keys of it, never crossed. Whether a
 /// given key is projected is `permits`'s decision; this only decides whether

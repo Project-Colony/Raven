@@ -12,13 +12,13 @@ Two of this project's wrong turns came from measuring the wrong quantity
 confidently, so this comes first.
 
 - **CPU percentage is not latency.** A process blocked waiting burns *less* CPU
-  while running *worse*. The comparison that misled us — 59% under Raven against
-  66% under plain Wine — said nothing about which was faster.
+  while running *worse*. The comparison that misled us - 59% under Raven against
+  66% under plain Wine - said nothing about which was faster.
 - **A trace line count is not a cost.** 112 373 WinSxS lookups looked
   catastrophic and turned out to be free.
 - **A ratio between differently-sized workloads measures the workload.** The
   6.6× enumeration gap decomposed into 6.0× more directory entries and ~17%
-  actual overhead. Divide by size before reading a ratio as a cost — and
+  actual overhead. Divide by size before reading a ratio as a cost - and
   subtract the fixed costs you already measured first: leaving the known
   per-process spawn inside the division read as ~11% and flattered the
   overlay, because a fixed cost spread over 6× more entries shrinks 6× more.
@@ -28,7 +28,7 @@ confidently, so this comes first.
 
 ---
 
-## 1. Robustness — the things that bit us
+## 1. Robustness: the things that bit us
 
 These are all faults hit in one evening of real use. None is speculative.
 
@@ -39,7 +39,7 @@ present the kernel picks Wine's, every `.exe` runs against `~/.wine`, and the
 failure looks like Raven losing the prefix. It cost an hour.
 
 **Done.** `doctor` (and `raven binfmt`) lists every registration claiming a
-`.exe` — by `MZ` magic or by extension — names the one the kernel will pick,
+`.exe` - by `MZ` magic or by extension - names the one the kernel will pick,
 and says what to do when it is not Raven's, when a rival is still armed behind
 a winning Raven, and when the interpreter was deleted after registration (the
 `cargo clean` case: the `F` flag keeps it alive until reboot, then every
@@ -47,7 +47,7 @@ a winning Raven, and when the interpreter was deleted after registration (the
 
 Which entry wins was settled by experiment, not documentation: in a sandboxed
 `binfmt_misc` mount, of two entries claiming `MZ` the one registered *last*
-runs, and the unsorted directory order lists newest-first — so the first
+runs, and the unsorted directory order lists newest-first - so the first
 enabled claimant in readdir order is the kernel's choice. All three failure
 scenarios were staged in the sandbox and produce the intended diagnosis.
 
@@ -55,7 +55,7 @@ scenarios were staged in the sandbox and produce the intended diagnosis.
 
 Killing a program can leave its `wineserver` and a dozen Wine services alive
 inside the mount namespace. The overlay stays busy, and the next `raven run`
-fails with `Device or resource busy` — an error naming neither the environment
+fails with `Device or resource busy` - an error naming neither the environment
 nor the processes holding it.
 
 `wineserver -k` from outside does not help: the server inside the namespace is a
@@ -67,7 +67,7 @@ environment's upper layer is a holder. `raven env status` lists them by pid and
 name, `raven env stop` terminates them (SIGTERM, then SIGKILL for survivors,
 re-scanned between the two so an exited pid is never killed reused), and a
 launch into a held environment now refuses *before* mounting, naming the
-environment, the holders, and both commands — where it used to say
+environment, the holders, and both commands - where it used to say
 `Device or resource busy`. `destroy` and `reproject` got the same guard:
 deleting layers under a live mount hands the program a dissolving C:.
 Verified against a real mount by an integration test and by hand on `demo`.
@@ -76,17 +76,17 @@ Verified against a real mount by an integration test and by hand on `demo`.
 
 `overlayfs` refuses two live mounts sharing an `upperdir`, so a second program
 launched into a running environment fails. Children of an already-running
-program are fine — they inherit the namespace — but a second independent launch
+program are fine - they inherit the namespace - but a second independent launch
 is not.
 
-**Done.** The first launch starts an *anchor* — a Raven process that creates
-the namespace, mounts the overlay and then does nothing but stay alive — and
+**Done.** The first launch starts an *anchor* - a Raven process that creates
+the namespace, mounts the overlay and then does nothing but stay alive - and
 every later launch `setns`es into it, so a second independent launch joins the
 same namespace and the same `wineserver` rather than failing. Joining needs no
 privilege: the anchor maps the user to uid 0 inside, and owning that user
 namespace is what permits entering the mount namespace. `raven env status`
 marks the anchor among the holders, recognising it by what the process is
-running — `session-anchor` as its first argument — rather than by its name,
+running - `session-anchor` as its first argument - rather than by its name,
 because the window can hold a session too.
 
 ### 1.4 Uninstall
@@ -100,15 +100,15 @@ handler pointing at a path that no longer exists.
 
 ---
 
-## 2. Performance — measured properly this time
+## 2. Performance: measured properly this time
 
 ### 2.1 Measure latency, not CPU
 
-**Partly done** — see [performance.md](../internals/performance.md). A fixed
+**Partly done** - see [performance.md](../internals/performance.md). A fixed
 workload, identical in both conditions, wall-clock: process spawn was **2.0×**
 (113 → 228 ms), and **1.19×** (113 → 135 ms) while `Windows\Fonts` was masked
-— a mask since withdrawn on correctness grounds, so 2.0× is again what a cold
-spawn costs, see 2.2 and 4 — and directory enumeration is 6.6× — of which 6.0×
+(a mask since withdrawn on correctness grounds, so 2.0× is again what a cold
+spawn costs, see 2.2 and 4), and directory enumeration is 6.6×, of which 6.0×
 is the real `System32` holding six times the entries, leaving **~17% per
 entry** as the overlay's share. The lesson joined the list above: a ratio
 between two differently-sized workloads measures the workload.
@@ -120,35 +120,35 @@ anything is still unmeasured.
 
 ### 2.2 Test ext4 `casefold`
 
-**Done — closed, and the question it was meant to answer dissolved.** The
+**Done - closed, and the question it was meant to answer dissolved.** The
 premise was wrong twice over: `casefold` is not ext4-only (Wine reads the flag
-on any filesystem — source-verified, and tmpfs folds since Linux 6.13, root
+on any filesystem - source-verified, and tmpfs folds since Linux 6.13, root
 not required), and the directory-cache cost it was supposed to remove was a
 trace-counting artifact (809 was lines-per-file, not caches; the real count is
 9). Tested anyway, on identical control trees on plain and casefolding tmpfs:
-Wine detects the fold and gains nothing — same caches, same spawn time, and
+Wine detects the fold and gains nothing - same caches, same spawn time, and
 its non-wildcard listing path degrades to a full readdir. The real per-process
-cost was `C:\windows\fonts` — see 4, where masking it was worth 92 of the
+cost was `C:\windows\fonts` - see 4, where masking it was worth 92 of the
 105 ms, until that mask was given back.
 
 One finding survives `casefold`'s funeral: on a casefolding filesystem the
 lowercase-shadow hazard (a `wineboot` update creating a literal `windows`
 beside the base's `Windows` in the upper layer, after which exact-match
 lookups land in the empty shell) is structurally impossible. Worth weighing
-if base deployment ever chooses a filesystem; the hazard is real — an
+if base deployment ever chooses a filesystem; the hazard is real - an
 experiment replica hit it and lost `kernel32`.
 [performance.md](../internals/performance.md) has all five experiments.
 
 ### 2.3 Find out what `wineserver` is actually doing
 
-**Done — the extra requests do not exist.** Full `+server` captures of the same
+**Done - the extra requests do not exist.** Full `+server` captures of the same
 game, same scene, same day: 490 852 requests under plain Wine, 490 298 under
-Raven — 0.1% apart, with every family matching (registry enumeration count
+Raven - 0.1% apart, with every family matching (registry enumeration count
 identical to the key). File I/O on C: is in-process in ntdll and never reaches
 the server; sync is `ntsync`; steady state is the message pump. The 7.75× was
 an instantaneous CPU% glance, and on capture day the same glance pointed the
 other way while the request streams stayed identical. A whole line of attack is
-closed: the launch overhead is entirely client-side — and it turned out to be
+closed: the launch overhead is entirely client-side - and it turned out to be
 the per-process font re-check, which the shadow set masked until that mask was
 given back (see 4). Details in [performance.md](../internals/performance.md).
 
@@ -168,7 +168,7 @@ Raven's own start-up is **1 ms** in release and 2 ms in debug. It runs once per
 
 `panic = "abort"` was considered and **deliberately not set**: a panic in raven
 happens between the kernel's `binfmt` hand-off and Wine, where there is no
-terminal and no context — the backtrace is the only witness. The ~100 kB it
+terminal and no context - the backtrace is the only witness. The ~100 kB it
 would save does not buy that back. Revisit only if a measurement shows unwind
 tables costing something real.
 
@@ -179,8 +179,8 @@ description states that installing changes what every `.exe` does:
 
 | File | Goes to |
 |---|---|
-| `raven.conf` | `/usr/lib/binfmt.d/raven.conf` — applied by pacman's own `systemd-binfmt` hook in the same transaction |
-| `wine-mask.conf` | `/etc/binfmt.d/wine.conf` — masks Wine's, restored on uninstall |
+| `raven.conf` | `/usr/lib/binfmt.d/raven.conf` - applied by pacman's own `systemd-binfmt` hook in the same transaction |
+| `wine-mask.conf` | `/etc/binfmt.d/wine.conf` - masks Wine's, restored on uninstall |
 | `raven.desktop`, `raven-gui.desktop` | `/usr/share/applications/` |
 | the binaries | `/usr/bin/raven`, plus `rvn` beside it, and `/usr/bin/raven-gui` |
 | the icons | `/usr/share/icons/hicolor/`, 16 to 512, all named `raven` so the desktop entries' `Icon=` resolves |
@@ -188,7 +188,7 @@ description states that installing changes what every `.exe` does:
 Uninstall reverses everything: the registration dies with the package instead
 of dangling, and the mask's removal hands `.exe` files back to Wine. A
 development machine registered by hand against `target/debug/` remains one
-`cargo clean` away from breaking every `.exe` — which is exactly why the
+`cargo clean` away from breaking every `.exe` - which is exactly why the
 registration belongs to the package, and why `doctor` diagnoses that state.
 
 ### 3.3 Releases
@@ -204,7 +204,7 @@ signature - that end of the chain has not been checked.
 
 ---
 
-## 4. The shadow set — the actual research
+## 4. The shadow set: the actual research
 
 One entry is measured. `Windows\WinSxS` must be hidden, or installers render
 without text and ignore every click. `Windows\Fonts` was the second and has
@@ -227,7 +227,7 @@ created under the mask healed themselves. That is the whole list.
    deliberately off because a CLSID pointing at a library Wine shadows turns a
    working fallback into a hard failure. Nobody has measured whether that
    actually happens.
-3. **The band nobody has touched.** `ole32`, `rpcrt4`, `shell32`, `ws2_32` —
+3. **The band nobody has touched.** `ole32`, `rpcrt4`, `shell32`, `ws2_32` -
    whether any can be Microsoft's is the question the project exists to answer,
    and the answer is still unmeasured.
 
@@ -236,12 +236,12 @@ entry, and a corpus that regression-tests it.
 
 ---
 
-## 5. Coverage — what has never been tried
+## 5. Coverage: what has never been tried
 
 Stated so nobody mistakes the current evidence for more than it is.
 
-- **One 3D game, and no D3D12.** ShineHill — Steam, GameMaker, Direct3D 11,
-  64-bit — renders through DXVK on the GPU against the real Windows, which is
+- **One 3D game, and no D3D12.** ShineHill - Steam, GameMaker, Direct3D 11,
+  64-bit - renders through DXVK on the GPU against the real Windows, which is
   one title on one driver. `raven env vkd3d` installs vkd3d-proton beside it,
   but no D3D12 game has been tried, so that route is installed and unproven.
 - **One installer framework.**

@@ -2,7 +2,7 @@
 //!
 //! This is the primary backend and the only one implemented. It works because a
 //! process that creates a user namespace holds full capabilities *inside* it,
-//! which is enough to mount overlayfs — while holding nothing extra outside.
+//! which is enough to mount overlayfs - while holding nothing extra outside.
 //! Nothing has to run as root, and no privileged service has to exist.
 //!
 //! The mount is only visible inside the namespace, which is the intended
@@ -62,8 +62,8 @@ impl MountBackend for UserNsOverlay {
     /// in namespaces it cannot leave. Callers are expected to be about to `exec`
     /// the program being launched.
     ///
-    /// The process must be single-threaded — the kernel refuses `CLONE_NEWUSER`
-    /// otherwise — which is why this is called early, before anything spawns a
+    /// The process must be single-threaded - the kernel refuses `CLONE_NEWUSER`
+    /// otherwise - which is why this is called early, before anything spawns a
     /// thread.
     fn mount(&self, spec: &OverlaySpec) -> Result<(), MountError> {
         spec.check()?;
@@ -72,7 +72,7 @@ impl MountBackend for UserNsOverlay {
         let gid = rustix::process::getgid().as_raw();
 
         // SAFETY: `unshare` with CLONE_NEWUSER is only sound in a
-        // single-threaded process — the kernel refuses it outright otherwise,
+        // single-threaded process - the kernel refuses it outright otherwise,
         // and rustix deprecates the safe wrapper for that reason. Raven calls
         // this from `main` before anything spawns a thread, and the doc comment
         // above states that requirement for any other caller.

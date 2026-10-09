@@ -11,13 +11,13 @@ Windows keeps the registry in **binary hive files**:
 |---|---|---|
 | `System32\config\SYSTEM` | `HKLM\System` | hardware, drivers, the service database, control sets |
 | `System32\config\SOFTWARE` | `HKLM\Software` | per-machine software: install paths, COM registrations, file associations |
-| `System32\config\SAM`, `SECURITY` | — | local accounts and security policy |
+| `System32\config\SAM`, `SECURITY` | - | local accounts and security policy |
 | `System32\config\DEFAULT` | `HKU\.DEFAULT` | the profile template |
 | `Users\<u>\NTUSER.DAT` | `HKCU` | that user's per-user software state |
 | `…\AppData\Local\Microsoft\Windows\UsrClass.dat` | `HKCU\Software\Classes` | per-user COM and associations |
 
-Wine keeps the registry as **text files** in the prefix — `system.reg`,
-`user.reg`, `userdef.reg` — and cannot read a hive.
+Wine keeps the registry as **text files** in the prefix - `system.reg`,
+`user.reg`, `userdef.reg` - and cannot read a hive.
 
 So a bridge is needed. The question is what should cross it.
 
@@ -32,7 +32,7 @@ That hive is a description of a **specific physical machine**:
 describes disk layout, class GUIDs, and the boot configuration.
 
 Wine populates its own `HKLM\System` with a description of *its* synthetic
-environment — the drives it presents, the minimal services it emulates, the
+environment - the drives it presents, the minimal services it emulates, the
 devices it pretends to have. Overwriting that with the description of a real
 machine replaces a true account of the running environment with a true account
 of a different, absent one. Every subsequent lookup gets a confident wrong
@@ -46,30 +46,30 @@ copy around.
 
 Deny by default. A subtree is projected only if it is on the allow list.
 
-**Projected** — the keys that describe *software*, which is the thing that
+**Projected** - the keys that describe *software*, which is the thing that
 genuinely carries over:
 
-- `HKLM\Software\<vendor>\…` — where a program installed itself, its options,
+- `HKLM\Software\<vendor>\…` - where a program installed itself, its options,
   its licence state
-- a named handful of Microsoft subtrees — `DirectX`, `.NETFramework`,
-  `NET Framework Setup`, `COM3`, `Ole`, `Windows Script Host` — allowed back
+- a named handful of Microsoft subtrees - `DirectX`, `.NETFramework`,
+  `NET Framework Setup`, `COM3`, `Ole`, `Windows Script Host` - allowed back
   over the blanket refusal of `HKLM\Software\Microsoft`
-- `HKCU\Software\<vendor>\…` from `NTUSER.DAT` — per-user settings
+- `HKCU\Software\<vendor>\…` from `NTUSER.DAT` - per-user settings
 
-**Never projected** — the keys that describe a *machine*:
+**Never projected** - the keys that describe a *machine*:
 
 - the whole of `HKLM\System`
 - `SAM` and `SECURITY`, entirely
 - the subtrees of `HKLM\Software\Microsoft\Windows NT\CurrentVersion` that record
   which physical installation this was
 
-**Rewritten** — the drive letter a never-booted Windows records for itself. A
+**Rewritten** - the drive letter a never-booted Windows records for itself. A
 base applied from a WIM has never run `specialize`, so its hive still describes
 the *setup* environment and `SystemRoot` reads `X:\Windows`. Under Raven the
 installation is C:, and `emit::rewrite_setup_drive` replaces every such letter
 on the way through.
 
-**Known and unhandled** — values that name storage by device rather than by
+**Known and unhandled** - values that name storage by device rather than by
 drive letter. `C:\Program Files\…` is correct, because C: *is* the base, but
 `\Device\HarddiskVolume2\…` names a volume that does not exist. Nothing
 rewrites or drops those: the allow list reaches only `HKLM\Software` and
@@ -103,8 +103,8 @@ through Wine's own tool means Wine writes its own files in whatever shape it
 currently wants. Writing `system.reg` directly would be reaching into another
 project's private state.
 
-**Read with a pure-Rust hive parser.** Read-only is sufficient — Raven never
-writes a hive, only reads one and emits `.reg` — and read-only pure-Rust hive
+**Read with a pure-Rust hive parser.** Read-only is sufficient - Raven never
+writes a hive, only reads one and emits `.reg` - and read-only pure-Rust hive
 parsers exist. That keeps the whole path free of C and free of FFI.
 
 ## What the real hive taught the rules
@@ -115,7 +115,7 @@ no amount of reasoning had produced.
 
 **Blanket precedence cannot express the registry's shape.** The first design had
 deny always beat allow. That cannot say *all of `Software` except `Microsoft`,
-but `Microsoft\DirectX` after all* — and that is exactly the shape needed. **The
+but `Microsoft\DirectX` after all* - and that is exactly the shape needed. **The
 most specific rule wins**, so each exception is one line in the rules file rather
 than a change to the engine.
 
@@ -126,7 +126,7 @@ so one rule covers both views; the key keeps its real path in the output, becaus
 a 32-bit program genuinely looks for it there.
 
 **Pruning must not consult the deny list.** The walk skipped any subtree with a
-denied ancestor, which silently dropped every allow rule nested inside one — the
+denied ancestor, which silently dropped every allow rule nested inside one - the
 entire COM registry, 6 860 keys, never crossed. Whether a key is projected is the
 rules' decision; pruning only decides whether walking further could reach one.
 
@@ -141,7 +141,7 @@ valuable thing in the hive, and they are **not projected**.
 
 Measured, they add 121 256 keys and 21 MB. The concern is not size. A CLSID
 registration pointing at a Microsoft in-process server that Wine shadows turns a
-working builtin fallback into a hard failure — a program asks for a COM object,
+working builtin fallback into a hard failure - a program asks for a COM object,
 finds a registration, tries to load a library that cannot work, and errors
 instead of getting Wine's implementation.
 
@@ -159,7 +159,7 @@ read Rust.
 
 This mirrors the shape Project-Colony-Resources already uses for design tokens:
 a hand-edited source of truth, a generator, and output that is never hand-edited.
-The same discipline applies for the same reason — a projection someone corrected
+The same discipline applies for the same reason - a projection someone corrected
 by hand is a projection nobody can reproduce.
 
 Projection must therefore be **idempotent**: same base, same rules, same output,
@@ -171,7 +171,7 @@ makes a cached projection safe to reuse.
 - **What crosses, crosses.** A third-party vendor key and each named Microsoft
   subtree reach the output, including through the 32-bit mirror.
 - **The deny list holds.** The OS version key and the machine's identity do not
-  appear — asserted against the output, not the intent, so a rules edit that
+  appear - asserted against the output, not the intent, so a rules edit that
   widens the allow list too far fails a test rather than shipping.
 - **The setup drive letter is rewritten.** `X:\` becomes `C:\` on the way
   through.
@@ -181,7 +181,7 @@ makes a cached projection safe to reuse.
 
 The corpus was the awkward part, and it is settled: hives are Microsoft's and
 the repository cannot carry one, so the fixtures are **built at test time from a
-small `.reg` description**, by `regf` — a different implementation from the
+small `.reg` description**, by `regf` - a different implementation from the
 `nt-hive` reader Raven uses.
 
 That independence is the point rather than an accident of what was available. If

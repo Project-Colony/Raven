@@ -1,6 +1,6 @@
 //! Attaching a real block device to an environment.
 //!
-//! This is the configuration tier of device passthrough — see
+//! This is the configuration tier of device passthrough - see
 //! `docs/internals/device-passthrough.md` for why the other two tiers are a
 //! Wine patch and a refusal. What this module wires up is exactly what Wine's
 //! own machinery reads:
@@ -9,7 +9,7 @@
 //!   device, genuine sector reads and writes.
 //! - `dosdevices/<l>:` → a directory, because Wine expects every drive to
 //!   have a mount point.
-//! - `HKLM\Software\Wine\Drives "<l>:"="floppy"` — the counter-intuitive
+//! - `HKLM\Software\Wine\Drives "<l>:"="floppy"` - the counter-intuitive
 //!   value that matters: Wine's mountmgr promotes a "floppy" on a letter ≥ 2
 //!   to a real `\Device\Harddisk` with a `\\.\PhysicalDriveN` alias; the
 //!   obvious `"hd"` yields a volume with no such alias at all.
@@ -21,13 +21,13 @@
 //! The number `n` is not ours to invent: mountmgr allocates disk devices
 //! first-free-from-0 in creation order, and pre-creates a stub
 //! `Harddisk0/PhysicalDrive0` at startup, so the first registry-configured
-//! disk is PhysicalDrive**1**. Raven mirrors that allocation — the rank of
-//! the letter among the disk-producing entries of the Drives section — so
+//! disk is PhysicalDrive**1**. Raven mirrors that allocation - the rank of
+//! the letter among the disk-producing entries of the Drives section - so
 //! the number a program derives from Wine and the name Raven wired agree.
 //! Detaching renumbers what remains, because mountmgr will too.
 //!
 //! What this deliberately does not do: make the device *enumerable*. Tools
-//! that discover disks through SetupDi (Rufus among them) stay blind — no
+//! that discover disks through SetupDi (Rufus among them) stay blind - no
 //! configuration can register the device interface they query. And Raven
 //! never touches the device node's permissions: access is the user's to
 //! grant, and `attach` prints the command rather than running it.
@@ -73,13 +73,13 @@ impl Environment {
     ///
     /// Refuses while the environment runs: `wineserver` holds the registry
     /// in memory and would overwrite the edit on exit. Refuses a letter that
-    /// already has any mapping — a drive the user set up by hand is theirs,
+    /// already has any mapping - a drive the user set up by hand is theirs,
     /// not Raven's to overwrite.
     pub fn attach(&self, device: &Path, letter: char) -> Result<Attachment, Error> {
         self.ensure_not_running()?;
         check_letter(letter)?;
         // The symlink target is resolved by the kernel against dosdevices/,
-        // not against our cwd — absolutize so the path that was checked is
+        // not against our cwd - absolutize so the path that was checked is
         // the path that gets wired. Symlinks are kept unresolved on purpose:
         // /dev/disk/by-id names survive a reboot, /dev/sdX names do not.
         let device =
@@ -246,7 +246,7 @@ fn check_block_device(device: &Path) -> Result<(), Error> {
 }
 
 /// The letters whose Drives entries mountmgr turns into `\Device\Harddisk`
-/// objects — `"floppy"` on a letter index ≥ 2 — in section order, which is
+/// objects - `"floppy"` on a letter index ≥ 2 - in section order, which is
 /// the order mountmgr creates them in and therefore numbers them by.
 fn disk_letters(text: &str) -> Vec<char> {
     let mut out = Vec::new();

@@ -1,8 +1,8 @@
 //! Creating the Wine prefix that ties an environment together.
 //!
 //! Wine's prefix holds the registry and the drive mapping. Raven keeps the
-//! registry Wine writes — the projection from the real hives is merged into it
-//! rather than replacing it — and takes over only `dosdevices/c:`, pointing it
+//! registry Wine writes - the projection from the real hives is merged into it
+//! rather than replacing it - and takes over only `dosdevices/c:`, pointing it
 //! at the overlay mount instead of at a directory Wine owns.
 
 use std::path::Path;

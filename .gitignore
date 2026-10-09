@@ -8,7 +8,7 @@
 /packaging/*.pkg.tar.zst
 
 # Windows bases and environments never belong in the repository.
-# They live under <data>/Colony/Raven/ — see docs/internals/mount-stack.md.
+# They live under <data>/Colony/Raven/ - see docs/internals/mount-stack.md.
 /bases
 /environments
 *.wim

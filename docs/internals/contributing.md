@@ -13,7 +13,7 @@ document is authoritative.
 | [filesystem.md](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/design/filesystem.md) | everything under `Colony/Raven/`, config and data and cache kept apart by sub-directory |
 | [documentation.md](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/design/documentation.md) | README shape, `docs/` sorted by audience, lowercase kebab-case filenames |
 
-**Everything is written in English** — source, identifiers, comments, commit
+**Everything is written in English** - source, identifiers, comments, commit
 messages, and these pages. French is a UI locale a program ships, not a
 documentation language.
 
@@ -25,19 +25,19 @@ Commits are conventional commits, because release-please reads them.
 
 The base is mounted read-only and that is the invariant the whole design rests
 on. A change that gives any code path a writable handle to a base is wrong even
-if it passes every test, and the tests should be the ones that catch it — see
+if it passes every test, and the tests should be the ones that catch it - see
 [mount-stack.md](mount-stack.md).
 
 ### Mounting goes through the backend interface
 
-Raven's mount is unprivileged today — a user namespace and native `overlayfs` —
+Raven's mount is unprivileged today - a user namespace and native `overlayfs` -
 and that is the only backend implemented. It is not the only one that will
 exist: hardened kernels disable unprivileged namespaces, and those systems need
 `fuse-overlayfs` or a privileged helper.
 
 So no code calls `unshare` and `mount` directly at the point it happens to need a
 filesystem. Acquiring a mount is one interface, and adding a backend must not
-require touching anything that consumes it — see
+require touching anything that consumes it - see
 [architecture.md](architecture.md).
 
 If a privileged helper is ever written, it takes **named operations, never
@@ -57,7 +57,7 @@ and adding it left the CLI untouched.
 Results about which libraries can be Microsoft's are worthless without the exact
 configuration that produced them: Windows build, Wine version, the full library
 set, and the corpus outcome. A number without its configuration does not go in
-the repository — see [shadow-set.md](shadow-set.md).
+the repository - see [shadow-set.md](shadow-set.md).
 
 ### Generated things are never hand-edited
 

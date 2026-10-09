@@ -13,7 +13,7 @@ use anyhow::{Context, Result, bail};
 /// Prints a line, treating a closed pipe as a normal end.
 ///
 /// Rust ignores `SIGPIPE`, so a plain `println!` into `head` or `less` fails its
-/// write and *panics* — a backtrace where every other Unix tool simply stops.
+/// write and *panics* - a backtrace where every other Unix tool simply stops.
 /// A closed pipe is the reader saying "enough", which is an ordinary way for a
 /// command to finish, not a failure to report.
 macro_rules! out {

@@ -174,7 +174,7 @@ in wimlib's output shape fails a test rather than silently breaking.
 Raven's error messages are written for a terminal and carry commands:
 
 > `environment "games" has a live session holding its C:, which is what makes
-> launches fast — release it: raven env stop games`
+> launches fast - release it: raven env stop games`
 
 Telling someone using a window to open a terminal is an admission of failure.
 **Errors with an obvious action become that action**: this one renders as "A

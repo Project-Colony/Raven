@@ -6,7 +6,7 @@ What running Windows software on Linux looks like today, and the gap Raven aims 
 
 The instinct on meeting this problem is to reach for emulation: Linux should
 *emulate* Windows, the way an emulator runs a console game. It is the wrong
-model, and the name of the incumbent says so — **WINE is a recursive acronym for
+model, and the name of the incumbent says so - **WINE is a recursive acronym for
 "Wine Is Not an Emulator."**
 
 A Windows `.exe` contains x86 machine code. Your CPU is an x86 CPU. It executes
@@ -14,7 +14,7 @@ that code directly, at full speed, with nothing translating anything. There is
 no emulation to add because there is no instruction set gap to bridge.
 
 What a `.exe` also contains is a list of imports: `kernel32.dll`, `user32.dll`,
-`ntdll.dll`, `d3d11.dll`. Those are not part of the program — they are part of
+`ntdll.dll`, `d3d11.dll`. Those are not part of the program - they are part of
 the *operating system*. The program's first instruction cannot run until
 something resolves them. That is the entire problem, and it has never been a
 CPU problem.
@@ -45,7 +45,7 @@ exists.
 ### A virtual machine: bring the real boundary, isolated
 
 QEMU/KVM running an actual Windows gives perfect fidelity, because it is not an
-approximation of Windows — it *is* Windows, with its own NT kernel, its own
+approximation of Windows - it *is* Windows, with its own NT kernel, its own
 drivers, its own everything.
 
 The cost is that it is a second computer. Separate memory, separate filesystem,
@@ -67,7 +67,7 @@ sustainable for most of what it did.
 
 The counter-example, and the reason "kernel" should not be dismissed outright.
 
-Wine implements NT synchronization objects — mutexes, semaphores, events —
+Wine implements NT synchronization objects - mutexes, semaphores, events -
 through `wineserver`, a separate process reached by IPC. For a game
 synchronizing thousands of times a second, that round trip is a serious cost.
 `ntsync`, written by Elizabeth Figura at CodeWeavers, implements those
@@ -89,7 +89,7 @@ Line the answers up by where the Windows side comes from:
 | Virtual machine | genuine | behind a hypervisor |
 | **Raven** | **genuine** | **mounted directly, as the program's C:** |
 
-Nobody occupies the third row, and the reason is not that it is impossible — it
+Nobody occupies the third row, and the reason is not that it is impossible - it
 is that Wine explicitly discourages pointing a prefix at a real Windows
 installation, because doing it naively breaks in ways that generate
 unanswerable bug reports. That warning is correct. It is a warning about doing
@@ -107,7 +107,7 @@ Doing it deliberately means three things Wine has no reason to build:
    [../internals/registry-projection.md](../internals/registry-projection.md).
 3. **The library shadow must be exact.** Some libraries must be Wine's for
    reasons of physics, some may be Microsoft's, and the line is only beginning
-   to be measured — one entry so far, and it is not a DLL. See
+   to be measured - one entry so far, and it is not a DLL. See
    [../internals/shadow-set.md](../internals/shadow-set.md).
 
 That third point is the part of Raven that is genuinely new. The first two are
@@ -139,7 +139,7 @@ common belief and it is wrong.
 their own dashboard. Where a developer has enabled it, the game runs under
 Proton today, and Raven's job is simply not to break that.
 
-Where a developer has *not* enabled it — PUBG, Fortnite, Valorant — the game does
+Where a developer has *not* enabled it - PUBG, Fortnite, Valorant - the game does
 not run on Linux. **That is a business decision at the publisher, not a technical
 gap.** No amount of engineering below it changes the answer: not Wine, not
 Proton, not Raven, and not an NT kernel written from scratch. The lever is the
@@ -148,8 +148,8 @@ publisher's switch.
 ### The line Raven does not cross
 
 Making a game run anyway would mean convincing its anti-cheat that it is on a
-genuine Windows with its kernel driver loaded. That is anti-cheat circumvention —
-the same technique cheats use — and Raven will not implement it.
+genuine Windows with its kernel driver loaded. That is anti-cheat circumvention -
+the same technique cheats use - and Raven will not implement it.
 
 The practical objection is as strong as the principled one: these systems ban on
 detecting tampering. A tool that did this would get the people using it banned.
@@ -157,8 +157,8 @@ detecting tampering. A tool that did this would get the people using it banned.
 ### What Raven does instead
 
 Anti-cheat is treated as a **compatibility target**. A real Windows base is a
-more coherent environment than a synthetic prefix — real registry, real system
-libraries, a populated side-by-side store — and a user-mode anti-cheat module
+more coherent environment than a synthetic prefix - real registry, real system
+libraries, a populated side-by-side store - and a user-mode anti-cheat module
 performs environment consistency checks that have nothing to do with detecting
 Linux. Passing those better than Wine alone is a legitimate gain, on the games
 that already permit Linux.

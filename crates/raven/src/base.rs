@@ -1,7 +1,7 @@
 //! Deploying a Windows base from an installation image.
 //!
 //! An official Microsoft ISO carries `sources/install.wim`, and `wimlib` writes
-//! an image out of it to an ordinary directory from Linux — no hypervisor, no
+//! an image out of it to an ordinary directory from Linux - no hypervisor, no
 //! installer, no first boot. Not booting is the point: booting is what would
 //! bind the installation to hardware that is not there.
 //!
@@ -216,7 +216,7 @@ fn is_base_dir(name: &str) -> bool {
 
 /// Rewrites the reparse points a WIM leaves behind as absolute symlinks.
 ///
-/// Applying a WIM turns Windows junctions into symlinks with absolute targets —
+/// Applying a WIM turns Windows junctions into symlinks with absolute targets -
 /// `Users\All Users` becomes a link to `/ProgramData`, which resolves against
 /// the *Linux* root and points at nothing. Only a couple exist in a stock
 /// Windows, and they are made relative so they resolve inside the base.

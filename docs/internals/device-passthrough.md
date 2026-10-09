@@ -9,39 +9,39 @@ research project, and neither is configuration.**
 
 Wine's `mountmgr.sys` creates device *objects* from three inputs:
 
-- `dosdevices/x::` — a symlink to a unix block device becomes the raw device
+- `dosdevices/x::` - a symlink to a unix block device becomes the raw device
   behind drive `x:`. Opening `\\.\X:` reaches the real device: genuine sector
   reads and writes.
-- `HKLM\Software\Wine\Drives` — **HKLM, not HKCU** — sets the drive type.
+- `HKLM\Software\Wine\Drives` - **HKLM, not HKCU** - sets the drive type.
   The values are treacherous: `"hd"` produces a volume device with **no**
   `PhysicalDrive` alias; the only registry route to a real
   `\Device\Harddisk` + `\\.\PhysicalDriveN` is `"floppy"` on a letter ≥ 2,
   which a hard-coded exception promotes to a hard disk.
-- UDisks2 over the system D-Bus — a *removable* drive gets a device object
+- UDisks2 over the system D-Bus - a *removable* drive gets a device object
   and an auto-assigned letter. Fixed disks only ever become volumes.
 
 One genuinely useful trick falls out of the path resolution: a symlink
 `dosdevices/physicaldrive1 → /dev/sdX` makes `CreateFile("\\.\PhysicalDrive1")`
-open the **real block device** — actual raw I/O, bypassing mountmgr's fake
+open the **real block device** - actual raw I/O, bypassing mountmgr's fake
 disk object entirely. The number is not free to choose: mountmgr allocates
 disk devices first-free-from-0 in creation order and pre-creates a stub
 `Harddisk0/PhysicalDrive0` at startup, so the first registry-configured disk
-is published as PhysicalDrive**1**. `attach` mirrors that allocation — rank
-in the Drives section, counting from 1 — so the name it wires and the number
+is published as PhysicalDrive**1**. `attach` mirrors that allocation - rank
+in the Drives section, counting from 1 - so the name it wires and the number
 a program derives from Wine agree, and `detach` renumbers what remains.
 
 ## Why none of that is visible to Rufus
 
 Rufus has exactly one enumerator: `SetupDiGetClassDevs(GUID_DEVINTERFACE_DISK,
-… DIGCF_DEVICEINTERFACE)`. That API reads device *interfaces* — registry
+… DIGCF_DEVICEINTERFACE)`. That API reads device *interfaces* - registry
 entries under `DeviceClasses\{53f56307-…}` written by
 `IoRegisterDeviceInterface` + `IoSetDeviceInterfaceState`. In all of Wine
 11.16, only the HID and Bluetooth drivers ever register a device interface;
 mountmgr's disks are plain device objects with no PnP identity, so the disk
-interface class is **empty**, and every SetupDi-based tool sees zero disks —
+interface class is **empty**, and every SetupDi-based tool sees zero disks -
 regardless of any configuration. (The `Windows VDS is unavailable` notice
 Rufus prints is cosmetic; VDS is its formatting backend, not its enumerator.
-Rufus's author has declined Wine support outright — rufus#1411.)
+Rufus's author has declined Wine support outright - rufus#1411.)
 
 ## The tiers
 
@@ -54,11 +54,11 @@ Rufus's author has declined Wine support outright — rufus#1411.)
 ## What Raven does with this
 
 Raven's floor rule applies: the mount and the world are Raven's; the API
-surface is Wine's. The configuration tier is `raven env attach` — explicit,
+surface is Wine's. The configuration tier is `raven env attach` - explicit,
 per-environment, and loud about what it grants (`src/attach.rs`). It refuses
 a running environment because wineserver holds the registry in memory and
 would overwrite the offline edit on exit; it refuses anything that is not a
-block device; and it never touches the device node's permissions — it prints
+block device; and it never touches the device node's permissions - it prints
 the `setfacl` grant for the user to run, because handing out raw write access
 is the user's decision, not a side effect. The patch tier is an upstream
 contribution to Wine, not a Raven component. The last tier is what

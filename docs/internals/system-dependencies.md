@@ -3,7 +3,7 @@
 What Raven needs from the operating system, and a record of what its development
 has installed on a machine.
 
-Two things live here on purpose. The first is documentation — a contributor needs
+Two things live here on purpose. The first is documentation - a contributor needs
 to know what to install. The second is a log: this project installs system
 packages while investigating, and a package that arrived without being written
 down is a change nobody can audit or undo.
@@ -32,7 +32,7 @@ been developed on Arch.
 
 | Package | Why |
 |---|---|
-| `fuse-overlayfs` | the fallback mount backend on hardened kernels and under SELinux policy — see [architecture.md](architecture.md) |
+| `fuse-overlayfs` | the fallback mount backend on hardened kernels and under SELinux policy - see [architecture.md](architecture.md) |
 
 ### For development only
 
@@ -42,7 +42,7 @@ been developed on Arch.
 
 ## Installation log
 
-### 2026-08-31 — unblocking the Wine and WIM spikes
+### 2026-08-31: unblocking the Wine and WIM spikes
 
 ```
 pacman -S --needed --noconfirm wine wimlib hivex fuse-overlayfs
@@ -61,10 +61,10 @@ Seven packages installed, nothing upgraded:
 | `libntfs-3g` | 2026.7.7-1 | dependency of `ntfsprogs` |
 
 Nothing else on the machine was touched. The system upgrade in the same day's
-`pacman.log` — the 7.1 to 7.2 kernel jump and the rest — was not this project's,
+`pacman.log` - the 7.1 to 7.2 kernel jump and the rest - was not this project's,
 and is not claimed here.
 
-### 2026-09-01 — Raven itself
+### 2026-09-01: Raven itself
 
 ```
 makepkg -f            # in packaging/, from the published repo
@@ -79,12 +79,12 @@ pacman -U raven-git-0.1.0.r41.06efc15-1-x86_64.pkg.tar.zst
 
 Before the install, three hand-placed files from development were removed so
 the package's own copies own those paths: `/etc/binfmt.d/raven.conf` (which
-pointed at a debug binary inside the repository — the exact hazard the package
+pointed at a debug binary inside the repository - the exact hazard the package
 exists to end), `/etc/binfmt.d/wine.conf`, and
 `/usr/share/applications/raven.desktop`. `raven doctor` confirms the kernel
 now hands `.exe` files to `/usr/bin/raven`.
 
-### 2026-09-01 — sound and video in games
+### 2026-09-01: sound and video in games
 
 ```
 pacman -S --needed --noconfirm gst-libav
@@ -100,7 +100,7 @@ handles MP3. Two games in the corpus ran perfectly and silently, saying so only
 on a stderr a double-clicked program does not have. `raven doctor` reports this
 now, and reported it clean immediately after the install.
 
-### 2026-09-01 — input automation for a UI diagnosis
+### 2026-09-01: input automation for a UI diagnosis
 
 ```
 pacman -S --needed --noconfirm ydotool
@@ -115,7 +115,7 @@ Not a Raven dependency at all: installed to drive a Windows program's UI
 diagnosing a Rufus rendering bug that was then dropped as out of scope. Kept
 in the log because it is on the machine; safe to remove.
 
-### 2026-08-31 — the Windows image for the base
+### 2026-08-31: the Windows image for the base
 
 Not a package, but it is the largest thing this project has pulled onto a
 machine and it belongs in the same log.
@@ -137,8 +137,8 @@ a user supplying their own Windows will have.
 
 The consumer ISO was used rather than the Enterprise or LTSC evaluation, because
 the evaluation route requires submitting a form with a name, email address and
-company. The consumer download requires no account and no personal details —
-only a language and edition selection — and publishes a SHA256 for every
+company. The consumer download requires no account and no personal details -
+only a language and edition selection - and publishes a SHA256 for every
 language, which is what made verification possible.
 
 Raven does not ship this image and never will; see
@@ -151,18 +151,18 @@ than from testing anything.
 
 **`ntsync` is the distribution's job, not Raven's.** `ntsync-autoload` is a hard
 dependency of Arch's `wine` package, and its entire content is
-`/usr/lib/modules-load.d/10-ntsync.conf` — a line telling systemd to load the
+`/usr/lib/modules-load.d/10-ntsync.conf` - a line telling systemd to load the
 module at boot. So on Arch, installing Wine already arranges for NT
 synchronization primitives to be available, and Raven has no business managing
 that. It should **detect** `/dev/ntsync` and report whether Wine is getting it,
 not load modules on a user's behalf.
 
-On the day of installation the module was not yet loaded — `modules-load.d`
+On the day of installation the module was not yet loaded - `modules-load.d`
 is applied at boot. After the next boot `/dev/ntsync` appeared, and Wine
 demonstrably uses it: nine open ntsync handles were counted on a running game
 during the wineserver investigation.
 
 **The NTFS tooling arrived for free.** `wimlib` depends on `ntfsprogs`, so the
-secondary path — mounting an existing Windows partition — has its dependencies
+secondary path - mounting an existing Windows partition - has its dependencies
 present already. That does not make the path work; it removes one reason it
 might not.
