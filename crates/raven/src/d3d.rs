@@ -95,8 +95,22 @@ impl Environment {
     /// edit on exit.
     pub fn install_d3d(&self, rt: &Runtime, source: &Path) -> Result<Vec<Shadow>, Error> {
         self.ensure_not_running()?;
-        let (dir, keep) = unpack(source)?;
-        let root = build_root(&dir, rt.key)?;
+        // `guard` lives to the end of this call: the unpacked tree goes away
+        // only once everything has been copied out of it.
+        let (dir, guard) = unpack(source)?;
+        self.install_tree(rt, &dir, guard.is_some())
+    }
+
+    /// The install proper, from a tree already on disk. `from_archive` says
+    /// whether Raven unpacked that tree itself, which decides whether links
+    /// inside it are trusted.
+    fn install_tree(
+        &self,
+        rt: &Runtime,
+        dir: &Path,
+        from_archive: bool,
+    ) -> Result<Vec<Shadow>, Error> {
+        let root = build_root(dir, rt.key)?;
 
         // Plan every copy before performing any of it. Checking as we went
         // meant a refusal left the copies already made behind, and those then
@@ -121,7 +135,7 @@ impl Environment {
                 // elsewhere on this machine into a layer every Windows program
                 // in the environment can read. A directory the user names is
                 // theirs to arrange; an archive is not.
-                if keep.is_some() && through_link(&dir, &from) {
+                if from_archive && through_link(dir, &from) {
                     return Err(Error::D3dLink(from));
                 }
                 let rel = format!("{windir}/{dll}.dll");
@@ -617,14 +631,51 @@ mod tests {
             // Pointing out of the archive, at something that is not a DXVK
             // library at all.
             std::os::unix::fs::symlink("/etc/hostname", x64.join("d3d11.dll")).unwrap();
-            // A linked directory reaches outside just as well.
-            std::os::unix::fs::symlink("/usr/lib", src.join("dxvk-2.7/x32")).unwrap();
+            // A linked directory reaches outside just as well, even when the
+            // file it leads to is a regular one: only the directory is a link.
+            let elsewhere = src.parent().unwrap().join("elsewhere");
+            std::fs::create_dir_all(&elsewhere).unwrap();
+            std::fs::write(elsewhere.join("d3d11.dll"), "not ours").unwrap();
+            std::os::unix::fs::symlink(&elsewhere, src.join("dxvk-2.7/x32")).unwrap();
         });
         let (dir, _guard) = extract(&archive, &work.join("unpack")).unwrap();
         let root = build_root(&dir, "dxvk").unwrap();
         assert!(through_link(&dir, &root.join("x64/d3d11.dll")));
-        assert!(through_link(&dir, &root.join("x32/d3d11.dll")));
+        let linked = root.join("x32/d3d11.dll");
+        assert!(
+            linked.symlink_metadata().unwrap().is_file(),
+            "the file is not the link"
+        );
+        assert!(through_link(&dir, &linked));
         assert!(!through_link(&dir, &root.join("x64/dxgi.dll")));
+        let _ = std::fs::remove_dir_all(&work);
+    }
+
+    #[test]
+    fn an_archive_reaching_through_a_linked_directory_installs_nothing() {
+        let (work, archive) = archive_of("linkdir", |src| {
+            let x64 = src.join("dxvk-2.7/x64");
+            std::fs::create_dir_all(&x64).unwrap();
+            std::fs::write(x64.join("d3d11.dll"), "lib").unwrap();
+            let elsewhere = src.parent().unwrap().join("elsewhere");
+            std::fs::create_dir_all(&elsewhere).unwrap();
+            std::fs::write(elsewhere.join("d3d11.dll"), "not ours").unwrap();
+            std::os::unix::fs::symlink(&elsewhere, src.join("dxvk-2.7/x32")).unwrap();
+        });
+        let (dir, _guard) = extract(&archive, &work.join("unpack")).unwrap();
+        let env = crate::env::Environment {
+            name: "linkdir".into(),
+            manifest: crate::env::Manifest {
+                base: "none".into(),
+            },
+            root: work.join("env"),
+        };
+        assert!(matches!(
+            env.install_tree(&DXVK, &dir, true),
+            Err(Error::D3dLink(p)) if p.ends_with("x32/d3d11.dll")
+        ));
+        // Refused while planning, so not even the x64 library was copied.
+        assert!(!env.upper().exists());
         let _ = std::fs::remove_dir_all(&work);
     }
 
