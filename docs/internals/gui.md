@@ -118,7 +118,7 @@ knows what was true.
 | `packaging/PKGBUILD` | builds and installs two binaries, plus a second desktop entry for `raven-gui`. The existing `raven.desktop` serves the `.exe` double-click and must not become the GUI launcher |
 | `[profile.release]` | `lto = "fat"`, `codegen-units = 1` now apply to an iced binary too - much slower to compile, and to be accepted or adjusted deliberately |
 | `release-please` | tracks `.` as one package. **One version for both**: the GUI is unusable against a library of a different age |
-| the signing job | signs `raven-linux`; it must sign both binaries |
+| the release workflow | builds, signs and publishes both binaries: `assets` names `raven-linux` and `raven-gui-linux` |
 
 **The CLI does not change.** No command disappears, no behaviour moves. The GUI
 is a second caller, not a replacement - losing the interface that works today

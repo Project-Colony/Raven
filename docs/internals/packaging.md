@@ -74,9 +74,35 @@ never reaches one. `assets/brand/README.md` records that agreement in full.
 `build()` needed no change to produce the second binary: `cargo build
 --release` at the workspace root already builds every workspace member, so
 `raven-gui` comes out of the same command as `raven`. Only `package()` gained
-two more `install` lines, and the release workflow gained a second staged
-asset - the signing job already signs every file it finds under `dist/`, so
-it needed no change at all.
+two more `install` lines, and the release workflow names a second asset.
+
+## Releases
+
+[`.github/workflows/release.yml`](../../.github/workflows/release.yml) is the
+organisation's release template with two Raven-specific parts.
+
+Merging the release pull request tags the version and holds the release as a
+draft. One Linux job builds the whole workspace with `--locked` and stages
+`raven` as `raven-linux` and `raven-gui` as `raven-gui-linux`. It checks
+`colony.json` against those two names and runs `--version` on both binaries.
+The shared
+[sign-and-publish workflow](https://github.com/Project-Colony/Project-Colony-Resources/blob/main/.github/workflows/sign-and-publish.yml)
+then writes `.sig`, `.meta` and `.meta.sig` for each asset, verifies them, and
+publishes the release. The build job never sees the signing key.
+
+The first Raven-specific part is the lock. `release-type: simple` bumps the
+version in `Cargo.toml` and leaves `Cargo.lock` alone, so a `--locked` build of
+the tag would fail. The release-please job therefore runs `cargo update
+--workspace` on the release branch and commits the lock when it changed. It
+then runs `cargo metadata --locked`: a push made with the workflow token starts
+no CI, so that is the only check the release branch gets before it merges.
+
+The second is the asset list. Colony installs `raven-linux` alone, because the
+Colony naming convention resolves one asset per platform. `raven-gui-linux`
+ships signed beside it on the release page for anyone who wants the window.
+
+If a release run fails after the tag exists, `gh workflow run release.yml
+--ref vX.Y.Z -f tag=vX.Y.Z` rebuilds that tag and finishes its draft.
 
 ## `ntsync` is not Raven's business
 
