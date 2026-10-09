@@ -89,16 +89,17 @@ pub fn set_value(text: &str, section: &str, key: &str, value: Option<&str>) -> S
         }
         written = true;
     }
-    if !section_seen && !written {
-        if let Some(v) = value {
-            let epoch = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-            out.push(String::new());
-            out.push(format!("{header} {epoch}"));
-            out.push(entry(v));
-        }
+    if !section_seen
+        && !written
+        && let Some(v) = value
+    {
+        let epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        out.push(String::new());
+        out.push(format!("{header} {epoch}"));
+        out.push(entry(v));
     }
     let mut s = out.join("\n");
     s.push('\n');
