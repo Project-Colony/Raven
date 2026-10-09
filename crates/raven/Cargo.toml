@@ -8,13 +8,13 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-anyhow = "1.0.104"
-clap = { version = "4.6.6", features = ["derive"] }
-nt-hive = "0.3.0"
-rustix = { version = "1.1.4", features = ["mount", "thread", "process", "fs"] }
-serde = { version = "1.0.229", features = ["derive"] }
-thiserror = "2.0.20"
-toml = "1.1.4"
+anyhow.workspace = true
+clap = { workspace = true, features = ["derive"] }
+nt-hive.workspace = true
+rustix = { workspace = true, features = ["mount", "thread", "process", "fs"] }
+serde = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+toml.workspace = true
 
 [dev-dependencies]
-regf = "0.1.0"
+regf.workspace = true

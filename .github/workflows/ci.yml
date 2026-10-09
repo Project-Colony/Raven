@@ -75,8 +75,10 @@ jobs:
       - name: Test
         run: cargo test --verbose --locked
 
-  # The org rule is that every dependency sits on its latest release. This makes
-  # drift visible in a diff rather than leaving it to be discovered later.
+  # The org rule is that every dependency sits on its latest release, transitive
+  # crates included, so the whole tree is listed rather than the direct
+  # dependencies alone. This makes drift visible in a diff rather than leaving
+  # it to be discovered later.
   outdated:
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -92,7 +94,7 @@ jobs:
       - name: Show anything not on its latest release
         run: |
           cargo install cargo-outdated --locked
-          cargo outdated --root-deps-only --exit-code 0
+          cargo outdated --exit-code 0
 
   # `rust-version` in Cargo.toml is a promise about who can build Raven; this
   # job is what keeps it one. 1.88 is the floor iced 0.14 and wgpu 27 declare,
