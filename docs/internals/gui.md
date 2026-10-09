@@ -87,7 +87,10 @@ crates/raven/         the library and the CLI binary, unchanged
 crates/raven-gui/     the new binary
 ```
 
-`colony-ui` is published on crates.io, so the dependency is a plain version:
+`colony-ui` is published on crates.io, so the dependency is a plain version. Like
+every other dependency it is declared once, in the root manifest's
+`[workspace.dependencies]`, and `raven-gui` inherits it. This spec was written
+against:
 
 ```toml
 colony-ui = "0.1.4"

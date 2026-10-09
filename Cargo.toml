@@ -12,6 +12,25 @@ repository = "https://github.com/Project-Colony/Raven"
 edition = "2024"
 rust-version = "1.88"
 
+# Every dependency is declared once, here, at its full current version, and the
+# crates inherit it with `dep.workspace = true`. Features stay with the crate
+# that needs them. `raven` is path-only on purpose: release-please rewrites the
+# version in [workspace.package], and a version field here would be a second
+# copy it does not know about.
+[workspace.dependencies]
+raven = { path = "crates/raven" }
+anyhow = "1.0.104"
+clap = "4.6.7"
+colony-ui = "0.1.6"
+iced = "0.14.0"
+nt-hive = "0.3.0"
+regf = "0.1.0"
+rustix = "1.1.5"
+serde = "1.0.229"
+thiserror = "2.0.21"
+tokio = "1.53.2"
+toml = "1.1.8"
+
 # Two binaries share this profile now, and they are paid for by different
 # people. `raven` runs once per .exe launch, so start-up and size are all that
 # matter, and both were measured before and after (numbers in the commit that

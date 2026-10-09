@@ -192,9 +192,10 @@ disappeared, Raven became one program in one process, which is the case the rule
 answers with a single crate and subsystems as directories under `src/`, and that
 is what it stayed until the window arrived. A second binary, with its own
 dependency tree, is a real boundary rather than a layer. The root manifest is
-virtual - nothing of its own but the member list and the one version both crates
+virtual - nothing of its own but the member list, the one version both crates
 inherit, because a window and a library of different ages are not shippable
-together.
+together, and the dependency table both crates draw from, so a dependency is
+bumped in one place.
 
 ```
 crates/raven/src/
