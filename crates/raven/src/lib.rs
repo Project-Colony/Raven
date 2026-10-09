@@ -124,4 +124,11 @@ pub enum Error {
          aside first if you want this runtime to take over"
     )]
     D3dWouldOverwrite(std::path::PathBuf),
+
+    #[error(
+        "{0} is reached through a symbolic link inside the archive - Raven \
+         installs only regular files from an archive, so a link cannot carry \
+         a file from elsewhere on this machine into the environment"
+    )]
+    D3dLink(std::path::PathBuf),
 }

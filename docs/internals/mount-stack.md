@@ -189,7 +189,8 @@ everything sits under `Colony/Raven/`:
     ├── work/
     └── prefix/                  the Wine prefix; dosdevices/c: → the mount
 
-~/.cache/Colony/Raven/           reserved; nothing is cached yet
+~/.cache/Colony/Raven/           deleting it costs only time
+└── unpack/d3d-<pid>-<time>/     a DXVK or vkd3d archive, while it installs
 
 $XDG_RUNTIME_DIR/raven/<name>/c  the active mount; never survives a reboot
 ```
@@ -197,3 +198,13 @@ $XDG_RUNTIME_DIR/raven/<name>/c  the active mount; never survives a reboot
 A base is data, not cache, despite being reproducible from an ISO: reproducing
 it requires an ISO the user may no longer have, and the rule is that deleting
 the cache must cost nothing but time.
+
+`raven env dxvk` and `raven env vkd3d` given an archive unpack it into the cache,
+never into `/tmp`. A name in a shared directory can be created first by another
+user, and libraries extracted into a directory they own could be swapped before
+they are copied into the upper layer. Each install gets a directory of its own,
+created exclusively with mode `0700` and never reused if the name is already
+taken; the archive goes one level below it, so an archive's own `./` entry cannot
+loosen that mode. A library reached through a symbolic link inside the archive is
+refused rather than followed. The directory is deleted when the install returns,
+so only a crash leaves one behind, and deleting it is safe.

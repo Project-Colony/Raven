@@ -101,6 +101,11 @@ Raven downloads nothing and bundles no version, exactly as `base deploy` takes
 an ISO you supply. Point it at an upstream release, at the copy inside a Proton,
 at a distribution's package - whichever you trust.
 
+An archive is unpacked under `~/.cache/Colony/Raven/unpack/`, in a directory only
+you can open, and deleted once its libraries are copied. A library that is a
+symbolic link inside the archive is refused; a directory you point at directly is
+yours to arrange.
+
 **Updating is the same command with a newer build.** Raven replaces what it
 installed and deletes what the new version no longer ships, so an older module
 cannot survive beside newer ones - upstream dropped `d3d10.dll` exactly that
