@@ -36,7 +36,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::{Error, env::Environment, registry::text};
+use crate::{Error, env::Environment, paths, registry::text};
 
 /// The section Wine reads DLL overrides from, as it appears in `user.reg`.
 const OVERRIDES: &str = "Software\\\\Wine\\\\DllOverrides";
@@ -95,7 +95,7 @@ impl Environment {
     /// edit on exit.
     pub fn install_d3d(&self, rt: &Runtime, source: &Path) -> Result<Vec<Shadow>, Error> {
         self.ensure_not_running()?;
-        let (dir, _keep) = unpack(source)?;
+        let (dir, keep) = unpack(source)?;
         let root = build_root(&dir, rt.key)?;
 
         // Plan every copy before performing any of it. Checking as we went
@@ -115,6 +115,14 @@ impl Environment {
                 let from = from_dir.join(format!("{dll}.dll"));
                 if !from.is_file() {
                     continue;
+                }
+                // A link inside an archive points wherever its author chose,
+                // and the copy below would follow it, carrying a file from
+                // elsewhere on this machine into a layer every Windows program
+                // in the environment can read. A directory the user names is
+                // theirs to arrange; an archive is not.
+                if keep.is_some() && through_link(&dir, &from) {
+                    return Err(Error::D3dLink(from));
                 }
                 let rel = format!("{windir}/{dll}.dll");
                 let to = self.upper().join(&rel);
@@ -355,6 +363,12 @@ fn write_manifest(path: &std::path::Path, version: &str, files: &[String]) -> Re
 
 /// A directory holding the DXVK build, plus a guard that deletes it again if we
 /// created it by extracting an archive.
+///
+/// An archive is extracted under Raven's own cache, not `/tmp`: that is
+/// shared, and a name another user can predict is a name another user can
+/// create first. Extracting into a directory somebody else owns would let them
+/// swap the libraries between `tar` and the copy into the upper layer, and
+/// those libraries then run inside every Windows program in the environment.
 fn unpack(source: &Path) -> Result<(PathBuf, Option<TempDir>), Error> {
     if source.is_dir() {
         return Ok((source.to_path_buf(), None));
@@ -365,25 +379,77 @@ fn unpack(source: &Path) -> Result<(PathBuf, Option<TempDir>), Error> {
             std::io::Error::from(std::io::ErrorKind::NotFound),
         ));
     }
-    let dir = std::env::temp_dir().join(format!("raven-d3d-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).map_err(|e| Error::Layer(dir.clone(), e))?;
+    let (dir, guard) = extract(source, &paths::cache_dir()?.join("unpack"))?;
+    Ok((dir, Some(guard)))
+}
+
+/// Extracts `archive` into a fresh private directory under `under`. Returns
+/// where its contents landed, and the guard that removes them again.
+fn extract(archive: &Path, under: &Path) -> Result<(PathBuf, TempDir), Error> {
+    let pid = std::process::id();
+    let dir = private_dir(under, || {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
+        format!("d3d-{pid}-{nanos}")
+    })?;
+    let guard = TempDir(dir.clone());
+    // GNU tar applies an archive's `./` entry to the directory it extracts
+    // into, mode included, so extracting straight into the private directory
+    // would let the archive open it up again. One level down, that entry
+    // reaches only a directory nobody else can get to.
+    let tree = dir.join("build");
+    std::fs::create_dir(&tree).map_err(|e| Error::Layer(tree.clone(), e))?;
     let out = std::process::Command::new("tar")
+        // The files are this user's whatever the archive says they belong to.
+        .arg("--no-same-owner")
         .arg("-xf")
-        .arg(source)
+        .arg(archive)
         .arg("-C")
-        .arg(&dir)
+        .arg(&tree)
         .output()
         .map_err(|e| Error::Tool("tar", e))?;
     if !out.status.success() {
-        let _ = std::fs::remove_dir_all(&dir);
         return Err(Error::ToolFailed(
             "tar",
             String::from_utf8_lossy(&out.stderr).trim().to_string(),
         ));
     }
-    let guard = TempDir(dir.clone());
-    Ok((dir, Some(guard)))
+    Ok((tree, guard))
+}
+
+/// Creates a directory under `parent` that did not exist before this call and
+/// that only this user can enter.
+///
+/// The create is exclusive, so a directory that is already there - left by a
+/// crash, or put there by somebody else - is never adopted; the next name is
+/// tried instead.
+fn private_dir(parent: &Path, mut name: impl FnMut() -> String) -> Result<PathBuf, Error> {
+    use std::os::unix::fs::DirBuilderExt;
+
+    std::fs::create_dir_all(parent).map_err(|e| Error::Layer(parent.to_path_buf(), e))?;
+    // Bounded, because a clock that keeps returning a taken name would
+    // otherwise spin here for ever.
+    let mut retries = 16;
+    loop {
+        let dir = parent.join(name());
+        match std::fs::DirBuilder::new().mode(0o700).create(&dir) {
+            Ok(()) => return Ok(dir),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && retries > 0 => {
+                retries -= 1;
+            }
+            Err(e) => return Err(Error::Layer(dir, e)),
+        }
+    }
+}
+
+/// Whether reaching `path` from `dir` goes through a symbolic link, the file
+/// itself included. `path` must lie under `dir`.
+fn through_link(dir: &Path, path: &Path) -> bool {
+    path.ancestors().take_while(|p| *p != dir).any(|p| {
+        p.symlink_metadata()
+            .map_or(true, |m| m.file_type().is_symlink())
+    })
 }
 
 /// Finds the directory that actually holds `x64/`, so both a release tarball
@@ -475,6 +541,91 @@ mod tests {
             "d3d10_1"
         );
         assert_eq!(module_of("Windows/System32/notadll"), None);
+    }
+
+    /// A scratch directory for one test, and a `.tar` of `tree` built in it.
+    fn archive_of(test: &str, tree: impl FnOnce(&Path)) -> (PathBuf, PathBuf) {
+        let work = std::env::temp_dir().join(format!("raven-unpack-{test}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&work);
+        let src = work.join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        tree(&src);
+        let archive = work.join("build.tar");
+        let made = std::process::Command::new("tar")
+            .arg("-cf")
+            .arg(&archive)
+            .arg("-C")
+            .arg(&src)
+            .arg(".")
+            .status()
+            .unwrap();
+        assert!(made.success());
+        (work, archive)
+    }
+
+    #[test]
+    fn an_archive_unpacks_into_a_directory_only_its_user_can_enter() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (work, archive) = archive_of("private", |src| {
+            std::fs::create_dir_all(src.join("dxvk-2.7/x64")).unwrap();
+            std::fs::write(src.join("dxvk-2.7/x64/d3d11.dll"), "lib").unwrap();
+            // The archive's `./` entry asks for a world-writable directory,
+            // and tar honours that on whatever it extracts into.
+            std::fs::set_permissions(src, std::fs::Permissions::from_mode(0o777)).unwrap();
+        });
+        let (tree, guard) = extract(&archive, &work.join("unpack")).unwrap();
+        let private = tree.parent().unwrap().to_path_buf();
+        assert_eq!(private.parent().unwrap(), work.join("unpack"));
+        let mode = std::fs::metadata(&private).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700, "{mode:o}");
+        assert!(tree.join("dxvk-2.7/x64/d3d11.dll").is_file());
+        drop(guard);
+        assert!(!private.exists(), "the guard takes the unpacked build away");
+        let _ = std::fs::remove_dir_all(&work);
+    }
+
+    #[test]
+    fn a_directory_already_at_the_chosen_name_is_never_reused() {
+        let parent = std::env::temp_dir().join(format!("raven-taken-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&parent);
+        // Somebody got there first, and left something in it.
+        std::fs::create_dir_all(parent.join("taken")).unwrap();
+        std::fs::write(parent.join("taken/d3d11.dll"), "planted").unwrap();
+
+        let mut names = ["taken", "fresh"].into_iter();
+        let dir = private_dir(&parent, || names.next().unwrap().to_string()).unwrap();
+        assert_eq!(dir, parent.join("fresh"));
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0);
+        assert!(parent.join("taken/d3d11.dll").is_file(), "left alone");
+
+        // And a name that never stops being taken ends in an error, not a
+        // loop.
+        assert!(matches!(
+            private_dir(&parent, || "taken".to_string()),
+            Err(Error::Layer(_, e)) if e.kind() == std::io::ErrorKind::AlreadyExists
+        ));
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    #[test]
+    fn a_symlinked_dll_in_an_archive_is_rejected() {
+        let (work, archive) = archive_of("link", |src| {
+            let x64 = src.join("dxvk-2.7/x64");
+            std::fs::create_dir_all(&x64).unwrap();
+            std::fs::write(x64.join("dxgi.dll"), "lib").unwrap();
+            // Pointing out of the archive, at something that is not a DXVK
+            // library at all.
+            std::os::unix::fs::symlink("/etc/hostname", x64.join("d3d11.dll")).unwrap();
+            // A linked directory reaches outside just as well.
+            std::os::unix::fs::symlink("/usr/lib", src.join("dxvk-2.7/x32")).unwrap();
+        });
+        let (dir, _guard) = extract(&archive, &work.join("unpack")).unwrap();
+        let root = build_root(&dir, "dxvk").unwrap();
+        assert!(through_link(&dir, &root.join("x64/d3d11.dll")));
+        assert!(through_link(&dir, &root.join("x32/d3d11.dll")));
+        assert!(!through_link(&dir, &root.join("x64/dxgi.dll")));
+        let _ = std::fs::remove_dir_all(&work);
     }
 
     #[test]
