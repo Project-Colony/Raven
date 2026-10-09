@@ -10,7 +10,7 @@ either way.
 
 | | |
 |---|---|
-| Rust 1.85+ | to build |
+| Rust 1.88+ | to build |
 | `wine` | the NT-to-Linux bridge - not optional, not replaceable |
 | `wimlib` | deploys a Windows base from an ISO without a VM |
 | a kernel allowing unprivileged user namespaces | how Raven mounts without root |
@@ -29,10 +29,12 @@ cd Raven/packaging
 makepkg -si
 ```
 
-This installs `raven` (and the `rvn` alias), registers `.exe` files with the
-kernel, masks Wine's own registration so the two never fight over the same
-magic, and adds the desktop entry that makes file managers open `.exe` files
-through Raven. pacman's own hook applies the registration in the same
+This installs `raven` (and the `rvn` alias) and the `raven-gui` window,
+registers `.exe` files with the kernel, masks Wine's own registration so the
+two never fight over the same magic, and adds two desktop entries:
+`raven.desktop`, which makes file managers open `.exe` files through Raven, and
+`raven-gui.desktop`, which puts the window in the application menu. pacman's
+own hook applies the registration in the same
 transaction; removing the package restores Wine's handler.
 
 ## From source (everywhere else)

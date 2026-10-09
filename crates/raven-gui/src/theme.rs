@@ -14,7 +14,7 @@ use iced::widget::button;
 /// Project-Colony-Resources/design/typography.md.
 pub const APP_FONT: Font = Font::with_name("JetBrainsMono Nerd Font");
 
-/// The current palette, whichever theme the user picked.
+/// The active colony-ui palette (default theme until Preferences exist).
 pub fn palette() -> ThemePalette {
     colony_ui::active_palette()
 }

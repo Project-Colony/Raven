@@ -119,7 +119,7 @@ cd Raven
 cargo build --release
 ```
 
-Requires Rust 1.85 or newer, plus `wine` and `wimlib` at runtime. The full list,
+Requires Rust 1.88 or newer, plus `wine` and `wimlib` at runtime. The full list,
 and what each is for, is in
 [docs/internals/system-dependencies.md](docs/internals/system-dependencies.md);
 `raven doctor` reports what is missing - including who actually gets a

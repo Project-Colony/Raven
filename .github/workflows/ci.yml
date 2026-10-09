@@ -24,15 +24,23 @@ jobs:
     # organisation targets, so a matrix here would be three jobs to prove that
     # two of them cannot work.
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable branch
         with:
+          persist-credentials: false
+
+      # Pinned to master with `toolchain: stable` rather than to the `stable`
+      # branch: that branch is rebased onto every master commit, so a SHA
+      # pinned on it stops being reachable from any branch.
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master, 2026-10-09
+        with:
+          toolchain: stable
           components: clippy
 
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Format
         run: cargo fmt --all -- --check
@@ -72,10 +80,35 @@ jobs:
   outdated:
     runs-on: ubuntu-latest
     continue-on-error: true
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable branch
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master, 2026-10-09
+        with:
+          toolchain: stable
       - name: Show anything not on its latest release
         run: |
           cargo install cargo-outdated --locked
           cargo outdated --root-deps-only --exit-code 0
+
+  # `rust-version` in Cargo.toml is a promise about who can build Raven; this
+  # job is what keeps it one. 1.88 is the floor iced 0.14 and wgpu 27 declare,
+  # so the GUI cannot build on anything older. Raise both together, on
+  # purpose, never because a dependency moved its own floor.
+  msrv:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master, 2026-10-09
+        with:
+          toolchain: "1.88"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Build on the declared rust-version
+        run: cargo build --workspace --locked --all-targets
