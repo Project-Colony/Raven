@@ -157,10 +157,10 @@ pub fn resolve(exe: &Path) -> Result<Environment, Error> {
         }
         // A program launched from inside a live mount is under the runtime
         // mount point, not under the environment's data directory.
-        if let Ok(mount) = paths::mount_point(&env.name) {
-            if exe.starts_with(&mount) {
-                return Ok(env);
-            }
+        if let Ok(mount) = paths::mount_point(&env.name)
+            && exe.starts_with(&mount)
+        {
+            return Ok(env);
         }
     }
 

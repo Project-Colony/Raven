@@ -126,8 +126,10 @@ fn convert(v: &KeyValue<'_, &[u8]>) -> Option<Data> {
 /// cannot provide.
 fn utf16_string(bytes: &[u8]) -> String {
     let units: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&c| u16::from_le_bytes(c))
         .take_while(|&u| u != 0)
         .collect();
     String::from_utf16_lossy(&units)
@@ -136,8 +138,10 @@ fn utf16_string(bytes: &[u8]) -> String {
 /// A `REG_MULTI_SZ` is NUL-separated and ends with an empty string.
 fn utf16_multi(bytes: &[u8]) -> Vec<String> {
     let units: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&c| u16::from_le_bytes(c))
         .collect();
     units
         .split(|&u| u == 0)

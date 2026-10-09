@@ -247,10 +247,10 @@ impl Environment {
             text = text::set_value(&text, OVERRIDES, dll, Some("native"));
         }
         for rel in &superseded {
-            if let Some(dll) = module_of(rel) {
-                if !keep.contains(&dll) {
-                    text = text::set_value(&text, OVERRIDES, &dll, None);
-                }
+            if let Some(dll) = module_of(rel)
+                && !keep.contains(&dll)
+            {
+                text = text::set_value(&text, OVERRIDES, &dll, None);
             }
         }
         text::write_atomic(&reg, &text)?;

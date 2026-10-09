@@ -204,10 +204,10 @@ fn main() -> Result<()> {
     // without guessing: `raven doctor` is not a file, and `./game.exe` is not a
     // subcommand.
     let mut args: Vec<std::ffi::OsString> = std::env::args_os().collect();
-    if let Some(first) = args.get(1) {
-        if launch::looks_like_pe(Path::new(first)) {
-            args.insert(1, std::ffi::OsString::from("launch"));
-        }
+    if let Some(first) = args.get(1)
+        && launch::looks_like_pe(Path::new(first))
+    {
+        args.insert(1, std::ffi::OsString::from("launch"));
     }
 
     match Cli::parse_from(args).command {

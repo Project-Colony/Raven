@@ -98,10 +98,10 @@ impl Environment {
             return Err(Error::LetterTaken(letter));
         }
         for l in ('a'..='z').filter(|&l| l != 'c' && l != letter) {
-            if let Ok(t) = std::fs::read_link(dos.join(format!("{l}::"))) {
-                if same_node(&t, &device) {
-                    return Err(Error::DeviceAttached(device, l));
-                }
+            if let Ok(t) = std::fs::read_link(dos.join(format!("{l}::")))
+                && same_node(&t, &device)
+            {
+                return Err(Error::DeviceAttached(device, l));
             }
         }
 
@@ -185,10 +185,10 @@ impl Environment {
                 if !e.file_name().to_string_lossy().starts_with("physicaldrive") {
                     continue;
                 }
-                if let Ok(t) = std::fs::read_link(e.path()) {
-                    if owned.contains(&t) {
-                        let _ = std::fs::remove_file(e.path());
-                    }
+                if let Ok(t) = std::fs::read_link(e.path())
+                    && owned.contains(&t)
+                {
+                    let _ = std::fs::remove_file(e.path());
                 }
             }
         }

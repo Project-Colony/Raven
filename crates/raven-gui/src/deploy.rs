@@ -74,10 +74,10 @@ pub fn parse_progress(line: &str) -> Option<Progress> {
 /// redraws progress with `\r`, so a killed child can leave only whitespace.
 pub fn last_meaningful_line(stderr: &str) -> Option<String> {
     let lines = || stderr.split(['\r', '\n']).map(str::trim);
-    if let Some(sentence) = lines().find_map(|l| l.strip_prefix("Error: ")) {
-        if !sentence.is_empty() {
-            return Some(sentence.to_owned());
-        }
+    if let Some(sentence) = lines().find_map(|l| l.strip_prefix("Error: "))
+        && !sentence.is_empty()
+    {
+        return Some(sentence.to_owned());
     }
     lines().rfind(|line| !line.is_empty()).map(str::to_owned)
 }
