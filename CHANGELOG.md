@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.2](https://github.com/Project-Colony/Raven/compare/v0.4.1...v0.4.2) (2026-10-09)
+
+
+### Fixes
+
+* unpack DXVK and vkd3d archives into a private directory ([#14](https://github.com/Project-Colony/Raven/issues/14)) ([b12ca95](https://github.com/Project-Colony/Raven/commit/b12ca95b5aefefc856789c7875f1e67d2703bb77))
+
+
+### Documentation
+
+* make Raven's claims match what it does ([#13](https://github.com/Project-Colony/Raven/issues/13)) ([a9a2dd0](https://github.com/Project-Colony/Raven/commit/a9a2dd0d1efa879122f1d1acc2e938d0ebcf3f6d))
+
 ## [0.4.1](https://github.com/Project-Colony/Raven/compare/v0.4.0...v0.4.1) (2026-09-14)
 
 
