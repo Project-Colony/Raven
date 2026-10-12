@@ -204,3 +204,40 @@ raven env reproject games
 What the defaults do and why - including why the COM registry is deliberately
 switched off - is in
 [../internals/registry-projection.md](../internals/registry-projection.md).
+
+The file starts as a copy of
+[`config/registry-rules.toml`](../../config/registry-rules.toml), with the
+reason for every rule beside it.
+
+## Language
+
+Raven speaks English and French: its output, its errors and `--help`. It follows
+the locale, read the way every other program reads it: the first of `LC_ALL`,
+`LC_MESSAGES` and `LANG` that is set decides, and a value starting with `fr`
+means French. Anything else, `C` included, means English.
+
+```bash
+LANG=fr_FR.UTF-8 raven doctor     # in French
+LC_ALL=C raven doctor             # in English, whatever LANG says
+```
+
+Commands, program names and paths read the same in both. Errors that come from
+the system itself, such as "Permission denied", are worded by the system.
+
+The window has its own choice: Preferences, under General, sets its language
+to the system's, English or French, and the change applies at once.
+
+## The window
+
+`raven-gui` shows environments, bases and diagnostics, and acts on them through
+the same library as the command line. Ctrl+1, Ctrl+2 and Ctrl+3 switch between
+the three screens, on any keyboard layout.
+
+Click **Raven**, top left, to open Preferences; click it again, or Close, to
+return to the screen you were on. Preferences hold the window's language, its
+theme and accent, the text size, and the accessibility switches: high
+contrast, a dyslexia-friendly font, reduced motion and a second text size that
+multiplies the first. There is no Save button. Each change applies and is
+written as it is made, to `~/.config/Colony/Raven/preferences/preferences.toml`,
+and a value the window does not understand falls back to its default rather
+than stopping it from opening.

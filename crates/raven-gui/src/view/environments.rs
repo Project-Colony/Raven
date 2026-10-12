@@ -1,25 +1,29 @@
 //! One card per environment. Start and Stop sit on the card because starting
 //! is the most frequent action and `env start` makes a launch soon after it fast.
 
+use colony_ui::Typography;
 use iced::widget::{Space, button, column, container, row, scrollable, text};
 use iced::{Element, Length};
 
-use crate::Message;
+use crate::app::Message;
+use crate::i18n;
 use crate::model::EnvRow;
 use crate::theme;
 
 pub fn screen(envs: &[EnvRow]) -> Element<'_, Message> {
-    let t = theme::typography();
+    let t = Typography::current();
     let p = theme::palette();
 
     if envs.is_empty() {
         return column![
-            text("No environments yet")
+            text(i18n::t("envs_empty_title"))
                 .size(t.sz(22))
+                .font(t.bold)
                 .color(p.text_primary),
             Space::new().height(t.sz(8)),
-            text("Create one with:  raven env create <name> --base <base>")
+            text(i18n::t("envs_empty_hint"))
                 .size(t.sz(13))
+                .font(t.regular)
                 .color(p.text_muted),
         ]
         .into();
@@ -33,30 +37,41 @@ pub fn screen(envs: &[EnvRow]) -> Element<'_, Message> {
 }
 
 fn card(e: &EnvRow) -> Element<'_, Message> {
-    let t = theme::typography();
+    let t = Typography::current();
     let p = theme::palette();
 
     let action = if e.is_running() {
-        button(text("Stop").size(t.sz(13)))
+        button(text(i18n::t("action_stop")).size(t.sz(13)).font(t.regular))
             .style(theme::button_style(p))
             .on_press(Message::Stop(e.name.clone()))
     } else {
-        button(text("Start").size(t.sz(13)))
+        button(text(i18n::t("action_start")).size(t.sz(13)).font(t.regular))
             .style(theme::button_style(p))
             .on_press(Message::Start(e.name.clone()))
     };
 
     let mut runtimes = row![].spacing(t.sz(8));
     if let Some(v) = &e.dxvk {
-        runtimes = runtimes.push(text(v.clone()).size(t.sz(11)).color(p.text_muted));
+        runtimes = runtimes.push(
+            text(v.clone())
+                .size(t.sz(11))
+                .font(t.regular)
+                .color(p.text_muted),
+        );
     }
     if let Some(v) = &e.vkd3d {
-        runtimes = runtimes.push(text(v.clone()).size(t.sz(11)).color(p.text_muted));
+        runtimes = runtimes.push(
+            text(v.clone())
+                .size(t.sz(11))
+                .font(t.regular)
+                .color(p.text_muted),
+        );
     }
     for (letter, device) in &e.attachments {
         runtimes = runtimes.push(
             text(format!("{letter}: {}", device.display()))
                 .size(t.sz(11))
+                .font(t.regular)
                 .color(p.text_muted),
         );
     }
@@ -64,22 +79,31 @@ fn card(e: &EnvRow) -> Element<'_, Message> {
     // The name is the card's own heading, not a control beside it, so it is
     // drawn as text and only behaves like a button. No fill, and its colour is
     // stated rather than left to `Style::default()`, which is black.
-    let name = button(text(e.name.clone()).size(t.sz(16)).color(p.text_primary))
-        .style(move |_, _| button::Style {
-            background: None,
-            text_color: p.text_primary,
-            ..Default::default()
-        })
-        .padding(0.0)
-        .on_press(Message::Open(e.name.clone()));
+    let name = button(
+        text(e.name.clone())
+            .size(t.sz(16))
+            .font(t.regular)
+            .color(p.text_primary),
+    )
+    .style(move |_, _| button::Style {
+        background: None,
+        text_color: p.text_primary,
+        ..Default::default()
+    })
+    .padding(0.0)
+    .on_press(Message::Open(e.name.clone()));
 
     container(
         row![
             column![
                 name,
-                text(e.base.clone()).size(t.sz(11)).color(p.text_muted),
+                text(e.base.clone())
+                    .size(t.sz(11))
+                    .font(t.regular)
+                    .color(p.text_muted),
                 text(e.status_line())
                     .size(t.sz(12))
+                    .font(t.regular)
                     .color(if e.is_running() {
                         p.success
                     } else {

@@ -176,7 +176,8 @@ complete, and so is recovery when something is left holding an environment.
 | `raven env default` / `reproject` | which environment is used by default; re-run the projection |
 | `raven binfmt` | what to install so the kernel recognises `.exe` |
 | `raven launch` / `run` / `exec` | running a program, at three levels of explicitness |
-| `raven-gui` | a window over the same library: environments, bases, diagnostics |
+| `raven-gui` | a window over the same library: environments, bases, diagnostics, and Preferences for theme, accent, text size, accessibility and language |
+| English and French | every command's output, error and `--help`, chosen by the locale; the window by the locale or by Preferences |
 
 Measured against the real Windows 11 base:
 
@@ -187,7 +188,7 @@ Measured against the real Windows 11 base:
   to the prefix, and no `X:` left anywhere.
 - After a full cycle the base holds **143 886 files, none modified**.
 
-**148 tests pass** (`cargo test`, both crates) and `clippy -D warnings` is
+**173 tests pass** (`cargo test`, both crates) and `clippy -D warnings` is
 clean. The ones carrying the design: base immutability under a real write (checked against a sabotaged mount,
 so it can fail), layer precedence with two read-only layers, finding and
 stopping the processes that hold a live mount - through an upper path

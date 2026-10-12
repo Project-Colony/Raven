@@ -26,10 +26,10 @@ impl Action {
     /// The button's words. Here rather than in the view so the test that
     /// pins the distinction can read them.
     pub fn label(&self) -> &'static str {
-        match self {
-            Action::StopSession(_) => "Stop the session",
-            Action::StopHolders(_) => "Stop everything using it",
-        }
+        crate::i18n::t(match self {
+            Action::StopSession(_) => "action_stop_session",
+            Action::StopHolders(_) => "action_stop_holders",
+        })
     }
 
     /// What pressing it asks for.
@@ -40,10 +40,10 @@ impl Action {
     /// `StopHolders` has already said it will end the programs it lists, and
     /// routing it through the same check made it refuse in exactly the case
     /// it exists for - a button that re-raised its own banner for ever.
-    pub fn message(&self) -> crate::Message {
+    pub fn message(&self) -> crate::app::Message {
         match self {
-            Action::StopSession(name) => crate::Message::StopSession(name.clone()),
-            Action::StopHolders(name) => crate::Message::Stop(name.clone()),
+            Action::StopSession(name) => crate::app::Message::StopSession(name.clone()),
+            Action::StopHolders(name) => crate::app::Message::Stop(name.clone()),
         }
     }
 }
@@ -103,17 +103,15 @@ pub fn explain(error: &Error) -> Offer {
     match error {
         Error::SessionHolds(name) => Offer {
             kind: Kind::ActionError,
-            message: format!(
-                "A session is holding {name}'s C:, which is what makes launches fast."
-            ),
+            message: crate::i18n::tf("offer_session_holds", &[("name", name)]),
             action: Some(Action::StopSession(name.clone())),
         },
         Error::EnvironmentBusy { name, holders } => Offer {
             kind: Kind::ActionError,
-            message: format!("{name} is still in use by {holders}. Stopping it ends them."),
+            message: crate::i18n::tf("offer_busy", &[("name", name), ("holders", holders)]),
             action: Some(Action::StopHolders(name.clone())),
         },
-        other => Offer::action_error(other.to_string()),
+        other => Offer::action_error(raven::i18n::error_message(other)),
     }
 }
 
@@ -170,12 +168,12 @@ mod tests {
             holders: "1234 (ShineHill.exe)".into(),
         });
         assert!(
-            matches!(busy.action.unwrap().message(), crate::Message::Stop(n) if n == "games"),
+            matches!(busy.action.unwrap().message(), crate::app::Message::Stop(n) if n == "games"),
             "a stop that names what it ends must go straight through"
         );
         let session = explain(&Error::SessionHolds("games".into()));
         assert!(
-            matches!(session.action.unwrap().message(), crate::Message::StopSession(n) if n == "games"),
+            matches!(session.action.unwrap().message(), crate::app::Message::StopSession(n) if n == "games"),
             "and the one promising nothing is running must look again"
         );
     }
@@ -197,6 +195,6 @@ mod tests {
         let e = Error::NoWine;
         let offer = explain(&e);
         assert_eq!(offer.action, None);
-        assert_eq!(offer.message, e.to_string());
+        assert_eq!(offer.message, raven::i18n::error_message(&e));
     }
 }

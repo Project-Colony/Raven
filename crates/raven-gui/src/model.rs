@@ -34,14 +34,9 @@ impl EnvRow {
     /// view so it can be tested, and because "1 process" is not "1 processes".
     pub fn status_line(&self) -> String {
         if !self.is_running() {
-            return "not running".into();
+            return crate::i18n::t("card_not_running").into();
         }
-        let plural = if self.holders == 1 {
-            "process"
-        } else {
-            "processes"
-        };
-        format!("running - {} {plural}", self.holders)
+        crate::i18n::tn("card_running", self.holders, &[])
     }
 }
 
@@ -98,9 +93,11 @@ pub struct Check {
     pub detail: String,
 }
 
-/// The same judgements `raven doctor` prints, from the same functions - a
-/// difference between the two would be a bug here, not a second opinion.
+/// The same judgements `raven doctor` prints, from the same functions and in
+/// the same words - `raven::i18n`'s - so a difference between the two would
+/// be a bug here, not a second opinion.
 pub fn checks() -> Vec<Check> {
+    use raven::i18n::{t, tf};
     use raven::mount::MountBackend as _;
     let userns = raven::mount::UserNsOverlay::is_available();
     let wine = raven::prefix::wine_available();
@@ -110,40 +107,38 @@ pub fn checks() -> Vec<Check> {
     vec![
         exe_handler(),
         Check {
-            label: "Unprivileged user namespaces".into(),
+            label: t("check_userns").into(),
             ok: userns,
-            detail: if userns {
-                "available - Raven can mount without root".into()
+            detail: t(if userns {
+                "check_userns_ok"
             } else {
-                "this kernel restricts them, and Raven's only mount backend needs them".into()
-            },
+                "check_userns_restricted"
+            })
+            .into(),
         },
         Check {
-            label: "Wine".into(),
+            label: t("check_wine").into(),
             ok: wine,
-            detail: if wine {
-                "found".into()
-            } else {
-                "missing - Raven cannot run anything without it".into()
-            },
+            detail: t(if wine { "found" } else { "check_wine_missing" }).into(),
         },
         Check {
-            label: "ntsync".into(),
+            label: t("ntsync").into(),
             ok: ntsync,
-            detail: if ntsync {
-                "present".into()
+            detail: t(if ntsync {
+                "ntsync_present"
             } else {
-                "absent - Wine falls back to wineserver for NT synchronization".into()
-            },
+                "ntsync_absent"
+            })
+            .into(),
         },
         Check {
-            label: "Media playback".into(),
+            label: t("check_media").into(),
             ok: media.is_none(),
             detail: match media {
-                None => "GStreamer decoders present".into(),
-                Some(missing) => format!(
-                    "incomplete: {}. Games will run with their cutscenes and music silently absent.",
-                    missing.join("; ")
+                None => t("media_present").into(),
+                Some(missing) => tf(
+                    "check_media_incomplete",
+                    &[("missing", &missing.join("; "))],
                 ),
             },
         },
@@ -158,12 +153,13 @@ pub fn checks() -> Vec<Check> {
 /// like Raven losing its prefix. Someone using the window rather than a
 /// terminal is precisely who would never find that out.
 fn exe_handler() -> Check {
-    let label = "Double-clicked .exe".to_string();
+    use raven::i18n::{t, tf};
+    let label = t("check_exe").to_string();
     if !std::path::Path::new("/proc/sys/fs/binfmt_misc").exists() {
         return Check {
             label,
             ok: false,
-            detail: "binfmt_misc is not mounted - a double-clicked .exe cannot run".into(),
+            detail: t("exe_no_binfmt").into(),
         };
     }
     let handlers = raven::launch::exe_handlers();
@@ -171,25 +167,27 @@ fn exe_handler() -> Check {
         None if handlers.is_empty() => Check {
             label,
             ok: false,
-            detail: "nothing claims .exe files - run `raven binfmt` to see what to register".into(),
+            detail: t("check_exe_none").into(),
         },
         None => Check {
             label,
             ok: false,
-            detail: "every handler is disabled - a double-clicked .exe will not run".into(),
+            detail: t("check_exe_all_disabled").into(),
         },
         Some(w) if w.name == raven::launch::BINFMT_NAME => Check {
             label,
             ok: true,
-            detail: format!("handled by {} -> {}", w.name, w.interpreter.display()),
+            detail: tf(
+                "check_exe_raven",
+                &[("name", &w.name), ("interpreter", &w.interpreter.display())],
+            ),
         },
         Some(w) => Check {
             label,
             ok: false,
-            detail: format!(
-                "{} claims it first, not Raven: a double-clicked .exe runs against {}",
-                w.name,
-                w.interpreter.display()
+            detail: tf(
+                "check_exe_other",
+                &[("name", &w.name), ("interpreter", &w.interpreter.display())],
             ),
         },
     }

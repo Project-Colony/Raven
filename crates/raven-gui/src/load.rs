@@ -3,11 +3,11 @@
 //! Reading one environment's state opens `/proc` for every process on the
 //! machine. Doing that on the interface thread stutters the window, so every
 //! read goes through this module, and the actions take the same blocking
-//! route through `act` in `main.rs`.
+//! route through `act` in `app.rs`.
 
 use iced::Task;
 
-use crate::Message;
+use crate::app::Message;
 use crate::model::{self, BaseRow, Check, EnvRow};
 
 /// Loads every environment's state on a blocking worker.
@@ -17,7 +17,7 @@ pub fn environments() -> Task<Message> {
             tokio::task::spawn_blocking(|| {
                 raven::env::Environment::list()
                     .map(model::env_rows)
-                    .map_err(|e| e.to_string())
+                    .map_err(|e| raven::i18n::error_message(&e))
             })
             .await
             .unwrap_or_else(|e| Err(e.to_string()))
@@ -34,9 +34,10 @@ pub fn bases() -> Task<Message> {
     Task::perform(
         async {
             tokio::task::spawn_blocking(|| -> Loaded<Vec<BaseRow>> {
-                let bases = raven::base::Base::list().map_err(|e| e.to_string())?;
+                let bases =
+                    raven::base::Base::list().map_err(|e| raven::i18n::error_message(&e))?;
                 let env_bases: Vec<String> = raven::env::Environment::list()
-                    .map_err(|e| e.to_string())?
+                    .map_err(|e| raven::i18n::error_message(&e))?
                     .into_iter()
                     .map(|e| e.manifest.base)
                     .collect();

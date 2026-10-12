@@ -8,7 +8,9 @@
 //! in an iced crate, so a command-line program would pull a GUI toolkit in to
 //! compute a directory name. Eidos hit the same wall and wrote `eidos-paths`;
 //! this is the second workaround, and the real fix - a `colony-paths` crate that
-//! `colony-ui` re-exports - belongs upstream.
+//! `colony-ui` re-exports - belongs upstream. Until then
+//! `crates/raven-gui/tests/paths_parity.rs` holds the two to the same answer:
+//! it fails the build if this table and `colony_ui::paths::locate` disagree.
 //!
 //! Raven is Linux-only, so this implements the XDG rules directly rather than
 //! taking a dependency to abstract over platforms that will never be targeted.

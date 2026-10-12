@@ -416,9 +416,8 @@ pub fn create(name: &str, base_id: &str) -> Result<Environment, Error> {
         }
         prefix::point_c_drive(&env.prefix(), &paths::mount_point(name)?)?;
 
-        let rules = toml::to_string(&registry::Rules::default())
-            .map_err(|e| Error::Manifest(env.rules_file(), e.to_string()))?;
-        std::fs::write(env.rules_file(), rules).map_err(|e| Error::Layer(env.rules_file(), e))?;
+        std::fs::write(env.rules_file(), registry::rules::DEFAULT)
+            .map_err(|e| Error::Layer(env.rules_file(), e))?;
         env.project_registry()?;
 
         let manifest = toml::to_string(&env.manifest)
