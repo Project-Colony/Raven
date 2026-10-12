@@ -190,6 +190,27 @@ refuses to run, because granting raw disk write access is the user's decision
 and not Raven's. The window shows the same command with a *Copy* button and
 does not run it either.
 
+## Language
+
+The window speaks English or French, the same language rule as the command
+line. Its own words live in `crates/raven-gui/src/i18n/`, which holds only what
+the window alone says; a lookup falls through to `raven::i18n` for errors and
+diagnostics, worded once for the window and the terminal, and then to
+colony-ui's shared labels for the Preferences skeleton, themes and accents. A
+test refuses a window key that repeats one of those, so no sentence has two
+wordings that can drift apart.
+
+`i18n::set_language` switches all three tables at once, and every view reads
+them on every frame, so a change takes effect immediately. A test reads the
+view sources and fails on any string literal handed straight to `text`,
+`button(text(..))` or a `text_input` placeholder. Layouts leave room for French,
+which runs 15 to 20 percent longer: the only fixed width, the sidebar, scales
+with the text and fits the longest French label.
+
+A child process speaks the locale it inherited, which need not be the
+window's, so the deployment parser recognises a failure introduced in either
+language.
+
 ## Testing
 
 Testing an iced widget tree is not attempted, and pretending otherwise would
@@ -197,7 +218,10 @@ produce tests that assert nothing. What is tested:
 
 - the wimlib progress parser, against real captured output;
 - the error-to-action mapping, which is a pure function over `raven::Error`;
-- the state-to-view-model conversion.
+- the state-to-view-model conversion;
+- the window's word tables: identical keys in both languages, the same
+  placeholders, nothing copied from the library or colony-ui, and no bare
+  literal in a view.
 
 The business logic is already covered by the library's 97 tests, and the GUI
 adds none of its own.

@@ -7,6 +7,7 @@ use std::time::Duration;
 use iced::{Element, Subscription, Task};
 
 use crate::errors::{self, Offer};
+use crate::i18n;
 use crate::model::{BaseRow, Check, EnvRow};
 use crate::{deploy, load, view};
 
@@ -235,8 +236,9 @@ impl App {
             }
             Message::InstallD3d { env, vkd3d } => {
                 let which = if vkd3d { "vkd3d" } else { "dxvk" };
-                self.offer = Some(Offer::notice(format!(
-                    "Install it from a build you already have:  raven env {which} {env} --from <path>"
+                self.offer = Some(Offer::notice(i18n::tf(
+                    "install_d3d_notice",
+                    &[("which", &which), ("env", &env)],
                 )));
                 Task::none()
             }
@@ -273,6 +275,8 @@ impl App {
                             edition,
                             name: form.name.trim().to_owned(),
                         });
+                        // Named the way wimlib names its phases, so the view
+                        // words it with them.
                         self.deploying = Some(deploy::Progress {
                             percent: 0,
                             what: "Starting".into(),
@@ -281,7 +285,7 @@ impl App {
                     }
                     _ => {
                         self.offer = Some(Offer::action_error(
-                            "Fill in the image path, a numeric edition, and a name.".into(),
+                            i18n::t("deploy_incomplete_form").into(),
                         ));
                     }
                 }
@@ -300,8 +304,10 @@ impl App {
                         load::bases()
                     }
                     Err(reason) => {
-                        self.offer =
-                            Some(Offer::action_error(format!("Deployment failed. {reason}")));
+                        self.offer = Some(Offer::action_error(i18n::tf(
+                            "deploy_failed",
+                            &[("reason", &reason)],
+                        )));
                         Task::none()
                     }
                 }

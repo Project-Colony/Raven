@@ -8,10 +8,14 @@
 mod app;
 mod deploy;
 mod errors;
+mod i18n;
 mod load;
 mod model;
 mod theme;
 mod view;
+
+/// The program's name, which no language translates.
+const PROGRAM: &str = "Raven";
 
 /// Answers a command line rather than opening a window, and never returns.
 ///
@@ -32,13 +36,12 @@ fn answer(verb: &str) -> ! {
         "session-anchor" => match std::env::args().nth(2) {
             Some(name) => raven::session::anchor(&name),
             None => {
-                println!("session-anchor needs an environment name");
+                println!("{}", i18n::t("answer_anchor_needs_name"));
                 std::process::exit(1);
             }
         },
         "--help" | "-h" => {
-            println!("raven-gui - Raven's administration window. It takes no arguments.");
-            println!("The command line is `raven`; run `raven --help` for it.");
+            println!("{}", i18n::t("answer_help"));
             std::process::exit(0);
         }
         "--version" | "-V" => {
@@ -46,13 +49,21 @@ fn answer(verb: &str) -> ! {
             std::process::exit(0);
         }
         other => {
-            println!("raven-gui does not answer {other:?}; run `raven {other}` instead.");
+            println!(
+                "{}",
+                i18n::tf(
+                    "answer_unknown",
+                    &[("quoted", &format!("{other:?}")), ("verb", &other)]
+                )
+            );
             std::process::exit(1);
         }
     }
 }
 
 fn main() -> iced::Result {
+    // Before anything is said, the session anchor's reports included.
+    i18n::set_language(raven::i18n::Lang::from_env());
     if let Some(verb) = std::env::args().nth(1) {
         answer(&verb);
     }

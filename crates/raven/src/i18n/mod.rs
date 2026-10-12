@@ -65,13 +65,15 @@ impl Lang {
         }
     }
 
-    /// Whether `n` takes the singular. French treats zero as singular - "0
-    /// fichier" - where English does not.
-    fn singular(self, n: usize) -> bool {
-        match self {
+    /// The plural form `n` takes, as the suffix of a counted key: `one` or
+    /// `other`. French treats zero as singular - "0 fichier" - where English
+    /// does not.
+    pub fn plural(self, n: usize) -> &'static str {
+        let one = match self {
             Lang::En => n == 1,
             Lang::Fr => n <= 1,
-        }
+        };
+        if one { "one" } else { "other" }
     }
 }
 
@@ -122,7 +124,7 @@ fn tf_in(lang: Lang, key: &str, args: &[(&str, &dyn Display)]) -> String {
 /// Replaces each `{name}` in one pass, so a value that happens to contain
 /// `{name}` - a process called that, say - is printed rather than expanded.
 /// A placeholder with no value is left as it is, visibly.
-fn fill(template: &str, args: &[(&str, &dyn Display)]) -> String {
+pub fn fill(template: &str, args: &[(&str, &dyn Display)]) -> String {
     use std::fmt::Write as _;
     let mut out = String::with_capacity(template.len());
     let mut rest = template;
@@ -151,7 +153,7 @@ fn fill(template: &str, args: &[(&str, &dyn Display)]) -> String {
 }
 
 fn tn_in(lang: Lang, key: &str, n: usize, args: &[(&str, &dyn Display)]) -> String {
-    let form = if lang.singular(n) { "one" } else { "other" };
+    let form = lang.plural(n);
     let mut all: Vec<(&str, &dyn Display)> = vec![("n", &n)];
     all.extend_from_slice(args);
     tf_in(lang, &format!("{key}_{form}"), &all)

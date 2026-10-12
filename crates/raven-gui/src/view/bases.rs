@@ -12,6 +12,7 @@ use iced::{Element, Length};
 
 use crate::app::{DeployForm, Message};
 use crate::deploy::Progress;
+use crate::i18n;
 use crate::model::BaseRow;
 use crate::theme;
 
@@ -24,7 +25,7 @@ pub fn screen<'a>(
     let p = theme::palette();
 
     let list: Element<'_, Message> = if bases.is_empty() {
-        text("No bases yet")
+        text(i18n::t("bases_empty"))
             .size(t.sz(13))
             .color(p.text_muted)
             .into()
@@ -37,7 +38,9 @@ pub fn screen<'a>(
 
     container(
         column![
-            text("Bases").size(t.sz(22)).color(p.text_primary),
+            text(i18n::t("nav_bases"))
+                .size(t.sz(22))
+                .color(p.text_primary),
             Space::new().height(t.sz(8)),
             list,
             Space::new().height(t.sz(16)),
@@ -54,16 +57,10 @@ fn card(b: &BaseRow) -> Element<'_, Message> {
     let t = theme::typography();
     let p = theme::palette();
 
-    let plural = if b.environments == 1 {
-        "environment"
-    } else {
-        "environments"
-    };
-
     container(
         column![
             text(b.id.clone()).size(t.sz(16)).color(p.text_primary),
-            text(format!("{} {plural}", b.environments))
+            text(i18n::tn("bases_environments", b.environments, &[]))
                 .size(t.sz(12))
                 .color(p.text_muted),
         ]
@@ -114,22 +111,28 @@ fn deploy_form<'a>(deploying: Option<&'a Progress>, form: &'a DeployForm) -> Ele
 
     let inputs = row![
         field(
-            "Path to install.wim",
+            i18n::t("deploy_image"),
             &form.image,
             Message::DeployImageChanged
         )
         .width(Length::FillPortion(3)),
         field(
-            "Edition index",
+            i18n::t("deploy_edition"),
             &form.edition,
             Message::DeployEditionChanged
         )
         .width(Length::FillPortion(1)),
-        field("Name", &form.name, Message::DeployNameChanged).width(Length::FillPortion(1)),
+        field(
+            i18n::t("deploy_name"),
+            &form.name,
+            Message::DeployNameChanged
+        )
+        .width(Length::FillPortion(1)),
     ]
     .spacing(t.sz(8));
 
-    let deploy_button = button(text("Deploy").size(t.sz(13))).style(theme::button_style(p));
+    let deploy_button =
+        button(text(i18n::t("action_deploy")).size(t.sz(13))).style(theme::button_style(p));
     let deploy_button = if busy {
         deploy_button
     } else {
@@ -137,7 +140,9 @@ fn deploy_form<'a>(deploying: Option<&'a Progress>, form: &'a DeployForm) -> Ele
     };
 
     let mut section = column![
-        text("Deploy a base").size(t.sz(14)).color(p.text_secondary),
+        text(i18n::t("deploy_title"))
+            .size(t.sz(14))
+            .color(p.text_secondary),
         inputs,
         deploy_button,
     ]
@@ -154,9 +159,15 @@ fn deploy_form<'a>(deploying: Option<&'a Progress>, form: &'a DeployForm) -> Ele
                         bar: p.accent_progress.into(),
                         border: iced::Border::default(),
                     }),
-                text(format!("{} - {}%", progress.what, progress.percent))
-                    .size(t.sz(12))
-                    .color(p.text_muted),
+                text(i18n::tf(
+                    "deploy_progress",
+                    &[
+                        ("what", &phase(&progress.what)),
+                        ("percent", &progress.percent)
+                    ]
+                ))
+                .size(t.sz(12))
+                .color(p.text_muted),
             ]
             .spacing(t.sz(8))
             .align_y(iced::Alignment::Center),
@@ -176,4 +187,16 @@ fn deploy_form<'a>(deploying: Option<&'a Progress>, form: &'a DeployForm) -> Ele
             ..Default::default()
         })
         .into()
+}
+
+/// wimlib's name for what it is doing, in the window's language when it is
+/// one of the phases a deployment goes through, and as wimlib wrote it
+/// otherwise.
+fn phase(what: &str) -> &str {
+    match what {
+        "Starting" => i18n::t("deploy_starting"),
+        "Creating files" => i18n::t("deploy_phase_creating_files"),
+        "Extracting file data" => i18n::t("deploy_phase_extracting"),
+        other => other,
+    }
 }

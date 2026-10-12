@@ -8,6 +8,7 @@ use iced::widget::{Space, column, container, scrollable, text};
 use iced::{Element, Length};
 
 use crate::app::Message;
+use crate::i18n;
 use crate::model::Check;
 use crate::theme;
 
@@ -16,7 +17,7 @@ pub fn screen(checks: &[Check]) -> Element<'_, Message> {
     let p = theme::palette();
 
     let list: Element<'_, Message> = if checks.is_empty() {
-        text("No diagnostics yet")
+        text(i18n::t("diagnostics_empty"))
             .size(t.sz(13))
             .color(p.text_muted)
             .into()
@@ -29,7 +30,9 @@ pub fn screen(checks: &[Check]) -> Element<'_, Message> {
 
     container(
         column![
-            text("Diagnostics").size(t.sz(22)).color(p.text_primary),
+            text(i18n::t("nav_diagnostics"))
+                .size(t.sz(22))
+                .color(p.text_primary),
             Space::new().height(t.sz(8)),
             list,
         ]

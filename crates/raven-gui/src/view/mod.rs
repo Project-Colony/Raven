@@ -9,6 +9,7 @@ use iced::widget::{Space, button, column, container, row, text};
 use iced::{Element, Length};
 
 use crate::app::{App, Message, Screen};
+use crate::i18n;
 use crate::theme;
 
 /// The sidebar and whichever screen is selected.
@@ -52,11 +53,15 @@ pub fn shell(app: &App) -> Element<'_, Message> {
 
     let sidebar = container(
         column![
-            text("Raven").size(t.sz(20)).color(p.text_primary),
+            text(crate::PROGRAM).size(t.sz(20)).color(p.text_primary),
             Space::new().height(t.sz(12)),
-            item("Environments", Screen::Environments, &app.screen),
-            item("Bases", Screen::Bases, &app.screen),
-            item("Diagnostics", Screen::Doctor, &app.screen),
+            item(
+                i18n::t("nav_environments"),
+                Screen::Environments,
+                &app.screen
+            ),
+            item(i18n::t("nav_bases"), Screen::Bases, &app.screen),
+            item(i18n::t("nav_diagnostics"), Screen::Doctor, &app.screen),
         ]
         .spacing(t.sz(4)),
     )

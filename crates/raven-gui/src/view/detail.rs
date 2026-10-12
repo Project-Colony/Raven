@@ -5,6 +5,7 @@ use iced::widget::{Space, button, column, container, row, text};
 use iced::{Element, Length};
 
 use crate::app::Message;
+use crate::i18n;
 use crate::model::EnvRow;
 use crate::theme;
 
@@ -15,14 +16,14 @@ pub fn screen(e: &EnvRow) -> Element<'_, Message> {
     let heading = |s: &'static str| text(s).size(t.sz(14)).color(p.text_secondary);
 
     let session = column![
-        heading("Session"),
+        heading(i18n::t("detail_session")),
         text(e.status_line()).size(t.sz(13)).color(p.text_primary),
         if e.is_running() {
-            button(text("Stop").size(t.sz(12)))
+            button(text(i18n::t("action_stop")).size(t.sz(12)))
                 .style(theme::button_style(p))
                 .on_press(Message::Stop(e.name.clone()))
         } else {
-            button(text("Start").size(t.sz(12)))
+            button(text(i18n::t("action_start")).size(t.sz(12)))
                 .style(theme::button_style(p))
                 .on_press(Message::Start(e.name.clone()))
         },
@@ -36,15 +37,15 @@ pub fn screen(e: &EnvRow) -> Element<'_, Message> {
                 text(format!("{label}: {v}"))
                     .size(t.sz(13))
                     .color(p.text_primary),
-                button(text("Remove").size(t.sz(12)))
+                button(text(i18n::t("action_remove")).size(t.sz(12)))
                     .style(theme::button_style(p))
                     .on_press(Message::RemoveD3d { env: name, vkd3d }),
             ],
             None => row![
-                text(format!("{label}: not installed"))
+                text(i18n::tf("detail_runtime_missing", &[("runtime", &label)]))
                     .size(t.sz(13))
                     .color(p.text_muted),
-                button(text("Install…").size(t.sz(12)))
+                button(text(i18n::t("action_install")).size(t.sz(12)))
                     .style(theme::button_style(p))
                     .on_press(Message::InstallD3d { env: name, vkd3d }),
             ],
@@ -54,19 +55,19 @@ pub fn screen(e: &EnvRow) -> Element<'_, Message> {
     };
 
     let d3d = column![
-        heading("Direct3D"),
+        heading(i18n::t("detail_direct3d")),
         runtime("DXVK (D3D 8-11)", &e.dxvk, false),
         runtime("vkd3d-proton (D3D 12)", &e.vkd3d, true),
-        text("They are separate runtimes, not versions of one.")
+        text(i18n::t("detail_separate_runtimes"))
             .size(t.sz(11))
             .color(p.text_muted),
     ]
     .spacing(t.sz(6));
 
-    let mut devices = column![heading("Devices")].spacing(t.sz(6));
+    let mut devices = column![heading(i18n::t("detail_devices"))].spacing(t.sz(6));
     if e.attachments.is_empty() {
         devices = devices.push(
-            text("None attached. Attach one with:  raven env attach <name> /dev/sdX")
+            text(i18n::t("detail_no_devices"))
                 .size(t.sz(12))
                 .color(p.text_muted),
         );
@@ -77,7 +78,7 @@ pub fn screen(e: &EnvRow) -> Element<'_, Message> {
                     text(format!("{letter}:  {}", device.display()))
                         .size(t.sz(13))
                         .color(p.text_primary),
-                    button(text("Detach").size(t.sz(12)))
+                    button(text(i18n::t("action_detach")).size(t.sz(12)))
                         .style(theme::button_style(p))
                         .on_press(Message::Detach {
                             env: e.name.clone(),
@@ -91,11 +92,11 @@ pub fn screen(e: &EnvRow) -> Element<'_, Message> {
     }
 
     let registry = column![
-        heading("Registry"),
-        text("Re-run the projection after editing registry-rules.toml.")
+        heading(i18n::t("detail_registry")),
+        text(i18n::t("detail_registry_hint"))
             .size(t.sz(12))
             .color(p.text_muted),
-        button(text("Reproject").size(t.sz(12)))
+        button(text(i18n::t("action_reproject")).size(t.sz(12)))
             .style(theme::button_style(p))
             .on_press(Message::Reproject(e.name.clone())),
     ]
@@ -104,7 +105,7 @@ pub fn screen(e: &EnvRow) -> Element<'_, Message> {
     container(
         column![
             row![
-                button(text("← Environments").size(t.sz(12)))
+                button(text(i18n::t("detail_back")).size(t.sz(12)))
                     .style(theme::button_style(p))
                     .on_press(Message::Go(crate::app::Screen::Environments)),
                 Space::new().width(Length::Fill),

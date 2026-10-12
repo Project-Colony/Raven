@@ -34,14 +34,9 @@ impl EnvRow {
     /// view so it can be tested, and because "1 process" is not "1 processes".
     pub fn status_line(&self) -> String {
         if !self.is_running() {
-            return "not running".into();
+            return crate::i18n::t("card_not_running").into();
         }
-        let plural = if self.holders == 1 {
-            "process"
-        } else {
-            "processes"
-        };
-        format!("running - {} {plural}", self.holders)
+        crate::i18n::tn("card_running", self.holders, &[])
     }
 }
 

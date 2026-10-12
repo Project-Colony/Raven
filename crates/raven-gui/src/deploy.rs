@@ -171,7 +171,7 @@ fn pump(args: &Args, mut output: mpsc::Sender<Message>) -> Result<(), String> {
 
     let mut child = match child {
         Ok(child) => child,
-        Err(e) => return Err(format!("`raven base deploy` would not start: {e}")),
+        Err(e) => return Err(crate::i18n::tf("deploy_would_not_start", &[("why", &e)])),
     };
 
     // stderr is drained by its own thread. The child writes to both pipes, and
@@ -209,7 +209,7 @@ fn pump(args: &Args, mut output: mpsc::Sender<Message>) -> Result<(), String> {
         Ok(())
     } else {
         Err(last_meaningful_line(&said)
-            .unwrap_or_else(|| "It gave no reason before it stopped.".to_owned()))
+            .unwrap_or_else(|| crate::i18n::t("deploy_no_reason").to_owned()))
     }
 }
 

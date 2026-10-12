@@ -5,6 +5,7 @@ use iced::widget::{Space, button, column, container, row, scrollable, text};
 use iced::{Element, Length};
 
 use crate::app::Message;
+use crate::i18n;
 use crate::model::EnvRow;
 use crate::theme;
 
@@ -14,11 +15,11 @@ pub fn screen(envs: &[EnvRow]) -> Element<'_, Message> {
 
     if envs.is_empty() {
         return column![
-            text("No environments yet")
+            text(i18n::t("envs_empty_title"))
                 .size(t.sz(22))
                 .color(p.text_primary),
             Space::new().height(t.sz(8)),
-            text("Create one with:  raven env create <name> --base <base>")
+            text(i18n::t("envs_empty_hint"))
                 .size(t.sz(13))
                 .color(p.text_muted),
         ]
@@ -37,11 +38,11 @@ fn card(e: &EnvRow) -> Element<'_, Message> {
     let p = theme::palette();
 
     let action = if e.is_running() {
-        button(text("Stop").size(t.sz(13)))
+        button(text(i18n::t("action_stop")).size(t.sz(13)))
             .style(theme::button_style(p))
             .on_press(Message::Stop(e.name.clone()))
     } else {
-        button(text("Start").size(t.sz(13)))
+        button(text(i18n::t("action_start")).size(t.sz(13)))
             .style(theme::button_style(p))
             .on_press(Message::Start(e.name.clone()))
     };
