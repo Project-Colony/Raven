@@ -31,7 +31,7 @@ pub fn create(prefix: &Path) -> Result<(), Error> {
     if !status.success() {
         return Err(Error::ToolFailed(
             "wine wineboot",
-            format!("exited with {status}"),
+            crate::i18n::tf("tool_exited", &[("status", &status)]),
         ));
     }
     // wineserver lingers and holds the prefix open; a later step that moves

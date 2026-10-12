@@ -157,7 +157,7 @@ pub fn deploy(image: &Path, index: u32, id: &str) -> Result<Base, Error> {
         let _ = std::fs::remove_dir_all(&partial);
         return Err(Error::ToolFailed(
             "wimlib-imagex apply",
-            format!("exited with {status}"),
+            crate::i18n::tf("tool_exited", &[("status", &status)]),
         ));
     }
 

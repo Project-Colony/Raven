@@ -30,6 +30,7 @@ use std::os::fd::AsFd;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+use crate::i18n::{t, tf};
 use crate::{Error, env::Environment};
 
 /// How long to wait for an anchor to mount and report itself.
@@ -151,7 +152,7 @@ impl Environment {
         let stdout = child
             .stdout
             .take()
-            .ok_or_else(|| Error::SessionFailed("the anchor produced no output".into()))?;
+            .ok_or_else(|| Error::SessionFailed(t("anchor_no_output").into()))?;
 
         // Read the readiness line WITHOUT a helper thread. This process is
         // about to `setns` into the anchor's user namespace, and the kernel
@@ -164,19 +165,15 @@ impl Environment {
         drop(stdout);
 
         match line.trim().strip_prefix("ready ") {
-            Some(pid) => pid
-                .parse()
-                .map_err(|_| Error::SessionFailed(format!("unreadable anchor reply {line:?}"))),
+            Some(pid) => pid.parse().map_err(|_| {
+                Error::SessionFailed(tf("anchor_unreadable", &[("line", &format!("{line:?}"))]))
+            }),
             None if line.trim().is_empty() => {
                 // Either it died, or it never spoke. Reap it so it cannot
                 // linger as a zombie, and let the caller see which.
                 let _ = child.kill();
                 let _ = child.wait();
-                Err(Error::SessionFailed(
-                    "the anchor did not report a mounted overlay; \
-                     `raven doctor` reports whether this kernel allows the mount at all"
-                        .into(),
-                ))
+                Err(Error::SessionFailed(t("anchor_silent").into()))
             }
             None => {
                 let _ = child.wait();
@@ -202,12 +199,11 @@ impl Environment {
             // overlay, and the usual way to get here is a session stopped from
             // another terminal between the check and the join.
             let f = std::fs::File::open(&path).map_err(|e| {
-                Error::SessionFailed(format!(
-                    "the session vanished while joining it ({path}: {e}); try again"
-                ))
+                Error::SessionFailed(tf("session_vanished", &[("path", &path), ("why", &e)]))
             })?;
-            move_into_link_name_space(f.as_fd(), Some(kind))
-                .map_err(|e| Error::SessionFailed(format!("could not join {name}: {e}")))?;
+            move_into_link_name_space(f.as_fd(), Some(kind)).map_err(|e| {
+                Error::SessionFailed(tf("session_no_join", &[("name", &name), ("why", &e)]))
+            })?;
         }
         Ok(())
     }
@@ -349,8 +345,8 @@ pub fn anchor(name: &str) -> ! {
     // the errno as a source, which anyhow prints for the CLI and `Display`
     // drops. This line is all the launcher ever shows, and "permission
     // denied" is the difference between a bug and a chmod.
-    let because = |e: &dyn std::error::Error| -> String {
-        let mut out = e.to_string();
+    let because = |e: &(dyn std::error::Error + 'static)| -> String {
+        let mut out = crate::i18n::describe(e);
         let mut source = e.source();
         while let Some(s) = source {
             out.push_str(&format!(": {s}"));
@@ -360,16 +356,19 @@ pub fn anchor(name: &str) -> ! {
     };
     let e = match crate::env::Environment::open(name) {
         Ok(e) => e,
-        Err(err) => report(format_args!("{err}")),
+        Err(err) => report(format_args!("{}", crate::i18n::error_message(&err))),
     };
     let spec = match e.spec() {
         Ok(s) => s,
-        Err(err) => report(format_args!("{err}")),
+        Err(err) => report(format_args!("{}", crate::i18n::error_message(&err))),
     };
     if let Err(err) = std::fs::create_dir_all(&spec.target) {
         report(format_args!(
-            "could not create the mount point {}: {err}",
-            spec.target.display()
+            "{}",
+            tf(
+                "anchor_no_mount_point",
+                &[("path", &spec.target.display()), ("why", &err)]
+            )
         ));
     }
     // Bring the layer's opaque markers in line with the current shadow set
@@ -378,28 +377,26 @@ pub fn anchor(name: &str) -> ! {
     // rebuild to receive a fix.
     if let Err(err) = crate::layer::reconcile(&e.layer()) {
         report(format_args!(
-            "could not reconcile the layer: {}",
-            because(&err)
+            "{}",
+            tf("anchor_no_reconcile", &[("why", &because(&err))])
         ));
     }
     if !crate::mount::UserNsOverlay::is_available() {
-        report(format_args!(
-            "this kernel restricts unprivileged user namespaces; run `raven doctor`"
-        ));
+        report(format_args!("{}", t("userns_restricted")));
     }
     if let Err(err) = crate::mount::UserNsOverlay.mount(&spec) {
-        report(format_args!(
-            "could not mount the overlay: {}",
-            because(&err)
-        ));
+        report(format_args!("{}: {}", t("could_not_mount"), because(&err)));
     }
     let pid = std::process::id();
     // Written only after the mount exists, so a reader of this file never
     // sees a session that cannot be joined.
     if let Err(err) = std::fs::write(e.session_file(), format!("{pid}\n")) {
         report(format_args!(
-            "could not record the session at {}: {err}",
-            e.session_file().display()
+            "{}",
+            tf(
+                "anchor_no_record",
+                &[("path", &e.session_file().display()), ("why", &err)]
+            )
         ));
     }
     println!("ready {pid}");

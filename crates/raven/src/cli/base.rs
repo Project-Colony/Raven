@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use raven::base;
+use raven::i18n::{t, tf};
 
 use super::BaseCmd;
 
@@ -10,13 +11,13 @@ pub fn base_cmd(cmd: BaseCmd) -> Result<()> {
         BaseCmd::List => {
             let bases = base::Base::list()?;
             if bases.is_empty() {
-                out!("No bases. Deploy one with `raven base deploy`.");
+                out!("{}", t("base_none"));
             }
             for b in bases {
                 let ok = if b.looks_like_windows() {
                     ""
                 } else {
-                    "  (does not look like Windows)"
+                    t("base_not_windows")
                 };
                 out!("{}{ok}", b.id);
             }
@@ -25,7 +26,17 @@ pub fn base_cmd(cmd: BaseCmd) -> Result<()> {
         BaseCmd::Editions(a) => {
             for e in base::editions(&a.image)? {
                 let build = e.build.as_deref().unwrap_or("-");
-                out!("{:>3}  {}  (build {build})", e.index, e.name);
+                out!(
+                    "{}",
+                    tf(
+                        "base_edition",
+                        &[
+                            ("index", &format!("{:>3}", e.index)),
+                            ("name", &e.name),
+                            ("build", &build)
+                        ]
+                    )
+                );
             }
             Ok(())
         }
@@ -34,9 +45,15 @@ pub fn base_cmd(cmd: BaseCmd) -> Result<()> {
             edition,
             name,
         } => {
-            out!("Applying edition {edition}. This writes tens of gigabytes and takes a while.");
+            out!("{}", tf("base_applying", &[("edition", &edition)]));
             let b = base::deploy(&image.image, edition, &name)?;
-            out!("Deployed {} to {}", b.id, b.path.display());
+            out!(
+                "{}",
+                tf(
+                    "base_deployed",
+                    &[("id", &b.id), ("path", &b.path.display())]
+                )
+            );
             Ok(())
         }
     }

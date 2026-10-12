@@ -38,20 +38,21 @@ pub struct OverlaySpec {
 
 #[derive(Debug, thiserror::Error)]
 pub enum MountError {
-    #[error("unprivileged user namespaces are unavailable on this kernel: {0}")]
     NoUserNamespace(#[source] std::io::Error),
-
-    #[error("could not map this user inside the namespace: {0}")]
     IdMap(#[source] std::io::Error),
-
-    #[error("mounting the overlay failed: {0}")]
     Mount(#[source] std::io::Error),
-
-    #[error("{0} does not exist")]
     MissingPath(PathBuf),
-
-    #[error("at least one read-only layer is required")]
     NoLowerLayer,
+}
+
+/// English, for logs; `i18n::describe` is what a user is shown.
+impl std::fmt::Display for MountError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&crate::i18n::mount_error_message_in(
+            crate::i18n::Lang::En,
+            self,
+        ))
+    }
 }
 
 /// A way of assembling [`OverlaySpec`] into a mounted C: drive.

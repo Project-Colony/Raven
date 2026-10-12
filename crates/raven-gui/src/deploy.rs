@@ -57,8 +57,9 @@ pub fn parse_progress(line: &str) -> Option<Progress> {
 
 /// The one line of a failed child's error output worth putting in a banner.
 ///
-/// Raven's own failures reach stderr through anyhow, which prints the
-/// sentence first and its cause underneath:
+/// Raven's own failures reach stderr with the sentence first and its cause
+/// underneath, introduced in whichever language the child was started in -
+/// the locale it inherited, which need not be the window's:
 ///
 /// ```text
 /// Error: could not read the image at /mnt/win.wim
@@ -68,14 +69,21 @@ pub fn parse_progress(line: &str) -> Option<Progress> {
 /// ```
 ///
 /// The last line there is the errno, which says nothing about which file or
-/// what Raven was doing - so the `Error:` line wins when there is one. Only
+/// what Raven was doing - so the `Error:` (or `Erreur :`) line wins when there
+/// is one. Only
 /// when there is not, as for `wimlib-imagex`'s own diagnostics, is the last
 /// line the one that says why. Empty pieces are skipped either way: wimlib
 /// redraws progress with `\r`, so a killed child can leave only whitespace.
 pub fn last_meaningful_line(stderr: &str) -> Option<String> {
+    use raven::i18n::{Lang, get_in};
     let lines = || stderr.split(['\r', '\n']).map(str::trim);
-    if let Some(sentence) = lines().find_map(|l| l.strip_prefix("Error: "))
-        && !sentence.is_empty()
+    let introductions = [Lang::En, Lang::Fr].map(|l| get_in(l, "cli_error").unwrap_or("Error:"));
+    if let Some(sentence) = lines().find_map(|l| {
+        introductions
+            .iter()
+            .find_map(|i| l.strip_prefix(i))
+            .map(str::trim_start)
+    }) && !sentence.is_empty()
     {
         return Some(sentence.to_owned());
     }
@@ -261,6 +269,16 @@ mod tests {
         assert_eq!(
             last_meaningful_line(said).as_deref(),
             Some("could not read the image at /mnt/win.wim")
+        );
+    }
+
+    #[test]
+    fn a_french_child_is_understood_too() {
+        // The child inherits the locale, not the window's language.
+        let said = "Erreur : aucune base nommée \"w11\" ; lancez `raven base list`\n";
+        assert_eq!(
+            last_meaningful_line(said).as_deref(),
+            Some("aucune base nommée \"w11\" ; lancez `raven base list`")
         );
     }
 

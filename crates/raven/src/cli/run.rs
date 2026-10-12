@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
+use raven::i18n::{t, tf};
 use raven::mount::{MountBackend, OverlaySpec, UserNsOverlay};
 use raven::{env, launch};
 
@@ -54,7 +55,7 @@ pub fn run(name: &str, argv: Vec<String>, cwd: Option<PathBuf>) -> Result<()> {
     if let Some(d) = cwd.filter(|d| d.is_dir()) {
         cmd.current_dir(d);
     }
-    Err(cmd.exec()).with_context(|| format!("could not run {}", argv[0]))
+    Err(cmd.exec()).with_context(|| tf("could_not_run", &[("program", &argv[0])]))
 }
 
 pub fn exec(
@@ -64,12 +65,10 @@ pub fn exec(
     cwd: Option<PathBuf>,
 ) -> Result<()> {
     if !UserNsOverlay::is_available() {
-        bail!("this kernel restricts unprivileged user namespaces; run `raven doctor`");
+        bail!("{}", t("userns_restricted"));
     }
 
-    UserNsOverlay
-        .mount(&spec)
-        .context("could not mount the overlay")?;
+    UserNsOverlay.mount(&spec).context(t("could_not_mount"))?;
 
     let mut cmd = Command::new(&argv[0]);
     cmd.args(&argv[1..]);
@@ -86,5 +85,5 @@ pub fn exec(
         cmd.current_dir(d);
     }
     // Replaces this process, so the mount lives exactly as long as the program.
-    Err(cmd.exec()).with_context(|| format!("could not run {}", argv[0]))
+    Err(cmd.exec()).with_context(|| tf("could_not_run", &[("program", &argv[0])]))
 }

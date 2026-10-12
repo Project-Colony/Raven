@@ -3,6 +3,11 @@
 //! A shell over the library, holding no logic of its own. Anything that decides
 //! something belongs in `raven::`, so a graphical front end calls the same code
 //! rather than reimplementing it.
+//!
+//! The definitions below carry no help text. Every summary and argument line
+//! comes from `raven::i18n` - `help_<command path>` and
+//! `help_<command path>_<argument>` - so `--help` speaks the user's language,
+//! and a test fails if a command or argument has no words in either.
 
 /// Prints a line, treating a closed pipe as a normal end.
 ///
@@ -28,12 +33,13 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Command, CommandFactory, FromArgMatches, Parser, Subcommand};
+use raven::i18n::{self, Lang};
 use raven::launch;
 use raven::mount::OverlaySpec;
 
 #[derive(Parser)]
-#[command(name = "raven", version, about, long_about = None)]
+#[command(name = "raven", version)]
 pub struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -41,51 +47,31 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Report what this system can and cannot do.
     Doctor,
-
-    /// Deployed Windows installations, shared by every environment.
     #[command(subcommand)]
     Base(BaseCmd),
-
-    /// Environments: a Wine layer over a base, plus somewhere to write.
     #[command(subcommand)]
     Env(EnvCmd),
-
-    /// Run a Windows program, resolving its environment automatically.
-    ///
-    /// This is what `binfmt_misc` invokes for a `.exe`, and what makes
-    /// `./program.exe` work. It can be run by hand too.
+    // What `binfmt_misc` invokes for a `.exe`, and what makes `./program.exe`
+    // work.
     Launch {
-        /// The program. `binfmt_misc` passes this as the first argument.
         exe: PathBuf,
-        /// Arguments for the program.
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
-
-    /// Show how `.exe` files are registered with the kernel.
     Binfmt,
-
-    /// Hold an environment's namespace open. Started by Raven, not by hand.
+    // Holds an environment's namespace open. Started by Raven, not by hand.
     #[command(hide = true)]
-    SessionAnchor { name: String },
-
-    /// Run a program inside an environment.
-    Run {
-        /// The environment to run in.
+    SessionAnchor {
         name: String,
-        /// The command, after `--`. A bare `wine <program.exe>` is the usual one.
+    },
+    Run {
+        name: String,
         #[arg(last = true, required = true)]
         argv: Vec<String>,
     },
-
-    /// Mount a layer stack and run a command, without an environment.
-    ///
-    /// The primitive `run` is built on. Useful for testing a stack before
-    /// committing it to an environment.
+    // The primitive `run` is built on.
     Exec {
-        /// A read-only layer. Repeat it; the FIRST wins where layers overlap.
         #[arg(long = "lower", required = true)]
         lower: Vec<PathBuf>,
         #[arg(long)]
@@ -101,18 +87,13 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum BaseCmd {
-    /// List the deployed bases.
     List,
-    /// List the editions inside an installation image.
     Editions(ImageArg),
-    /// Apply one edition of an image into a new base.
     Deploy {
         #[command(flatten)]
         image: ImageArg,
-        /// The edition index, from `raven base editions`.
         #[arg(long)]
         edition: u32,
-        /// What to call the base. Environments refer to it by this name.
         #[arg(long)]
         name: String,
     },
@@ -120,89 +101,153 @@ enum BaseCmd {
 
 #[derive(Args)]
 struct ImageArg {
-    /// Path to `install.wim`, extracted from an official ISO.
     #[arg(long)]
     image: PathBuf,
 }
 
 #[derive(Subcommand)]
 enum EnvCmd {
-    /// List the environments.
     List,
-    /// Build an environment against a base.
     Create {
         name: String,
-        /// The base to run against, from `raven base list`.
         #[arg(long)]
         base: String,
     },
-    /// Delete an environment. The base it ran against is untouched.
-    Destroy { name: String },
-    /// Report whether an environment is running and what holds it.
-    Status { name: String },
-    /// Release an environment: terminate every process holding its mount.
-    Stop { name: String },
-    /// Bring an environment up: mount it and start Wine's services.
-    ///
-    /// Mounting costs 0.04s and lasts until `env stop`. Wine's services cost
-    /// about 1.7s and exit a few seconds after the last program does, so only
-    /// a launch made within those seconds skips them.
-    Start { name: String },
-    /// Attach a block device to an environment as a raw drive.
-    ///
-    /// Dangerous by design: a program in the environment can then read and
-    /// WRITE the device's sectors directly. Tools that discover disks through
-    /// Windows enumeration still will not see it - the docs say why.
+    Destroy {
+        name: String,
+    },
+    Status {
+        name: String,
+    },
+    Stop {
+        name: String,
+    },
+    Start {
+        name: String,
+    },
     Attach {
         name: String,
-        /// The unix block device, e.g. /dev/sdc.
         device: PathBuf,
-        /// The drive letter, d through z.
         #[arg(long, default_value = "d")]
         letter: char,
     },
-    /// Install, remove or report DXVK - Direct3D 8 through 11 on Vulkan.
-    ///
-    /// Raven fetches nothing: point `--from` at a build you already have, the
-    /// way `base deploy` takes an ISO you already have. With no flag, this
-    /// reports what is installed.
     Dxvk {
         name: String,
-        /// An extracted release, or a release archive of one.
         #[arg(long, value_name = "PATH", conflicts_with = "remove")]
         from: Option<PathBuf>,
-        /// Uncover the real Windows again by deleting what was installed.
         #[arg(long)]
         remove: bool,
     },
-
-    /// Install, remove or report vkd3d-proton - Direct3D 12 on Vulkan.
-    ///
-    /// A separate runtime from DXVK, not a newer one: DXVK does not implement
-    /// Direct3D 12 at all. They install side by side.
     Vkd3d {
         name: String,
-        /// An extracted release, or a release archive of one.
         #[arg(long, value_name = "PATH", conflicts_with = "remove")]
         from: Option<PathBuf>,
-        /// Uncover the real Windows again by deleting what was installed.
         #[arg(long)]
         remove: bool,
     },
-
-    /// Detach a previously attached device. The device itself is untouched.
     Detach {
         name: String,
         #[arg(long, default_value = "d")]
         letter: char,
     },
-    /// Re-run the registry projection, after editing the environment's rules.
-    Reproject { name: String },
-    /// Set the environment used for programs that are not inside one.
-    Default { name: Option<String> },
+    Reproject {
+        name: String,
+    },
+    Default {
+        name: Option<String>,
+    },
 }
 
-/// Parses this process's command line.
+/// The whole command tree, worded in `lang`.
+///
+/// A command's summary is `help_<path>`, the text `--help` adds is
+/// `help_<path>_long`, and an argument's line is `help_<path>_<argument>`, or
+/// `help_arg_<argument>` where several commands share one meaning. Those are
+/// set before the tree is built, because building is when clap decides
+/// whether `--help` has more to say than `-h`; clap's own `--help`,
+/// `--version` and `help` only exist after it, so they are worded then.
+pub fn command(lang: Lang) -> Command {
+    let mut cmd = word(Cli::command(), "help_raven", lang);
+    cmd.build();
+    word_clap(cmd, lang)
+}
+
+fn word(mut cmd: Command, key: &str, lang: Lang) -> Command {
+    let get = |k: &str| i18n::get_in(lang, k);
+    if let Some(about) = get(key) {
+        cmd = cmd.about(about);
+    }
+    if let Some(long) = get(&format!("{key}_long")) {
+        cmd = cmd.long_about(long);
+    }
+    cmd.mut_args(|arg| {
+        let id = arg.get_id().as_str().to_owned();
+        let arg = match get(&format!("{key}_{id}")).or_else(|| get(&format!("help_arg_{id}"))) {
+            Some(help) => arg.help(help),
+            None => arg,
+        };
+        let defaults: Vec<_> = arg
+            .get_default_values()
+            .iter()
+            .map(|v| v.to_string_lossy().into_owned())
+            .collect();
+        if lang == Lang::En || defaults.is_empty() {
+            return arg;
+        }
+        // clap writes "[default: d]" itself, in English; this is the same
+        // note, in the help line instead.
+        let help = arg.get_help().map(ToString::to_string).unwrap_or_default();
+        let note = get("clap_default")
+            .unwrap_or("[default: {value}]")
+            .replace("{value}", &defaults.join(", "));
+        arg.hide_default_value(true).help(format!("{help} {note}"))
+    })
+    .mut_subcommands(|sub| {
+        let path = match key {
+            "help_raven" => format!("help_{}", sub.get_name()),
+            parent => format!("{parent}_{}", sub.get_name()),
+        };
+        word(sub, &path, lang)
+    })
+}
+
+fn word_clap(mut cmd: Command, lang: Lang) -> Command {
+    let get = |k: &str| i18n::get_in(lang, k);
+    cmd = cmd
+        .subcommand_help_heading(get("clap_commands"))
+        .mut_args(|arg| match arg.get_id().as_str() {
+            // The two wordings clap itself picks between.
+            "help" if arg.get_long_help().is_some() => arg
+                .help(get("clap_help_more"))
+                .long_help(get("clap_help_summary")),
+            "help" => arg.help(get("clap_help")),
+            "version" => arg.help(get("clap_version")),
+            _ => arg,
+        });
+    if lang != Lang::En {
+        // clap hard-codes "Usage:", and its template is the only way to say it
+        // differently. English keeps clap's own template.
+        let style = cmd.get_styles().get_usage();
+        let usage = format!(
+            "{}{}{}",
+            style.render(),
+            get("clap_usage").unwrap_or("Usage:"),
+            style.render_reset()
+        );
+        let has_more = cmd.get_arguments().any(|a| !a.is_hide_set()) || cmd.has_subcommands();
+        cmd = cmd.help_template(if has_more {
+            format!("{{before-help}}{{about-with-newline}}\n{usage} {{usage}}\n\n{{all-args}}{{after-help}}")
+        } else {
+            format!("{{before-help}}{{about-with-newline}}\n{usage} {{usage}}{{after-help}}")
+        });
+    }
+    cmd.mut_subcommands(|sub| match sub.get_name() {
+        "help" => sub.about(get("clap_help_command")),
+        _ => word_clap(sub, lang),
+    })
+}
+
+/// Parses this process's command line, in the language already set.
 pub fn parse() -> Cli {
     // binfmt_misc hands its interpreter a path where clap expects a verb, and
     // offers no way to insert one. Reading the magic bytes settles which it is
@@ -214,7 +259,8 @@ pub fn parse() -> Cli {
     {
         args.insert(1, OsString::from("launch"));
     }
-    Cli::parse_from(args)
+    let matches = command(i18n::lang()).get_matches_from(args);
+    Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit())
 }
 
 /// Runs the command `cli` names.
@@ -244,5 +290,75 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             None,
             None,
         ),
+    }
+}
+
+/// A failure as the user reads it: the message, then what caused it, each in
+/// the current language where it is one of Raven's own.
+pub fn failure(error: &anyhow::Error) -> String {
+    let mut chain = error.chain();
+    let mut out = format!(
+        "{} {}",
+        i18n::t("cli_error"),
+        chain.next().map(i18n::describe).unwrap_or_default()
+    );
+    let causes: Vec<String> = chain.map(i18n::describe).collect();
+    if !causes.is_empty() {
+        out.push_str(&format!("\n\n{}", i18n::t("cli_caused_by")));
+        for cause in causes {
+            out.push_str(&format!("\n    {cause}"));
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every command and argument a user can see, with its path.
+    fn visible(cmd: &Command, path: &str, out: &mut Vec<(String, Option<String>)>) {
+        out.push((path.to_owned(), cmd.get_about().map(|s| s.to_string())));
+        for arg in cmd.get_arguments().filter(|a| !a.is_hide_set()) {
+            out.push((
+                format!("{path} {}", arg.get_id()),
+                arg.get_help().map(|s| s.to_string()),
+            ));
+        }
+        for sub in cmd.get_subcommands().filter(|s| !s.is_hide_set()) {
+            if sub.get_name() != "help" {
+                visible(sub, &format!("{path} {}", sub.get_name()), out);
+            }
+        }
+    }
+
+    #[test]
+    fn every_command_and_argument_has_words_in_both_languages() {
+        for lang in [Lang::En, Lang::Fr] {
+            let mut all = Vec::new();
+            visible(&command(lang), "raven", &mut all);
+            for (what, help) in all {
+                assert!(
+                    help.is_some_and(|h| !h.is_empty()),
+                    "`{what}` has no help in {lang:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_command_tree_is_valid_in_both_languages() {
+        for lang in [Lang::En, Lang::Fr] {
+            command(lang).debug_assert();
+        }
+    }
+
+    #[test]
+    fn a_failure_reads_in_the_current_language() {
+        let e = anyhow::Error::new(raven::Error::NoSuchBase("w11".into()))
+            .context(i18n::tf("could_not_run", &[("program", &"wine")]));
+        let text = failure(&e);
+        assert!(text.contains("w11"), "{text}");
+        assert!(text.lines().count() >= 3, "the cause is shown: {text}");
     }
 }

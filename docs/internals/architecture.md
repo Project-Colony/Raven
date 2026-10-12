@@ -202,6 +202,7 @@ crates/raven/src/
 ├── main.rs        parses the command line and hands it to cli/
 ├── cli/           the commands: the clap definitions, one file per group
 ├── lib.rs         the library root and error type
+├── i18n/          every word Raven says, in English and French
 ├── paths.rs       the Colony filesystem layout for Raven
 ├── base.rs        deploying and describing a Windows base
 ├── env.rs         the environment model: create, run, recover, destroy
@@ -241,6 +242,18 @@ scripts/
 reviewed by someone who does not read Rust. The registry rules are the case in
 point: `include_str!` compiles the file in, a unit test parses it, and a new
 environment receives it verbatim, comments included, as the file its user edits.
+
+### Words
+
+Every string a user reads goes through `raven::i18n`: `en.rs` holds the
+English, which is canonical and names the keys, and `fr.rs` the same keys in
+French. A unit test fails when the two key sets differ, and another when any
+`Error` variant lacks words in either. The language is chosen once per process,
+from the locale for the command line and from Preferences for the window. The
+library's errors are worded there too, so `Display` stays English for logs while
+`i18n::error_message` is what a user sees, the same sentence in the window and
+in the terminal. clap's help is worded by walking the command tree after it is
+defined, so the derive definitions carry no text of their own.
 
 ### The constraint that keeps a GUI possible
 
