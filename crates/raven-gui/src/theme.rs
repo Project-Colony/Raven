@@ -1,22 +1,22 @@
 //! What colony-ui needs to know about this program, and what it gives back.
 //!
-//! Every colour and every font size in the window comes through here. The org
-//! rule is that a size is never a raw number: two independent user
-//! preferences, Appearance and Accessibility, multiply into one scale, so the
-//! layout has to survive 0.7225x to 1.68x, and `sz` is the only thing that
-//! knows it.
+//! Every colour in the window comes through here. Sizes and fonts come from
+//! `colony_ui::Typography::current()`, read once per view: the two text-size
+//! preferences, Appearance and Accessibility, multiply into its scale, so a
+//! size is never a raw number and the layout has to survive 0.7225x to 1.68x;
+//! its fonts are OpenDyslexic while the dyslexia font is on.
 
-use colony_ui::{ThemePalette, Typography};
-use iced::Font;
+use colony_ui::ThemePalette;
 use iced::widget::button;
 
-/// The org's application font. JetBrainsMono Nerd Font per
-/// Project-Colony-Resources/design/typography.md.
-pub const APP_FONT: Font = Font::with_name("JetBrainsMono Nerd Font");
-
-/// The active colony-ui palette (default theme until Preferences exist).
+/// The active colony-ui palette - the user's theme, with high contrast when
+/// it is on - and the user's accent in `accent_blue`, which colony-ui keeps
+/// apart from the palette so the theme's own can come back.
 pub fn palette() -> ThemePalette {
-    colony_ui::active_palette()
+    ThemePalette {
+        accent_blue: colony_ui::effective_accent(),
+        ..colony_ui::active_palette()
+    }
 }
 
 /// The look of an ordinary button, for every ordinary button in the window.
@@ -48,17 +48,5 @@ pub fn button_style(p: ThemePalette) -> impl Fn(&iced::Theme, button::Status) ->
             ..Default::default()
         },
         ..Default::default()
-    }
-}
-
-/// The type scale. `scale` is 1.0 until the settings screen exists to change
-/// it; the accessor is used everywhere from the start so adding that screen
-/// later changes one function rather than every call site.
-pub fn typography() -> Typography {
-    Typography {
-        scale: 1.0,
-        regular: APP_FONT,
-        medium: APP_FONT,
-        bold: APP_FONT,
     }
 }

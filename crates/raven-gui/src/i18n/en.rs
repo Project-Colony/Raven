@@ -11,6 +11,8 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("nav_environments", "Environments"),
     ("nav_bases", "Bases"),
     ("nav_diagnostics", "Diagnostics"),
+    ("nav_label", "Administration"),
+    ("nav_hint", "Ctrl+1, 2 and 3 switch screens. Raven, above, opens Preferences."),
     // Buttons that act on an environment.
     ("action_start", "Start"),
     ("action_stop", "Stop"),
@@ -59,6 +61,24 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     // A failure the window can do something about.
     ("offer_session_holds", "A session is holding {name}'s C:, which is what makes launches fast."),
     ("offer_busy", "{name} is still in use by {holders}. Stopping it ends them."),
+    // Preferences: only what is Raven's own. The skeleton, Appearance and
+    // Accessibility are colony-ui's.
+    ("preferences_not_saved", "Preferences could not be saved: {why}"),
+    ("preferences_section_language", "Language"),
+    ("preferences_language_desc", "The language of this window. The command line follows the system's locale."),
+    ("preferences_language", "Interface language"),
+    ("preferences_language_row_desc", "Applies at once."),
+    ("preferences_language_system", "System"),
+    ("preferences_language_en", "English"),
+    ("preferences_language_fr", "Français"),
+    ("preferences_effects_none", "Raven draws no animations or visual effects, so there is nothing to switch off here."),
+    ("preferences_about_desc", "Raven runs Windows programs against a real Windows installation."),
+    ("preferences_about_version", "Version"),
+    ("preferences_about_license", "License"),
+    ("preferences_about_preferences", "Preferences file"),
+    ("preferences_about_config", "Configuration"),
+    ("preferences_about_data", "Data"),
+    ("preferences_about_cache", "Cache"),
     // What raven-gui says on a command line instead of opening a window.
     ("answer_help", "raven-gui - Raven's administration window. It takes no arguments.\nThe command line is `raven`; run `raven --help` for it."),
     ("answer_anchor_needs_name", "session-anchor needs an environment name"),

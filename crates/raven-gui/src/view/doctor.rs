@@ -4,6 +4,7 @@
 //! synchronization" rather than "no" - so every row, passing or not, keeps
 //! its consequence in the detail line.
 
+use colony_ui::Typography;
 use iced::widget::{Space, column, container, scrollable, text};
 use iced::{Element, Length};
 
@@ -13,12 +14,13 @@ use crate::model::Check;
 use crate::theme;
 
 pub fn screen(checks: &[Check]) -> Element<'_, Message> {
-    let t = theme::typography();
+    let t = Typography::current();
     let p = theme::palette();
 
     let list: Element<'_, Message> = if checks.is_empty() {
         text(i18n::t("diagnostics_empty"))
             .size(t.sz(13))
+            .font(t.regular)
             .color(p.text_muted)
             .into()
     } else {
@@ -32,6 +34,7 @@ pub fn screen(checks: &[Check]) -> Element<'_, Message> {
         column![
             text(i18n::t("nav_diagnostics"))
                 .size(t.sz(22))
+                .font(t.bold)
                 .color(p.text_primary),
             Space::new().height(t.sz(8)),
             list,
@@ -44,14 +47,18 @@ pub fn screen(checks: &[Check]) -> Element<'_, Message> {
 }
 
 fn card(c: &Check) -> Element<'_, Message> {
-    let t = theme::typography();
+    let t = Typography::current();
     let p = theme::palette();
 
     container(
         column![
-            text(c.label.clone()).size(t.sz(16)).color(p.text_primary),
+            text(c.label.clone())
+                .size(t.sz(16))
+                .font(t.regular)
+                .color(p.text_primary),
             text(c.detail.clone())
                 .size(t.sz(12))
+                .font(t.regular)
                 .color(if c.ok { p.success } else { p.error }),
         ]
         .spacing(t.sz(3)),

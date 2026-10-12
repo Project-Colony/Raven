@@ -1,14 +1,18 @@
 //! The window's state, and everything that changes it: the messages, `update`,
 //! and the subscriptions that run without being asked.
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use colony_ui::preferences::Change;
+use iced::keyboard::{self, key};
 use iced::{Element, Subscription, Task};
 
 use crate::errors::{self, Offer};
 use crate::i18n;
 use crate::model::{BaseRow, Check, EnvRow};
+use crate::preferences::{Language, Preferences};
 use crate::{deploy, load, view};
 
 /// How often the environments screen asks who holds a session, per the design's
@@ -76,6 +80,16 @@ pub enum Message {
     // failure that took minutes does not have to be reproduced in a terminal
     // to be understood.
     DeployDone(Result<(), String>),
+    /// Sent by the program's name and by the Preferences page's Close alike:
+    /// the way in is the way out.
+    TogglePreferences,
+    PreferencesCategory(usize),
+    /// Opens or closes one collapsible section of the Preferences page.
+    ToggleSection(&'static str),
+    /// A change from colony-ui's Appearance and Accessibility controls.
+    Preference(Change),
+    Language(Language),
+    DismissToast,
 }
 
 #[derive(Default)]
@@ -98,16 +112,43 @@ pub struct App {
     /// state, cleared to show the bar at all; this one is the stream's
     /// identity, and would restart the job if it changed mid-flight.
     deploy_job: Option<deploy::Args>,
+    /// What the user chose in Preferences, written back on every change.
+    pub(crate) prefs: Preferences,
+    /// Whether the Preferences page stands in for the screen. A flag rather
+    /// than a `Screen`, so closing it returns to whatever was showing.
+    pub(crate) preferences_open: bool,
+    pub(crate) preferences_category: usize,
+    /// The Preferences sections the user opened; every one starts closed.
+    pub(crate) expanded: HashSet<String>,
+    /// "Theme applied.", after a theme change that could otherwise go
+    /// unnoticed between neighbouring variants.
+    pub(crate) toast: Option<&'static str>,
 }
 
 impl App {
-    /// The window and the first load. `reload_environments` rather than
-    /// `load::environments` so `loading_envs` is true from the first frame:
-    /// the boot load and the first poll must not both be in flight.
-    pub(crate) fn boot() -> (Self, Task<Message>) {
-        let mut app = Self::default();
+    /// The window and the first load, with `prefs` already in effect.
+    /// `reload_environments` rather than `load::environments` so
+    /// `loading_envs` is true from the first frame: the boot load and the
+    /// first poll must not both be in flight.
+    pub(crate) fn boot(prefs: Preferences) -> (Self, Task<Message>) {
+        let mut app = Self {
+            prefs,
+            ..Self::default()
+        };
         let task = app.reload_environments();
         (app, task)
+    }
+
+    /// Writes the preferences; a failure is said, not swallowed, since the
+    /// change still applies until the window closes and then would not.
+    fn save_preferences(&mut self) -> Task<Message> {
+        if let Err(e) = self.prefs.save() {
+            self.offer = Some(Offer::action_error(i18n::tf(
+                "preferences_not_saved",
+                &[("why", &e)],
+            )));
+        }
+        Task::none()
     }
 
     /// Reads every environment's state, and records that it is being read.
@@ -143,6 +184,7 @@ impl App {
         match message {
             Message::Go(screen) => {
                 self.dismiss_offer();
+                self.preferences_open = false;
                 // The design asks for a reload on arriving at the environments
                 // screen: the poll only runs while it is showing, so without
                 // this the first two seconds show whatever was true when the
@@ -312,6 +354,44 @@ impl App {
                     }
                 }
             }
+            Message::TogglePreferences => {
+                self.preferences_open = !self.preferences_open;
+                self.preferences_category = 0;
+                if self.preferences_open {
+                    self.dismiss_offer();
+                    Task::none()
+                } else {
+                    // Back to the screen as it is now, not as it was when
+                    // Preferences opened: the poll stood still meanwhile.
+                    self.update(Message::Go(self.screen.clone()))
+                }
+            }
+            Message::PreferencesCategory(index) => {
+                self.preferences_category = index;
+                Task::none()
+            }
+            Message::ToggleSection(key) => {
+                if !self.expanded.remove(key) {
+                    self.expanded.insert(key.to_owned());
+                }
+                Task::none()
+            }
+            Message::Preference(change) => {
+                self.prefs.standard.update(change);
+                if matches!(change, Change::Theme { .. }) {
+                    self.toast = Some(i18n::t("theme_applied"));
+                }
+                self.save_preferences()
+            }
+            Message::Language(language) => {
+                self.prefs.language = language;
+                i18n::set_language(language.resolve());
+                self.save_preferences()
+            }
+            Message::DismissToast => {
+                self.toast = None;
+                Task::none()
+            }
         }
     }
 
@@ -332,17 +412,44 @@ impl App {
             None => Subscription::none(),
         };
         let polling = match self.screen {
+            _ if self.preferences_open => Subscription::none(),
             Screen::Environments | Screen::Detail(_) => {
                 iced::time::every(POLL).map(|_| Message::Refresh)
             }
             Screen::Bases | Screen::Doctor => Subscription::none(),
         };
-        Subscription::batch([deploying, polling])
+        let shortcuts = keyboard::listen().filter_map(shortcut);
+        Subscription::batch([deploying, polling, shortcuts])
     }
 
     pub(crate) fn view(&self) -> Element<'_, Message> {
         view::shell(self)
     }
+}
+
+/// Ctrl+1, Ctrl+2 and Ctrl+3: the three screens, in sidebar order.
+///
+/// Read by physical key rather than by character, so the shortcut is the
+/// same on AZERTY, where the key marked 1 types `&` without Shift.
+fn shortcut(event: keyboard::Event) -> Option<Message> {
+    let keyboard::Event::KeyPressed {
+        physical_key: key::Physical::Code(code),
+        modifiers,
+        ..
+    } = event
+    else {
+        return None;
+    };
+    if !modifiers.command() {
+        return None;
+    }
+    let screen = match code {
+        key::Code::Digit1 | key::Code::Numpad1 => Screen::Environments,
+        key::Code::Digit2 | key::Code::Numpad2 => Screen::Bases,
+        key::Code::Digit3 | key::Code::Numpad3 => Screen::Doctor,
+        _ => return None,
+    };
+    Some(Message::Go(screen))
 }
 
 /// Opens the environment on a blocking thread, runs one action against it,

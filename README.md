@@ -219,6 +219,7 @@ to any server.
 | Data | Stored or sent | Where, and why |
 |---|---|---|
 | Default environment | stored | `~/.config/Colony/Raven/default-environment`: the environment a `.exe` that belongs to none runs in |
+| Preferences | stored | `~/.config/Colony/Raven/preferences/preferences.toml`: the window's theme, accent, text sizes, accessibility switches and language, written when you change one |
 | Windows bases | stored | `~/.local/share/Colony/Raven/bases/`: the installations deployed from images you supply |
 | Environments | stored | `~/.local/share/Colony/Raven/environments/`: each environment's overlay layer, Wine prefix, registry rules and projected registry |
 | DXVK and vkd3d archives | stored briefly | `~/.cache/Colony/Raven/unpack/`: unpacked in a private directory, copied into the environment, then removed |

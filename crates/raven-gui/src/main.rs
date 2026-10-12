@@ -11,6 +11,7 @@ mod errors;
 mod i18n;
 mod load;
 mod model;
+mod preferences;
 mod theme;
 mod view;
 
@@ -67,10 +68,25 @@ fn main() -> iced::Result {
     if let Some(verb) = std::env::args().nth(1) {
         answer(&verb);
     }
-    iced::application(app::App::boot, app::App::update, app::App::view)
+    // In effect before the first frame, so the window opens in the user's
+    // theme, size and language rather than changing into them.
+    let prefs = preferences::Preferences::load();
+    prefs.standard.apply();
+    i18n::set_language(prefs.language.resolve());
+    // The three Colony fonts are compiled in, so no font package is needed.
+    colony_ui::fonts::BYTES
+        .into_iter()
+        .fold(
+            iced::application(
+                move || app::App::boot(prefs.clone()),
+                app::App::update,
+                app::App::view,
+            ),
+            |app, font| app.font(font),
+        )
         .subscription(app::App::subscription)
-        .title("Raven")
-        .default_font(theme::APP_FONT)
+        .title(PROGRAM)
+        .default_font(colony_ui::ui_font())
         // A Wayland compositor identifies a window by the application id it
         // reports and looks for a desktop file with that basename; iced leaves
         // it empty, so nothing would ever match `raven-gui.desktop` and the

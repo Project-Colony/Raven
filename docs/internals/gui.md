@@ -96,6 +96,9 @@ against:
 colony-ui = "0.1.4"
 ```
 
+and the window now uses 0.1.6, the release that carries the navigation and
+Preferences kit, the shared labels and the embedded fonts.
+
 This changed during the design. It was a git dependency on a tag when the
 question was first asked, and the recommendation then was to leave it that way
 until a second consumer had exercised the API. It was published instead, and
@@ -126,8 +129,14 @@ to bet on one that does not exist yet would be a poor trade.
 
 ## Screens
 
-A sidebar in the Colony convention: the logo at 28x28 with the program name,
-as `design/navigation.md` describes.
+A sidebar in the Colony convention, built from colony-ui's navigation widgets
+as `design/navigation.md` describes: the program's name at the top is the way
+into Preferences, shows whether they are open, and closes them again; under it
+the list's label, the three screens, and a hint at the bottom naming the
+shortcuts. Ctrl+1, Ctrl+2 and Ctrl+3 select the screens by physical key, so the
+shortcut is the same on AZERTY. A selected screen is marked by its background,
+the accent, with its label in whichever of near-black or near-white reads on
+it. The sidebar's width grows with the text scale.
 
 ### Environments - the home screen
 
@@ -155,6 +164,47 @@ Raven, and the reason a real progress bar exists at all.
 The checks, with their consequences written out. Not green and red lights: the
 CLI already reports *"absent - Wine falls back to wineserver for NT
 synchronization"* rather than "no", and the window keeps that.
+
+### Preferences
+
+The page replaces the screen and the sidebar stays; closing it returns to the
+screen that was showing, reloaded. It is colony-ui's kit with Raven's few
+additions:
+
+- **General** - the kit's heading and its "saved automatically" contract, and
+  a Language section: the system's, English or French, applied at once.
+- **Appearance** - Theme, Colors, Typography and Preview as the kit draws them.
+  Effects says Raven has none: the window animates nothing, and the kit's
+  animations switch would do nothing here.
+- **Accessibility** - the kit's, entire: high contrast, the dyslexia-friendly
+  font, reduced motion, and the reading size that multiplies the Typography
+  size.
+- **About** - the version, the licence, and where Raven keeps its files, shown
+  through `colony_ui::paths::locate` so displaying them creates nothing.
+
+Every section arrives collapsed. A theme change raises the kit's "Theme
+applied." toast. There is no Save button: each change goes through
+`StandardPreferences::update`, which applies it, and the file is written at
+once, through a temporary and a rename so a crash leaves the previous file.
+
+The file is `~/.config/Colony/Raven/preferences/preferences.toml`:
+`StandardPreferences` flattened in, under the field names every Colony program
+writes, plus `language`. It is read once, before the first frame, so the window
+opens in the user's theme, sizes and language. A value this build does not
+know, or a file that is not TOML at all, costs only what it cannot say: each
+field falls back to its default on its own.
+
+The no-polling rule holds here too: while Preferences are open, nothing reads
+`/proc`.
+
+### Type and fonts
+
+Every size is `Typography::current().sz(base)`, so the Typography size and the
+Accessibility reading size multiply, from 0.7225x to 1.68x. Every text names its
+font from the same `Typography`, which is OpenDyslexic while the dyslexia font
+is on, so the swap reaches every label without a restart. The three Colony
+fonts are compiled in from colony-ui and registered with iced at start-up, so
+no font package is needed.
 
 ## Data flow
 
@@ -222,6 +272,10 @@ produce tests that assert nothing. What is tested:
 - the window's word tables: identical keys in both languages, the same
   placeholders, nothing copied from the library or colony-ui, and no bare
   literal in a view.
+- the preferences file: what is saved reads back the same, and a bad value
+  costs that value alone;
+- the library's directories against `colony_ui::paths`, the canonical answer
+  it keeps a GUI-free copy of.
 
 The business logic is already covered by the library's 97 tests, and the GUI
 adds none of its own.

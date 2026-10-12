@@ -218,12 +218,14 @@ crates/raven/src/
 crates/raven-gui/src/
 ├── main.rs        the answers that are not a window, then the iced builder
 ├── app.rs         the window's state, its messages, and the actions it asks for
+├── i18n/          what only the window says, in English and French
+├── preferences.rs the user's choices in Preferences, and the file they live in
 ├── model.rs       the plain data the screens draw, kept testable
 ├── load.rs        reading that model without freezing the window
 ├── deploy.rs      base deployment, and the progress read from wimlib
 ├── errors.rs      library errors turned into something a window can offer
-├── theme.rs       colony-ui's palette and scale, applied to iced
-└── view/          one module per screen
+├── theme.rs       colony-ui's palette, with the user's accent, applied to iced
+└── view/          one module per screen, Preferences included
 ```
 
 A directory earns its existence by holding more than one file, which is why

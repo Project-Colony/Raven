@@ -223,3 +223,21 @@ LC_ALL=C raven doctor             # in English, whatever LANG says
 
 Commands, program names and paths read the same in both. Errors that come from
 the system itself, such as "Permission denied", are worded by the system.
+
+The window has its own choice: Preferences, under General, sets its language
+to the system's, English or French, and the change applies at once.
+
+## The window
+
+`raven-gui` shows environments, bases and diagnostics, and acts on them through
+the same library as the command line. Ctrl+1, Ctrl+2 and Ctrl+3 switch between
+the three screens, on any keyboard layout.
+
+Click **Raven**, top left, to open Preferences; click it again, or Close, to
+return to the screen you were on. Preferences hold the window's language, its
+theme and accent, the text size, and the accessibility switches: high
+contrast, a dyslexia-friendly font, reduced motion and a second text size that
+multiplies the first. There is no Save button. Each change applies and is
+written as it is made, to `~/.config/Colony/Raven/preferences/preferences.toml`,
+and a value the window does not understand falls back to its default rather
+than stopping it from opening.
