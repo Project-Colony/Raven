@@ -414,18 +414,25 @@ mod tests {
     #[test]
     fn every_mount_error_has_an_english_and_a_french_message() {
         let io = || std::io::Error::other("x");
-        for e in [
+        let all = [
             MountError::NoUserNamespace(io()),
             MountError::IdMap(io()),
             MountError::Mount(io()),
             MountError::MissingPath(PathBuf::from("/p")),
             MountError::NoLowerLayer,
-        ] {
-            let en = mount_error_message_in(Lang::En, &e);
-            let fr = mount_error_message_in(Lang::Fr, &e);
-            assert!(!en.starts_with("mount_error_") && !fr.starts_with("mount_error_"));
-            assert_ne!(en, fr, "{e:?} is not translated");
-        }
+        ];
+        // Only the position is reported: the messages are checked, not
+        // printed, which keeps code scanning from reading a variant's name as
+        // a user's data on its way to a log.
+        let untranslated = all.iter().position(|e| {
+            let en = mount_error_message_in(Lang::En, e);
+            let fr = mount_error_message_in(Lang::Fr, e);
+            en.starts_with("mount_error_") || fr.starts_with("mount_error_") || en == fr
+        });
+        assert_eq!(
+            untranslated, None,
+            "the MountError at this position lacks words"
+        );
     }
 
     #[test]
