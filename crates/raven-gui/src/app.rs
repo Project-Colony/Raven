@@ -118,7 +118,8 @@ pub struct App {
     /// than a `Screen`, so closing it returns to whatever was showing.
     pub(crate) preferences_open: bool,
     pub(crate) preferences_category: usize,
-    /// The Preferences sections the user opened; every one starts closed.
+    /// The Preferences sections the user opened; every one starts closed
+    /// each time the page opens.
     pub(crate) expanded: HashSet<String>,
     /// "Theme applied.", after a theme change that could otherwise go
     /// unnoticed between neighbouring variants.
@@ -357,6 +358,7 @@ impl App {
             Message::TogglePreferences => {
                 self.preferences_open = !self.preferences_open;
                 self.preferences_category = 0;
+                self.expanded.clear();
                 if self.preferences_open {
                     self.dismiss_offer();
                     Task::none()
