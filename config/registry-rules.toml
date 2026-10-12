@@ -1,0 +1,69 @@
+# What crosses from the base's real Windows registry into this environment's
+# Wine prefix. `raven env reproject <name>` applies an edit.
+#
+# Deny by default: a key crosses only if an allow rule names it or a parent of
+# it, and the most specific matching rule wins. Matching ignores case, and
+# `WOW6432Node` is folded away, so one rule covers both the 64-bit and the
+# 32-bit view.
+#
+# This is the broadened allow-list: third-party software, and a named set of
+# Microsoft subtrees that applications genuinely depend on. It is widened on
+# evidence, never for convenience. Anything not named here does not cross, and
+# finding out that something should have is a measurement, not a guess.
+#
+# Every Microsoft subtree named here was checked against a real Windows 11 hive
+# rather than guessed. A rule naming a key that does not exist is a rule nobody
+# can tell is dead.
+
+allow = [
+    # Third-party vendors: where installers record what they put where. This
+    # is the bulk of what is worth carrying over.
+    'HKLM\Software',
+    'HKCU\Software',
+    # The Microsoft subtrees applications genuinely depend on, allowed back
+    # over the blanket refusal below.
+    'HKLM\Software\Microsoft\.NETFramework',
+    'HKLM\Software\Microsoft\NET Framework Setup',
+    'HKLM\Software\Microsoft\DirectX',
+    'HKLM\Software\Microsoft\COM3',
+    'HKLM\Software\Microsoft\Ole',
+    'HKLM\Software\Microsoft\Windows Script Host',
+    # DirectWrite enumerates registered fonts, not just files in
+    # C:\Windows\Fonts. Without these, Chromium can fail to find even Arial
+    # and abort while loading a game's web fonts.
+    'HKLM\Software\Microsoft\Windows NT\CurrentVersion\Fonts',
+]
+
+deny = [
+    # A description of a machine that is not this one: its drivers, its
+    # services, the devices it had.
+    'HKLM\System',
+    'HKLM\Security',
+    'HKLM\SAM',
+    # The OS's own tree. Refused wholesale, with the handful of subtrees above
+    # allowed back by being more specific.
+    'HKLM\Software\Microsoft',
+    'HKCU\Software\Microsoft',
+    # The COM registry. Measured at 121 256 keys and 21 MB, and deliberately
+    # NOT projected by default despite being the most obviously valuable thing
+    # here.
+    #
+    # The risk runs the wrong way: a CLSID registration pointing at a
+    # Microsoft in-process server that Wine shadows turns a working builtin
+    # fallback into a hard failure. Nothing is known about how often that
+    # happens, and the rule for widening this list is evidence, not
+    # plausibility. Turning these three back on is one line each, and
+    # measuring what it changes is the first experiment to run.
+    'HKLM\Software\Classes',
+    'HKCU\Software\Classes',
+    # Wine keeps its own configuration in the registry. Projecting over it
+    # lets a real Windows silently reconfigure Wine.
+    'HKLM\Software\Wine',
+    'HKCU\Software\Wine',
+    # Machine identity and credentials have no business being copied, and are
+    # named explicitly so removing the blanket Microsoft refusal cannot expose
+    # them by accident.
+    'HKLM\Software\Microsoft\Cryptography',
+    'HKLM\Software\Microsoft\EnterpriseCertificates',
+    'HKLM\Software\Microsoft\SystemCertificates',
+]

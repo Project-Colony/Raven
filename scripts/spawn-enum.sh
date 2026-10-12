@@ -2,8 +2,8 @@
 # The fixed workload behind docs/internals/performance.md - identical in every
 # condition, so the only variable is what C: is.
 #
-#   plain Wine :  WINEPREFIX=/some/prefix sh bench/spawn-enum.sh
-#   Raven      :  raven run <env> -- /bin/sh /full/path/to/bench/spawn-enum.sh
+#   plain Wine :  WINEPREFIX=/some/prefix sh scripts/spawn-enum.sh
+#   Raven      :  raven run <env> -- /bin/sh /full/path/to/scripts/spawn-enum.sh
 #
 # Quiet the machine first, and check nothing survived a previous run:
 # `pgrep -a wine` must be empty. Prints one parseable line per sample,

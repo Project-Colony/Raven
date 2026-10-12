@@ -12,7 +12,9 @@ against 2.0% under plain Wine - and CPU percentage is not latency: a process
 blocked waiting burns *less* CPU while running *worse*. This benchmark replaces
 it. One fixed script, run identically in both conditions on a quiet machine,
 `WINEDEBUG=-all`, wineserver warmed up outside the measurement, wall-clock
-nanoseconds around each sample.
+nanoseconds around each sample. The script is
+[`scripts/spawn-enum.sh`](../../scripts/spawn-enum.sh), and its header says how
+to run it in each condition.
 
 **Process spawn** (`wine cmd /c exit`, eight samples each - measured *before*
 the fonts mask; the fix it motivated is further down):

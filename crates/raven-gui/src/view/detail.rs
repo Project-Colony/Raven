@@ -4,7 +4,7 @@
 use iced::widget::{Space, button, column, container, row, text};
 use iced::{Element, Length};
 
-use crate::Message;
+use crate::app::Message;
 use crate::model::EnvRow;
 use crate::theme;
 
@@ -106,7 +106,7 @@ pub fn screen(e: &EnvRow) -> Element<'_, Message> {
             row![
                 button(text("← Environments").size(t.sz(12)))
                     .style(theme::button_style(p))
-                    .on_press(Message::Go(crate::Screen::Environments)),
+                    .on_press(Message::Go(crate::app::Screen::Environments)),
                 Space::new().width(Length::Fill),
             ],
             text(e.name.clone()).size(t.sz(22)).color(p.text_primary),

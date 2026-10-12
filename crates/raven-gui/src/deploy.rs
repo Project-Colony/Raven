@@ -24,7 +24,7 @@ use std::process::{Command, Stdio};
 use iced::futures::channel::mpsc;
 use iced::futures::{SinkExt, Stream};
 
-use crate::Message;
+use crate::app::Message;
 
 /// How far a deployment has got.
 #[derive(Debug, Clone, PartialEq, Eq)]

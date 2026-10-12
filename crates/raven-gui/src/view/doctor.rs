@@ -7,7 +7,7 @@
 use iced::widget::{Space, column, container, scrollable, text};
 use iced::{Element, Length};
 
-use crate::Message;
+use crate::app::Message;
 use crate::model::Check;
 use crate::theme;
 

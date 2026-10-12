@@ -10,10 +10,10 @@ use iced::widget::{
 };
 use iced::{Element, Length};
 
+use crate::app::{DeployForm, Message};
 use crate::deploy::Progress;
 use crate::model::BaseRow;
 use crate::theme;
-use crate::{DeployForm, Message};
 
 pub fn screen<'a>(
     bases: &'a [BaseRow],

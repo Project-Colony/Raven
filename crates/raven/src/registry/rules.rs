@@ -82,77 +82,18 @@ fn under(path: &str, prefix: &str) -> bool {
     matches!(path.as_bytes().get(prefix.len()), None | Some(b'\\'))
 }
 
+/// The rules a new environment starts from, as the reviewable file they are
+/// kept in: `config/registry-rules.toml`, with the reason for every rule.
+///
+/// Written into each environment verbatim, comments and all, so the file a
+/// user edits is the one shipped rather than a re-serialisation of it.
+pub const DEFAULT: &str = include_str!("../../../../config/registry-rules.toml");
+
 impl Default for Rules {
-    /// The broadened allow-list: third-party software, COM registration, and a
-    /// named set of Microsoft subtrees that applications genuinely depend on.
-    ///
-    /// Widened on evidence, never for convenience. Anything not named here does
-    /// not cross, and finding out that something should have is a measurement,
-    /// not a guess.
+    /// [`DEFAULT`], parsed. The file is compiled in and a test parses it, so
+    /// a broken edit fails the build's tests rather than reaching a user.
     fn default() -> Self {
-        // Every Microsoft subtree named here was checked against a real Windows
-        // 11 hive rather than guessed. A rule naming a key that does not exist
-        // is a rule nobody can tell is dead.
-        Rules {
-            allow: [
-                // Third-party vendors: where installers record what they put
-                // where. This is the bulk of what is worth carrying over.
-                r"HKLM\Software",
-                r"HKCU\Software",
-                // The Microsoft subtrees applications genuinely depend on,
-                // allowed back over the blanket refusal below.
-                r"HKLM\Software\Microsoft\.NETFramework",
-                r"HKLM\Software\Microsoft\NET Framework Setup",
-                r"HKLM\Software\Microsoft\DirectX",
-                r"HKLM\Software\Microsoft\COM3",
-                r"HKLM\Software\Microsoft\Ole",
-                r"HKLM\Software\Microsoft\Windows Script Host",
-                // DirectWrite enumerates registered fonts, not just files in
-                // C:\Windows\Fonts. Without these, Chromium can fail to find
-                // even Arial and abort while loading a game's web fonts.
-                r"HKLM\Software\Microsoft\Windows NT\CurrentVersion\Fonts",
-            ]
-            .iter()
-            .map(|s| s.to_string())
-            .collect(),
-            deny: [
-                // A description of a machine that is not this one: its drivers,
-                // its services, the devices it had.
-                r"HKLM\System",
-                r"HKLM\Security",
-                r"HKLM\SAM",
-                // The OS's own tree. Refused wholesale, with the handful of
-                // subtrees above allowed back by being more specific.
-                r"HKLM\Software\Microsoft",
-                r"HKCU\Software\Microsoft",
-                // The COM registry. Measured at 121 256 keys and 21 MB, and
-                // deliberately NOT projected by default despite being the most
-                // obviously valuable thing here.
-                //
-                // The risk runs the wrong way: a CLSID registration pointing at
-                // a Microsoft in-process server that Wine shadows turns a
-                // working builtin fallback into a hard failure. Nothing is known
-                // about how often that happens, and the rule for widening this
-                // list is evidence, not plausibility. Turning these three back
-                // on is one line each, and measuring what it changes is the
-                // first experiment to run.
-                r"HKLM\Software\Classes",
-                r"HKCU\Software\Classes",
-                // Wine keeps its own configuration in the registry. Projecting
-                // over it lets a real Windows silently reconfigure Wine.
-                r"HKLM\Software\Wine",
-                r"HKCU\Software\Wine",
-                // Machine identity and credentials have no business being
-                // copied, and are named explicitly so removing the blanket
-                // Microsoft refusal cannot expose them by accident.
-                r"HKLM\Software\Microsoft\Cryptography",
-                r"HKLM\Software\Microsoft\EnterpriseCertificates",
-                r"HKLM\Software\Microsoft\SystemCertificates",
-            ]
-            .iter()
-            .map(|s| s.to_string())
-            .collect(),
-        }
+        Rules::parse(DEFAULT).expect("config/registry-rules.toml parses")
     }
 }
 
@@ -256,6 +197,13 @@ mod tests {
     fn anything_unnamed_is_refused() {
         assert!(!r().permits(r"HKLM\Hardware\Description"));
         assert!(!r().permits(r"HKU\.DEFAULT"));
+    }
+
+    #[test]
+    fn the_shipped_rules_file_parses_and_keeps_its_two_anchors() {
+        let shipped = Rules::parse(DEFAULT).expect("config/registry-rules.toml parses");
+        assert!(!shipped.permits(r"HKLM\System"));
+        assert!(shipped.permits(r"HKLM\Software\Microsoft\DirectX"));
     }
 
     #[test]

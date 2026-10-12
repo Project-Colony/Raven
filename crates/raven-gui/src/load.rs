@@ -3,11 +3,11 @@
 //! Reading one environment's state opens `/proc` for every process on the
 //! machine. Doing that on the interface thread stutters the window, so every
 //! read goes through this module, and the actions take the same blocking
-//! route through `act` in `main.rs`.
+//! route through `act` in `app.rs`.
 
 use iced::Task;
 
-use crate::Message;
+use crate::app::Message;
 use crate::model::{self, BaseRow, Check, EnvRow};
 
 /// Loads every environment's state on a blocking worker.

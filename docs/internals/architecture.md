@@ -199,7 +199,8 @@ bumped in one place.
 
 ```
 crates/raven/src/
-├── main.rs        the CLI; a thin shell over the library below
+├── main.rs        parses the command line and hands it to cli/
+├── cli/           the commands: the clap definitions, one file per group
 ├── lib.rs         the library root and error type
 ├── paths.rs       the Colony filesystem layout for Raven
 ├── base.rs        deploying and describing a Windows base
@@ -214,7 +215,8 @@ crates/raven/src/
 └── registry/      registry hive reading and Wine .reg projection
 
 crates/raven-gui/src/
-├── main.rs        the window, and the actions it asks the library for
+├── main.rs        the answers that are not a window, then the iced builder
+├── app.rs         the window's state, its messages, and the actions it asks for
 ├── model.rs       the plain data the screens draw, kept testable
 ├── load.rs        reading that model without freezing the window
 ├── deploy.rs      base deployment, and the progress read from wimlib
@@ -226,9 +228,23 @@ crates/raven-gui/src/
 A directory earns its existence by holding more than one file, which is why
 `layer.rs` and `paths.rs` are files and `registry/` is not.
 
+Beside `crates/`, two directories hold what is not Rust:
+
+```
+config/
+└── registry-rules.toml   the default registry rules, compiled into the library
+scripts/
+└── spawn-enum.sh         the fixed benchmark workload behind performance.md
+```
+
+`config/` is data the program reads, kept out of source files so it can be
+reviewed by someone who does not read Rust. The registry rules are the case in
+point: `include_str!` compiles the file in, a unit test parses it, and a new
+environment receives it verbatim, comments included, as the file its user edits.
+
 ### The constraint that keeps a GUI possible
 
-Everything above lives as a **library API**, and `main.rs` is a thin shell over
+Everything above lives as a **library API**, and `cli/` is a thin shell over
 it. This is not architectural decoration: a GUI is a second caller of the same
 operations, and if the logic ends up inside argument handlers, adding one means
 rewriting it. The cost of the rule now is a few function signatures; the cost of

@@ -40,10 +40,10 @@ impl Action {
     /// `StopHolders` has already said it will end the programs it lists, and
     /// routing it through the same check made it refuse in exactly the case
     /// it exists for - a button that re-raised its own banner for ever.
-    pub fn message(&self) -> crate::Message {
+    pub fn message(&self) -> crate::app::Message {
         match self {
-            Action::StopSession(name) => crate::Message::StopSession(name.clone()),
-            Action::StopHolders(name) => crate::Message::Stop(name.clone()),
+            Action::StopSession(name) => crate::app::Message::StopSession(name.clone()),
+            Action::StopHolders(name) => crate::app::Message::Stop(name.clone()),
         }
     }
 }
@@ -170,12 +170,12 @@ mod tests {
             holders: "1234 (ShineHill.exe)".into(),
         });
         assert!(
-            matches!(busy.action.unwrap().message(), crate::Message::Stop(n) if n == "games"),
+            matches!(busy.action.unwrap().message(), crate::app::Message::Stop(n) if n == "games"),
             "a stop that names what it ends must go straight through"
         );
         let session = explain(&Error::SessionHolds("games".into()));
         assert!(
-            matches!(session.action.unwrap().message(), crate::Message::StopSession(n) if n == "games"),
+            matches!(session.action.unwrap().message(), crate::app::Message::StopSession(n) if n == "games"),
             "and the one promising nothing is running must look again"
         );
     }

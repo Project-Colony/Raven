@@ -4,7 +4,7 @@
 use iced::widget::{Space, button, column, container, row, scrollable, text};
 use iced::{Element, Length};
 
-use crate::Message;
+use crate::app::Message;
 use crate::model::EnvRow;
 use crate::theme;
 

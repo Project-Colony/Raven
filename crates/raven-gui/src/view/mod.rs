@@ -8,8 +8,8 @@ pub mod environments;
 use iced::widget::{Space, button, column, container, row, text};
 use iced::{Element, Length};
 
+use crate::app::{App, Message, Screen};
 use crate::theme;
-use crate::{App, Message, Screen};
 
 /// The sidebar and whichever screen is selected.
 pub fn shell(app: &App) -> Element<'_, Message> {

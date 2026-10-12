@@ -155,7 +155,9 @@ measuring what it changes is the first experiment to run here.
 The allow list is a data file, reviewed like source, not a constant buried in
 Rust. What crosses from a real Windows into a prefix is a security-relevant and
 correctness-relevant decision, and it should be readable by someone who does not
-read Rust.
+read Rust. The defaults live in `config/registry-rules.toml`, one comment per
+rule saying why; the library compiles that file in, and every new environment
+gets a verbatim copy of it, comments included, as its own rules file.
 
 This mirrors the shape Project-Colony-Resources already uses for design tokens:
 a hand-edited source of truth, a generator, and output that is never hand-edited.
