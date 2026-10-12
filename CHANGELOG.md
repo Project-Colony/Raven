@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0](https://github.com/Project-Colony/Raven/compare/v0.4.2...v0.5.0) (2026-10-12)
+
+
+### Features
+
+* speak French in the CLI and the window, and add Preferences with themes, accents, text size and accessibility ([#21](https://github.com/Project-Colony/Raven/issues/21)) ([cb59c64](https://github.com/Project-Colony/Raven/commit/cb59c6463f34f3d50a208666ae9b224545cfa235))
+
+
+### Fixes
+
+* open Preferences with every section closed ([#23](https://github.com/Project-Colony/Raven/issues/23)) ([2d29a5e](https://github.com/Project-Colony/Raven/commit/2d29a5e8c8b482e6ccb3b6d9db32aa07fa7ce7c8))
+
 ## [0.4.2](https://github.com/Project-Colony/Raven/compare/v0.4.1...v0.4.2) (2026-10-09)
 
 
