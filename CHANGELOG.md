@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/Project-Colony/Raven/compare/v0.5.0...v0.5.1) (2026-10-14)
+
+
+### Fixes
+
+* keep session state in the runtime directory, and bring the release profile, dependencies and README up to the Colony rules ([#24](https://github.com/Project-Colony/Raven/issues/24)) ([7f953d4](https://github.com/Project-Colony/Raven/commit/7f953d460734474cedaefa0f5c818b04c606508a))
+
 ## [0.5.0](https://github.com/Project-Colony/Raven/compare/v0.4.2...v0.5.0) (2026-10-12)
 
 
