@@ -119,7 +119,7 @@ knows what was true.
 | | |
 |---|---|
 | `packaging/PKGBUILD` | builds and installs two binaries, plus a second desktop entry for `raven-gui`. The existing `raven.desktop` serves the `.exe` double-click and must not become the GUI launcher |
-| `[profile.release]` | `lto = "fat"`, `codegen-units = 1` now apply to an iced binary too - much slower to compile, and to be accepted or adjusted deliberately |
+| `[profile.release]` | `lto` and `codegen-units = 1` apply to an iced binary too. Fat LTO, used until v0.5.0, made it much slower to compile and bought the launcher no start-up, so the profile now uses the organisation's thin LTO |
 | `release-please` | tracks `.` as one package. **One version for both**: the GUI is unusable against a library of a different age |
 | the release workflow | builds, signs and publishes both binaries: `assets` names `raven-linux` and `raven-gui-linux` |
 

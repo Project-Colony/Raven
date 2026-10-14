@@ -31,18 +31,17 @@ thiserror = "2.0.21"
 tokio = "1.53.3"
 toml = "1.1.8"
 
-# Two binaries share this profile now, and they are paid for by different
-# people. `raven` runs once per .exe launch, so start-up and size are all that
-# matter, and both were measured before and after (numbers in the commit that
-# added this). `raven-gui` gains nothing measurable from either setting - it is
-# opened by hand, once, and then stays open - and pays for them in compile
-# time, since it links wgpu and iced under one codegen unit. The settings are
-# kept anyway: they are here for the launcher, which is the binary on the hot
-# path, and a second profile for the window would buy a faster build at the
-# cost of two release binaries built two different ways.
+# The organisation's release profile (Project-Colony-Resources,
+# design/releases.md, "Release profile"), shared by both binaries so they are
+# built one way. `raven` runs once per .exe launch, so start-up and size are
+# what it pays for. Against the default profile, the first measured profile (fat
+# LTO) took it from 1.9 MB to 1.2 MB and left start-up unchanged within noise
+# (numbers in docs/project/consolidation.md, 3.1). Fat LTO bought no start-up,
+# so Raven uses the organisation's thin LTO, which also links `raven-gui` (wgpu
+# and iced under one codegen unit) faster.
 # `panic = "abort"` is deliberately not set: it trades backtraces away for
 # little, and that decision is recorded in docs/project/consolidation.md.
 [profile.release]
-lto = "fat"
+lto = "thin"
 codegen-units = 1
 strip = "symbols"

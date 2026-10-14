@@ -352,7 +352,7 @@ no root. It will be useful for something; it was simply not useful for this.
 ## Where the remaining milliseconds are not
 
 Recorded so nobody spends an afternoon on the wrong thing. The release profile
-is already `lto = "fat"`, `codegen-units = 1`, `strip = "symbols"`, and the
+is already `lto = "thin"`, `codegen-units = 1`, `strip = "symbols"`, and the
 package builds `--release --locked`. That is worth keeping, but it is not where
 anything left to win lives:
 

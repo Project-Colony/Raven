@@ -70,8 +70,8 @@ jobs:
       # `--locked` was the gap: the release workflow and the PKGBUILD both
       # build locked, so a Cargo.lock that no longer agreed with Cargo.toml
       # passed every check and then failed the release, where it is expensive
-      # and public. It is asserted here rather than by a second, fat-LTO
-      # release build, which would cost minutes to learn the same thing.
+      # and public. It is asserted here rather than by a second release build
+      # with LTO, which would cost minutes to learn the same thing.
       - name: Test
         run: cargo test --verbose --locked
 
