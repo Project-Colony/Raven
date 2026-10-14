@@ -5,7 +5,7 @@
   <img src="assets/brand/png/raven-logo-light-1024.png" alt="Raven" width="360">
 </picture>
 
-**A real Windows installation, mounted as C:, with its programs launched from Linux.**
+**A real Windows installation, mounted as C:, with its programs launched from Linux: for Linux users whose Windows software needs a genuine Windows, not Wine's reconstruction of one.**
 
 </div>
 
@@ -15,14 +15,11 @@
 
 Wine and Proton run Windows programs against a *synthetic* Windows: a prefix Wine
 created, a registry Wine wrote as a text file, and reimplementations of the
-libraries a program expects to find. It works remarkably well, and it is why the
-prefix is disposable. It also means the program's whole world is a reconstruction.
-
-Raven keeps Wine where Wine is irreplaceable - translating NT calls into Linux
-syscalls - and replaces everything above it with a genuine Windows installation
-that you deploy, mount read-only, and write to through an overlay. The registry
-comes from real hives. The libraries are Microsoft's, except for the precise set
-that physically cannot be.
+libraries a program expects to find. It works remarkably well, but the program's
+whole world is a reconstruction. Raven keeps Wine only where it is
+irreplaceable, translating NT calls into Linux syscalls, and replaces everything
+above it with a genuine Windows installation that you deploy, mount read-only,
+and write to through an overlay.
 
 > **Status:** the end-to-end story exists. A real Windows 11 Pro deploys from
 > an official ISO, mounts as C:, a real installer wrote 256 MB into an
@@ -47,10 +44,11 @@ that physically cannot be.
 
 What you would otherwise reach for, and where it stops:
 
-- **Wine / Proton** - the program runs at native speed, but inside an invented
-  Windows. Software that reads its own installation state, resolves COM servers
-  it registered at install time, or expects a library Wine has only partly
-  reimplemented, finds an environment that does not quite add up.
+- **Wine / Proton** - the program runs at native speed, in a prefix that is
+  cheap to throw away, but inside an invented Windows. Software that reads its
+  own installation state, resolves COM servers it registered at install time,
+  or expects a library Wine has only partly reimplemented, finds an environment
+  that does not quite add up.
 - **A virtual machine** - perfect fidelity, because it is really Windows. It is
   also a second computer: its own RAM, its own filesystem, its own GPU story, and
   a window that is a screen rather than an application. That is isolation, which
@@ -72,6 +70,10 @@ Raven's position is the one nobody occupies:
                     ─────────────────────────────────────────────────
                     NT → Linux syscalls  →  Wine, in every case; no alternative
 ```
+
+Above that bottom line, Raven's C: is the real thing: the registry comes from
+real hives, and the libraries are Microsoft's, except for the precise set that
+physically cannot be.
 
 ## What it does
 
@@ -223,7 +225,7 @@ to any server.
 | Windows bases | stored | `~/.local/share/Colony/Raven/bases/`: the installations deployed from images you supply |
 | Environments | stored | `~/.local/share/Colony/Raven/environments/`: each environment's overlay layer, Wine prefix, registry rules and projected registry |
 | DXVK and vkd3d archives | stored briefly | `~/.cache/Colony/Raven/unpack/`: unpacked in a private directory, copied into the environment, then removed |
-| Mount points | while running | `$XDG_RUNTIME_DIR/raven/<environment>/c`: where an environment's C: is mounted; runtime state, gone at reboot |
+| Mount points and sessions | while running | `$XDG_RUNTIME_DIR/raven/<environment>/`: `c` is where an environment's C: is mounted, `session.pid` names the process holding that mount so later launches join it, and `session.lock` exists while a session starts; runtime state, gone at reboot |
 | Windows registry | read | the hives of the Windows image you supply; only the allow-listed subtrees are copied into the environment's prefix, nothing leaves the machine |
 
 The `~/.config`, `~/.local/share` and `~/.cache` paths follow `XDG_CONFIG_HOME`,

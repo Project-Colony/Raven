@@ -61,12 +61,17 @@ fn lenient_language<'de, D: Deserializer<'de>>(d: D) -> Result<Language, D::Erro
     })
 }
 
+/// The file, under Raven's config directory.
+fn file_in(config: PathBuf) -> PathBuf {
+    config.join("preferences").join("preferences.toml")
+}
+
 impl Preferences {
     /// Where the file lives, without creating anything.
     pub fn path() -> io::Result<PathBuf> {
-        Ok(colony_ui::paths::locate::config_dir(crate::PROGRAM)?
-            .join("preferences")
-            .join("preferences.toml"))
+        Ok(file_in(colony_ui::paths::locate::config_dir(
+            crate::PROGRAM,
+        )?))
     }
 
     /// The saved preferences, or the defaults when there are none or they
@@ -87,7 +92,9 @@ impl Preferences {
     /// crash mid-write leaves the previous preferences rather than half of
     /// these.
     pub fn save(&self) -> io::Result<()> {
-        let path = Self::path()?;
+        // `config_dir` creates Colony/Raven/ the way every Colony program
+        // does; the preferences/ folder under it is Raven's own.
+        let path = file_in(colony_ui::paths::config_dir(crate::PROGRAM)?);
         let dir = path.parent().expect("the file has a directory");
         std::fs::create_dir_all(dir)?;
         let text = toml::to_string(self).map_err(io::Error::other)?;

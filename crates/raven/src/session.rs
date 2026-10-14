@@ -31,29 +31,38 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use crate::i18n::{t, tf};
-use crate::{Error, env::Environment};
+use crate::{Error, env::Environment, paths};
 
 /// How long to wait for an anchor to mount and report itself.
 const READY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 impl Environment {
-    /// Where the anchor's pid is recorded.
-    pub fn session_file(&self) -> PathBuf {
+    /// Where the anchor's pid is recorded: beside the mount point, in the
+    /// runtime directory, so the record goes at reboot with the mount it
+    /// describes.
+    pub fn session_file(&self) -> Result<PathBuf, Error> {
+        Ok(paths::runtime_dir(&self.name)?.join("session.pid"))
+    }
+
+    /// Where releases up to 0.5.0 recorded the pid, in the data directory.
+    fn legacy_session_file(&self) -> PathBuf {
         self.root.join("session.pid")
     }
 
     /// The live anchor's pid, if a session is running.
     ///
-    /// A recorded pid is not evidence on its own - it survives a reboot and
-    /// pids are reused. The check that matters is whether that process is
-    /// actually holding *this* environment's upper layer, which is the same
-    /// test `holders` performs and is immune to both.
+    /// A recorded pid is not evidence on its own - it outlives an anchor that
+    /// was killed, and pids are reused. The check that matters is whether that
+    /// process is actually holding *this* environment's upper layer, which is
+    /// the same test `holders` performs and is immune to both.
     pub fn session(&self) -> Option<u32> {
-        let pid: u32 = std::fs::read_to_string(self.session_file())
-            .ok()?
-            .trim()
-            .parse()
+        // The legacy record is read too, so a launch right after an upgrade
+        // joins the session the older release started instead of refusing
+        // until it is stopped. A reboot ends every such session.
+        let text = std::fs::read_to_string(self.session_file().ok()?)
+            .or_else(|_| std::fs::read_to_string(self.legacy_session_file()))
             .ok()?;
+        let pid: u32 = text.trim().parse().ok()?;
         self.holds(pid).then_some(pid)
     }
 
@@ -64,7 +73,7 @@ impl Environment {
         }
         // A dead session's file would otherwise sit there looking alive to a
         // reader that trusts it.
-        let _ = std::fs::remove_file(self.session_file());
+        self.clear_session();
 
         // No session, but something else still holds the upper layer -
         // typically the Wine services of a session whose anchor has just died,
@@ -78,8 +87,11 @@ impl Environment {
         // together - a file manager double-click registering twice, a script
         // starting two programs - would both see no session and both start an
         // anchor. Only one can mount, and the loser died on a bare EBUSY.
-        // O_EXCL on a lock file settles which of them gets to try.
-        let lock = self.root.join("session.lock");
+        // O_EXCL on a lock file settles which of them gets to try. It sits
+        // with the record, in a directory the first launch has to create.
+        let run = paths::runtime_dir(&self.name)?;
+        std::fs::create_dir_all(&run).map_err(|e| Error::Layer(run.clone(), e))?;
+        let lock = run.join("session.lock");
         let held = loop {
             match std::fs::OpenOptions::new()
                 .write(true)
@@ -236,7 +248,10 @@ impl Environment {
 
     /// Forgets a session's record. The processes are `stop`'s business.
     pub fn clear_session(&self) {
-        let _ = std::fs::remove_file(self.session_file());
+        if let Ok(file) = self.session_file() {
+            let _ = std::fs::remove_file(file);
+        }
+        let _ = std::fs::remove_file(self.legacy_session_file());
     }
 }
 
@@ -362,6 +377,10 @@ pub fn anchor(name: &str) -> ! {
         Ok(s) => s,
         Err(err) => report(format_args!("{}", crate::i18n::error_message(&err))),
     };
+    let record = match e.session_file() {
+        Ok(f) => f,
+        Err(err) => report(format_args!("{}", crate::i18n::error_message(&err))),
+    };
     if let Err(err) = std::fs::create_dir_all(&spec.target) {
         report(format_args!(
             "{}",
@@ -389,13 +408,14 @@ pub fn anchor(name: &str) -> ! {
     }
     let pid = std::process::id();
     // Written only after the mount exists, so a reader of this file never
-    // sees a session that cannot be joined.
-    if let Err(err) = std::fs::write(e.session_file(), format!("{pid}\n")) {
+    // sees a session that cannot be joined. Its directory is the mount
+    // point's parent, created above.
+    if let Err(err) = std::fs::write(&record, format!("{pid}\n")) {
         report(format_args!(
             "{}",
             tf(
                 "anchor_no_record",
-                &[("path", &e.session_file().display()), ("why", &err)]
+                &[("path", &record.display()), ("why", &err)]
             )
         ));
     }
@@ -444,13 +464,17 @@ mod helper_tests {
 #[cfg(test)]
 mod tests {
     use crate::env::{Environment, Manifest};
+    use crate::paths;
 
+    /// An environment whose name no real one has, so its runtime directory,
+    /// which these tests write to, is theirs alone.
     fn fake(name: &str) -> Environment {
-        let root = std::env::temp_dir().join(format!("raven-sess-{name}-{}", std::process::id()));
+        let name = format!("raven-sess-{name}-{}", std::process::id());
+        let root = std::env::temp_dir().join(&name);
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("upper")).unwrap();
         Environment {
-            name: name.into(),
+            name,
             manifest: Manifest {
                 base: "none".into(),
             },
@@ -458,11 +482,26 @@ mod tests {
         }
     }
 
+    fn record(e: &Environment, text: &str) {
+        let file = e
+            .session_file()
+            .expect("XDG_RUNTIME_DIR is set wherever Raven can run");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, text).unwrap();
+    }
+
+    fn remove(e: &Environment) {
+        let _ = std::fs::remove_dir_all(&e.root);
+        if let Ok(run) = paths::runtime_dir(&e.name) {
+            let _ = std::fs::remove_dir_all(run);
+        }
+    }
+
     #[test]
     fn no_file_means_no_session() {
         let e = fake("none");
         assert_eq!(e.session(), None);
-        let _ = std::fs::remove_dir_all(&e.root);
+        remove(&e);
     }
 
     #[test]
@@ -471,16 +510,42 @@ mod tests {
         // and has a valid pid, but holds no layer of ours. A reader trusting
         // the file alone would try to join a namespace that is not there.
         let e = fake("stale");
-        std::fs::write(e.session_file(), format!("{}\n", std::process::id())).unwrap();
+        record(&e, &format!("{}\n", std::process::id()));
         assert_eq!(e.session(), None);
-        let _ = std::fs::remove_dir_all(&e.root);
+        remove(&e);
     }
 
     #[test]
     fn nonsense_in_the_file_is_not_a_session() {
         let e = fake("junk");
-        std::fs::write(e.session_file(), "not a pid\n").unwrap();
+        record(&e, "not a pid\n");
         assert_eq!(e.session(), None);
-        let _ = std::fs::remove_dir_all(&e.root);
+        remove(&e);
+    }
+
+    #[test]
+    fn the_record_is_runtime_state_beside_the_mount() {
+        // A session dies at reboot with its mount, so its record goes with
+        // them: under the runtime directory, never in the data directory
+        // where it would outlive both.
+        let e = fake("where");
+        let file = e
+            .session_file()
+            .expect("XDG_RUNTIME_DIR is set wherever Raven can run");
+        assert_eq!(file.parent(), paths::mount_point(&e.name).unwrap().parent());
+        assert!(!file.starts_with(paths::data_dir().unwrap()));
+        remove(&e);
+    }
+
+    #[test]
+    fn clearing_forgets_the_legacy_record_too() {
+        let e = fake("legacy");
+        record(&e, "1\n");
+        let legacy = e.root.join("session.pid");
+        std::fs::write(&legacy, "1\n").unwrap();
+        e.clear_session();
+        assert!(!e.session_file().unwrap().exists());
+        assert!(!legacy.exists());
+        remove(&e);
     }
 }

@@ -163,8 +163,12 @@ Raven's own start-up is **1 ms** in release and 2 ms in debug. It runs once per
 
 ### 3.1 A release profile
 
-**Done.** `lto = "fat"`, `codegen-units = 1`, `strip = "symbols"`. Measured:
-1.9 MB → 1.2 MB, start-up unchanged within noise (~1.7 ms before and after).
+**Done.** `lto = "thin"`, `codegen-units = 1`, `strip = "symbols"`: the
+organisation's profile. It was first adopted with fat LTO and measured against
+the default profile: 1.9 MB → 1.2 MB, start-up unchanged within noise (~1.7 ms
+before and after). Fat LTO bought no start-up, so after v0.5.0 the profile
+moved to thin LTO. v0.5.0's `raven-linux`, the last fat-LTO build, is
+1 502 880 bytes: the size to compare the next release against.
 
 `panic = "abort"` was considered and **deliberately not set**: a panic in raven
 happens between the kernel's `binfmt` hand-off and Wine, where there is no
@@ -194,13 +198,15 @@ registration belongs to the package, and why `doctor` diagnoses that state.
 ### 3.3 Releases
 
 The org machinery is wired and has run: release-please for tagging, the
-release workflow for the signed Linux assets Raven's platform story allows,
-`colony.json` marked `signed` for the launcher. Every tag from v0.1.0 to v0.4.1
-produced a release, and v0.4.1 carries `raven-linux` and `raven-gui-linux`, each
-with its `.sig`.
+release workflow building the Linux assets Raven's platform story allows, the
+organisation's shared sign-and-publish workflow signing and publishing them,
+and `colony.json` marked `signed` for the launcher. Every tag from v0.1.0 to
+v0.5.0 produced a release. Since v0.4.2, when signing moved to the shared
+workflow, `raven-linux` and `raven-gui-linux` each carry `.sig`, `.meta` and
+`.meta.sig`; v0.4.1 and older carry only `.sig`.
 
 **Still done when:** Colony has installed one of those assets and verified its
-signature - that end of the chain has not been checked.
+signatures - that end of the chain has not been checked.
 
 ---
 
