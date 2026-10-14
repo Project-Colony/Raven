@@ -177,7 +177,8 @@ everything sits under `Colony/Raven/`:
 
 ```
 ~/.config/Colony/Raven/          what the user chose
-└── default-environment          where a .exe outside any environment runs
+├── default-environment          where a .exe outside any environment runs
+└── preferences/preferences.toml the window's appearance and language
 
 ~/.local/share/Colony/Raven/     what Raven produced and cannot re-derive
 ├── bases/<id>/                  a deployed Windows
@@ -192,7 +193,10 @@ everything sits under `Colony/Raven/`:
 ~/.cache/Colony/Raven/           deleting it costs only time
 └── unpack/d3d-<pid>-<time>/     a DXVK or vkd3d archive, while it installs
 
-$XDG_RUNTIME_DIR/raven/<name>/c  the active mount; never survives a reboot
+$XDG_RUNTIME_DIR/raven/<name>/   runtime state; never survives a reboot
+├── c/                           the active mount
+├── session.pid                  the session anchor's pid, which launches join
+└── session.lock                 present only while a session is starting
 ```
 
 A base is data, not cache, despite being reproducible from an ISO: reproducing

@@ -53,16 +53,21 @@ pub fn environment_dir(name: &str) -> Result<PathBuf, Error> {
     Ok(data_dir()?.join("environments").join(check_name(name)?))
 }
 
-/// Where an environment's C: is mounted while it runs.
+/// An environment's runtime state: its mount point and its session record.
 ///
-/// This is runtime state and lives under the runtime directory, not under data:
-/// a mount must not survive a reboot, and a stale mount point found in a data
+/// This lives under the runtime directory, not under data: a mount must not
+/// survive a reboot, and a stale mount point or session record found in a data
 /// directory after a crash is worse than finding nothing.
-pub fn mount_point(name: &str) -> Result<PathBuf, Error> {
+pub fn runtime_dir(name: &str) -> Result<PathBuf, Error> {
     let base = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .ok_or(Error::NoRuntimeDir)?;
-    Ok(base.join("raven").join(check_name(name)?).join("c"))
+    Ok(base.join("raven").join(check_name(name)?))
+}
+
+/// Where an environment's C: is mounted while it runs.
+pub fn mount_point(name: &str) -> Result<PathBuf, Error> {
+    Ok(runtime_dir(name)?.join("c"))
 }
 
 fn xdg(var: &str, fallback: &str) -> Result<PathBuf, Error> {

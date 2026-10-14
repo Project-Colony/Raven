@@ -225,7 +225,7 @@ to any server.
 | Windows bases | stored | `~/.local/share/Colony/Raven/bases/`: the installations deployed from images you supply |
 | Environments | stored | `~/.local/share/Colony/Raven/environments/`: each environment's overlay layer, Wine prefix, registry rules and projected registry |
 | DXVK and vkd3d archives | stored briefly | `~/.cache/Colony/Raven/unpack/`: unpacked in a private directory, copied into the environment, then removed |
-| Mount points | while running | `$XDG_RUNTIME_DIR/raven/<environment>/c`: where an environment's C: is mounted; runtime state, gone at reboot |
+| Mount points and sessions | while running | `$XDG_RUNTIME_DIR/raven/<environment>/`: `c` is where an environment's C: is mounted, `session.pid` names the process holding that mount so later launches join it, and `session.lock` exists while a session starts; runtime state, gone at reboot |
 | Windows registry | read | the hives of the Windows image you supply; only the allow-listed subtrees are copied into the environment's prefix, nothing leaves the machine |
 
 The `~/.config`, `~/.local/share` and `~/.cache` paths follow `XDG_CONFIG_HOME`,

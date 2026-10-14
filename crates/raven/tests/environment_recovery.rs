@@ -48,7 +48,9 @@ fn a_process_left_in_the_namespace_is_found_and_stopped() {
     // Constructed by hand rather than through `create()`: holders and stop
     // depend only on the layout, and this test must not need Wine.
     let env = Environment {
-        name: "recovery-test".into(),
+        // Unique, because the session record goes to this name's runtime
+        // directory and a real environment could be called anything.
+        name: format!("recovery-test-{}", std::process::id()),
         manifest: Manifest {
             base: "none".into(),
         },
@@ -96,19 +98,29 @@ fn a_process_left_in_the_namespace_is_found_and_stopped() {
         "a live process that holds nothing of ours is not a session"
     );
     // And the recorded pid is believed only when it is really a holder.
-    fs::write(env.session_file(), "1\n").unwrap();
+    let record = env.session_file().expect("XDG_RUNTIME_DIR is set");
+    fs::create_dir_all(record.parent().unwrap()).unwrap();
+    fs::write(&record, "1\n").unwrap();
     assert_eq!(
         env.session(),
         None,
         "a stale pid must not pass for a session"
     );
-    fs::write(env.session_file(), format!("{}\n", child.id())).unwrap();
+    fs::write(&record, format!("{}\n", child.id())).unwrap();
     assert_eq!(
         env.session(),
         Some(child.id()),
         "a real holder is the session"
     );
-    let _ = fs::remove_file(env.session_file());
+    let _ = fs::remove_file(&record);
+    // A session started by a release that kept the record in the data
+    // directory is still joined after an upgrade.
+    fs::write(root.join("session.pid"), format!("{}\n", child.id())).unwrap();
+    assert_eq!(
+        env.session(),
+        Some(child.id()),
+        "the legacy record must still find a live session"
+    );
 
     let stopped = env.stop().expect("stop must release the environment");
     assert!(
@@ -122,6 +134,7 @@ fn a_process_left_in_the_namespace_is_found_and_stopped() {
     // Reap it; stop already killed it.
     let _ = child.wait();
     let _ = fs::remove_dir_all(&root);
+    let _ = fs::remove_dir_all(record.parent().unwrap());
 }
 
 #[test]
