@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.4](https://github.com/Project-Colony/Raven/compare/v0.5.3...v0.5.4) (2026-10-26)
+
+
+### Documentation
+
+* log the upgrade of the installed package to 0.5.3 ([#34](https://github.com/Project-Colony/Raven/issues/34)) ([3c5f927](https://github.com/Project-Colony/Raven/commit/3c5f92700a6e8dfc511c873f7a1d52c3017b024a))
+
 ## [0.5.3](https://github.com/Project-Colony/Raven/compare/v0.5.2...v0.5.3) (2026-10-26)
 
 
