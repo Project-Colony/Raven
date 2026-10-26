@@ -76,6 +76,39 @@ pacman -U raven-git-0.1.0.r41.06efc15-1-x86_64.pkg.tar.zst
 | `raven-git` | 0.1.0.r41.06efc15-1 | built from `packaging/PKGBUILD` |
 | `raven-git` | 0.1.0.r50.638c0d2-1 | rebuilt so the installed binary has `env attach` |
 | `raven-git` | 0.1.0.r62.8d26822-1 | rebuilt for the working-directory fix; first build to install `hicolor` icons |
+| `raven-git` | 0.1.0.r66.d3117e6-1 | rebuilt for environment sessions |
+| `raven-git` | 0.1.0.r67.bd6d650-1 | rebuilt for the readiness-reader fix that let `setns` join |
+| `raven-git` | 0.1.0.r68.0c97b38-1 | rebuilt for four session fixes from a review |
+| `raven-git` | 0.1.0.r75.eceea7e-1 | rebuilt when `Windows/Fonts` stopped being masked |
+| `raven-git` | 0.1.0.r76.9a9f71b-1 | rebuilt with `wine wineboot` in place of a bare `wineboot` |
+
+The last five rows were missing from this table and were added on 2026-10-26
+from `/var/log/pacman.log`, which records each upgrade at 20:05, 20:08, 20:12,
+21:17 and 21:54 that day.
+
+### 2026-10-26: Raven 0.5.1
+
+```
+BUILDDIR=… PKGDEST=… SRCDEST=… makepkg -f --noconfirm   # in packaging/
+sudo pacman -U raven-git-0.5.1.r146.00eacf8-1-x86_64.pkg.tar.zst
+```
+
+| Package | Version | How it arrived |
+|---|---|---|
+| `raven-git` | 0.5.1.r146.00eacf8-1 | built from `packaging/PKGBUILD` at `main` 00eacf8, upgrading 0.1.0.r76.9a9f71b-1 |
+
+The installed binary had stayed at 0.2.0 through six releases, so nothing
+from 0.3.0 to 0.5.1 reached a double-clicked `.exe` until this upgrade. The
+package version now reads `[workspace.package]` instead of a literal 0.1.0,
+which is why pacman counts this as an upgrade. The transaction touched no other
+package. It adds `/usr/bin/raven-gui` and `raven-gui.desktop` and removes
+nothing. The `systemd-binfmt` hook restarted the service at 13:45:22, after
+the new `/usr/bin/raven` was in place, so the kernel's held-open interpreter
+(the `F` flag) is the new binary. `raven doctor` reports `raven-pe ->
+/usr/bin/raven` and all three binaries report 0.5.1.
+
+The `raven-git-debug` package makepkg also produces is near-empty, because the
+release profile strips symbols, and was not installed.
 
 Before the install, three hand-placed files from development were removed so
 the package's own copies own those paths: `/etc/binfmt.d/raven.conf` (which
