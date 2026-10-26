@@ -222,7 +222,10 @@ proportion: with sessions a warm launch costs about a quarter of a second, so
 the same ~92 ms is over a third of it (0.16 s masked, 0.26 s unmasked). It was
 reversed on correctness, not because sessions made it small.
 `layer::reconcile` un-masks the directory before every mount, so environments
-created under the mask healed themselves. That is the whole list.
+created under the mask healed themselves. That is the whole list of masks.
+Two entries go the other way: Wine's `mscoree.dll` hid the base's and stopped
+every .NET program, and Wine's `.winmd` files hid the base's Windows Runtime
+metadata, so the layer carries neither.
 
 **Next, in order:**
 

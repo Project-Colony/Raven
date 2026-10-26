@@ -414,6 +414,9 @@ pub fn create(name: &str, base_id: &str) -> Result<Environment, Error> {
         for rel in layer::SHADOWED {
             layer::shadow(&env.layer(), rel)?;
         }
+        for rel in layer::UNCOVERED {
+            layer::uncover(&env.layer(), &base.path, rel)?;
+        }
         prefix::point_c_drive(&env.prefix(), &paths::mount_point(name)?)?;
 
         std::fs::write(env.rules_file(), registry::rules::DEFAULT)

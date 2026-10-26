@@ -160,11 +160,81 @@ pub fn unshadow(layer: &Path, relative: &str) -> Result<(), Error> {
     }
 }
 
-/// Brings a layer's markers in line with the current shadow set.
+/// Files Wine's layer must not put in front of the base's, and why.
+///
+/// The reverse of `SHADOWED`: there the base's copy has to disappear, here
+/// Wine's does. Same rule for getting in: one measurement per entry.
+///
+/// `mscoree.dll`: the loader every .NET program starts through. Wine's copy
+/// hands managed code to Wine Mono, which an environment does not have, so
+/// with it in front every managed program stopped at "Wine Mono is not
+/// installed" while the base carried .NET Framework 4.8. With Wine's copy
+/// gone, Microsoft's loads and finds `clr.dll` under `Microsoft.NET`. No DLL
+/// override is needed: Wine loads a native file it finds in System32 as
+/// native.
+///
+/// `WinMetadata`: the type descriptions of the Windows Runtime. Wine ships ten
+/// `.winmd` files of its own, a few kilobytes each against Microsoft's
+/// hundreds, and its `RoResolveNamespace` reads whichever it finds. A .NET
+/// program looking up a type Wine's file lacks failed with "Could not find
+/// Windows Runtime type", which is how the Visual Studio 2019 installer died
+/// on `Windows.Networking.Connectivity.NetworkCostType`.
+pub const UNCOVERED: &[&str] = &[
+    "Windows/System32/mscoree.dll",
+    "Windows/SysWOW64/mscoree.dll",
+    "Windows/System32/WinMetadata",
+    "Windows/SysWOW64/WinMetadata",
+];
+
+/// Deletes Wine's copy of `relative` from `dir`, letting the base show
+/// through.
+///
+/// A file is removed only when it carries Wine's signature: anything else in
+/// the upper layer belongs to whatever put it there, and a .NET update does
+/// write its own `mscoree.dll`. Wine's `.winmd` files carry no signature, so
+/// for a directory every file the base also has is taken as Wine's. Nothing
+/// but Wine's wineboot writes the OS's own namespaces into `WinMetadata`.
+pub fn uncover(dir: &Path, base: &Path, relative: &str) -> Result<(), Error> {
+    let target = dir.join(relative);
+    let theirs = base.join(relative);
+    if !theirs.is_dir() {
+        if !is_wine_builtin(&target) {
+            return Ok(());
+        }
+        return fs::remove_file(&target).map_err(|e| Error::Layer(target, e));
+    }
+    let Ok(entries) = fs::read_dir(&target) else {
+        return Ok(());
+    };
+    for entry in entries.filter_map(Result::ok) {
+        if entry.file_type().is_ok_and(|t| t.is_file()) && theirs.join(entry.file_name()).is_file()
+        {
+            fs::remove_file(entry.path()).map_err(|e| Error::Layer(entry.path(), e))?;
+        }
+    }
+    Ok(())
+}
+
+/// Whether `path` is one of Wine's own PE files. Wine signs them right after
+/// the 64-byte DOS header: "Wine builtin DLL" on the libraries current Wine
+/// installs, "Wine placeholder DLL" on the stubs older Wine wrote instead.
+fn is_wine_builtin(path: &Path) -> bool {
+    use std::io::Read as _;
+    let mut head = [0u8; 0x40 + 20];
+    fs::File::open(path)
+        .and_then(|mut f| f.read_exact(&mut head))
+        .is_ok_and(|()| {
+            let sig = &head[0x40..];
+            sig.starts_with(b"Wine builtin DLL") || sig.starts_with(b"Wine placeholder DLL")
+        })
+}
+
+/// Brings a layer's markers in line with the current shadow set, and takes
+/// Wine's copies of the uncovered files out of both layers.
 ///
 /// Idempotent and cheap, so it can run before every mount rather than needing
 /// a migration the user has to know about.
-pub fn reconcile(layer: &Path) -> Result<(), Error> {
+pub fn reconcile(layer: &Path, upper: &Path, base: &Path) -> Result<(), Error> {
     for rel in FORMERLY_SHADOWED {
         unshadow(layer, rel)?;
     }
@@ -172,6 +242,14 @@ pub fn reconcile(layer: &Path) -> Result<(), Error> {
         if layer.join(rel).is_dir() {
             shadow(layer, rel)?;
         }
+    }
+    // The upper layer too: a Wine upgrade reruns wineboot inside the mount.
+    // It copies Wine's .winmd files over the base's every time, and in an
+    // environment whose layer still held Wine's mscoree.dll it wrote a fresh
+    // one. Either hides the base from the upper layer just the same.
+    for rel in UNCOVERED {
+        uncover(layer, base, rel)?;
+        uncover(upper, base, rel)?;
     }
     Ok(())
 }
@@ -211,7 +289,7 @@ mod tests {
         shadow(layer, "Windows/Fonts").unwrap();
         shadow(layer, "Windows/WinSxS").unwrap();
 
-        reconcile(layer).unwrap();
+        reconcile(layer, &tmp.0.join("upper"), &tmp.0.join("base")).unwrap();
 
         assert!(
             rustix::fs::getxattr(
@@ -232,7 +310,100 @@ mod tests {
             "WinSxS is still shadowed and must stay so"
         );
         // Running it twice must not fail on the marker that is already gone.
-        reconcile(layer).unwrap();
+        reconcile(layer, &tmp.0.join("upper"), &tmp.0.join("base")).unwrap();
+    }
+
+    /// The start of a PE file signed the way Wine signs its own, padded
+    /// because a real one never ends at its signature.
+    fn signed(sig: &str) -> String {
+        format!("MZ{}{sig}{}", "\0".repeat(0x40 - 2), "\0".repeat(64))
+    }
+
+    #[test]
+    fn reconciling_takes_wines_net_and_winrt_files_out_of_both_layers() {
+        // Measured on a Windows 11 base: with Wine's mscoree.dll in front of
+        // Microsoft's, every .NET program died on "Wine Mono is not
+        // installed", and with Wine's .winmd files in front, a WinRT type
+        // lookup found nothing. A Wine upgrade's wineboot writes both into
+        // the upper layer.
+        let tmp = Tmp::new("uncover");
+        tmp.file(
+            "layer/Windows/System32/mscoree.dll",
+            &signed("Wine builtin DLL"),
+        )
+        .file(
+            "layer/Windows/SysWOW64/mscoree.dll",
+            &signed("Wine builtin DLL"),
+        )
+        .file(
+            "upper/Windows/System32/mscoree.dll",
+            &signed("Wine placeholder DLL"),
+        )
+        // Copied in by hand from the base: not Wine's, so not Raven's to
+        // delete.
+        .file("upper/Windows/SysWOW64/mscoree.dll", &signed("Microsoft"))
+        .file(
+            "layer/Windows/System32/kernel32.dll",
+            &signed("Wine builtin DLL"),
+        )
+        .file(
+            "base/Windows/System32/WinMetadata/Windows.Networking.winmd",
+            "ms",
+        )
+        .file(
+            "layer/Windows/System32/WinMetadata/Windows.Networking.winmd",
+            "wine",
+        )
+        .file(
+            "upper/Windows/SysWOW64/WinMetadata/Windows.Networking.winmd",
+            "wine",
+        )
+        .file(
+            "base/Windows/SysWOW64/WinMetadata/Windows.Networking.winmd",
+            "ms",
+        )
+        // A namespace the base does not describe stays Wine's to provide.
+        .file(
+            "layer/Windows/System32/WinMetadata/Windows.Wine.winmd",
+            "wine",
+        );
+        let (layer, upper, base) = (tmp.0.join("layer"), tmp.0.join("upper"), tmp.0.join("base"));
+
+        reconcile(&layer, &upper, &base).unwrap();
+
+        assert!(!layer.join("Windows/System32/mscoree.dll").exists());
+        assert!(!layer.join("Windows/SysWOW64/mscoree.dll").exists());
+        assert!(!upper.join("Windows/System32/mscoree.dll").exists());
+        assert!(
+            upper.join("Windows/SysWOW64/mscoree.dll").exists(),
+            "a native copy in the upper layer must survive"
+        );
+        assert!(
+            layer.join("Windows/System32/kernel32.dll").exists(),
+            "only the uncovered files go"
+        );
+        assert!(
+            !layer
+                .join("Windows/System32/WinMetadata/Windows.Networking.winmd")
+                .exists()
+        );
+        assert!(
+            !upper
+                .join("Windows/SysWOW64/WinMetadata/Windows.Networking.winmd")
+                .exists()
+        );
+        assert!(
+            layer
+                .join("Windows/System32/WinMetadata/Windows.Wine.winmd")
+                .exists()
+        );
+        assert!(
+            base.join("Windows/System32/WinMetadata/Windows.Networking.winmd")
+                .exists(),
+            "the base is read, never written"
+        );
+        // Nothing left to remove the second time round.
+        reconcile(&layer, &upper, &base).unwrap();
     }
 
     #[test]

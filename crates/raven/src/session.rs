@@ -380,8 +380,10 @@ pub fn anchor(name: &str) -> ! {
     // Bring the layer's opaque markers in line with the current shadow set
     // before mounting. An environment created when Windows/Fonts was masked
     // would otherwise stay masked for ever, and a user should not have to
-    // rebuild to receive a fix.
-    if let Err(err) = crate::layer::reconcile(&e.layer()) {
+    // rebuild to receive a fix. The same goes for Wine's mscoree.dll and
+    // .winmd files, which older environments still carry. The base is the
+    // second lower layer, under the Wine layer.
+    if let Err(err) = crate::layer::reconcile(&e.layer(), &e.upper(), &spec.lower[1]) {
         report(format_args!(
             "{}",
             tf("anchor_no_reconcile", &[("why", &because(&err))])
