@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.5](https://github.com/Project-Colony/Raven/compare/v0.5.4...v0.5.5) (2026-10-26)
+
+
+### Performance
+
+* keep the session's Wine server, so a launch after a pause stays fast ([#36](https://github.com/Project-Colony/Raven/issues/36)) ([0c89cb8](https://github.com/Project-Colony/Raven/commit/0c89cb8ff14112e8619280213c0a37fee1077b02))
+
 ## [0.5.4](https://github.com/Project-Colony/Raven/compare/v0.5.3...v0.5.4) (2026-10-26)
 
 
