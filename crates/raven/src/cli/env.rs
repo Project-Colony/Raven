@@ -158,8 +158,10 @@ pub fn env_cmd(cmd: EnvCmd) -> Result<()> {
             // The mount is the cheap half, and it lasts until `env stop`.
             // Wine's services are the two seconds a first launch pays; they
             // are brought up here by running the smallest possible program.
-            // Nothing makes wineserver persistent, so they exit three to six
-            // seconds after it, and only a launch within that window joins them.
+            // The anchor's wineserver is persistent, so they stay up with it.
+            // Without one - an older anchor, or a server that would not
+            // start - they exit three to six seconds after the program, and
+            // the message must not promise more.
             out!("{}", t("env_starting_services"));
             let started = std::time::Instant::now();
             if e.warm_up() {
@@ -167,10 +169,12 @@ pub fn env_cmd(cmd: EnvCmd) -> Result<()> {
                 if i18n::lang() == Lang::Fr {
                     seconds = seconds.replace('.', ",");
                 }
-                out!(
-                    "{}",
-                    tf("env_ready", &[("name", &name), ("seconds", &seconds)])
-                );
+                let key = if e.server_persistent() {
+                    "env_ready"
+                } else {
+                    "env_ready_plain"
+                };
+                out!("{}", tf(key, &[("name", &name), ("seconds", &seconds)]));
             } else {
                 // The mount is up either way, so this is a warning and not a
                 // failure: the next launch simply pays what this would have.

@@ -255,7 +255,8 @@ impl App {
             Message::Stop(name) => act(name, |e| e.stop().map(|_| ())),
             Message::StopSession(name) => act(name, |e| {
                 // This one is offered on the library's judgement that only
-                // Raven's own anchor holds the environment, and the banner
+                // the session itself holds the environment - Raven's anchor
+                // and Wine's own services - and the banner
                 // carrying it is deliberately long-lived - exempt from the
                 // poll that clears the others. A program started in between
                 // would be killed by a button whose words promised it would

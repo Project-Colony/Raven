@@ -157,6 +157,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("env_mounted", "Mounted {name} (session {anchor})."),
     ("env_starting_services", "Starting Wine's services..."),
     ("env_ready", "{name} is ready in {seconds}s. Wine's services stay up until raven env stop {name}, so every launch joins them."),
+    ("env_ready_plain", "{name} is ready in {seconds}s. A launch within a few seconds joins Wine's services; a later one starts them again."),
     ("env_wine_did_not_start", "{name} is mounted, but Wine did not start; the first launch will."),
     ("env_was_not_running", "{name} was not running."),
     ("env_stopped_one", "Stopped {name}: {n} process terminated."),

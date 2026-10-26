@@ -266,13 +266,13 @@ layers, not the number of files, so a 500 GB base would mount in the same
 0.04 s. The two seconds are `wineserver`, `services.exe`, `plugplay.exe`,
 `explorer.exe` and `rpcss.exe` coming up - and once up they serve any launch
 that arrives while they are still running. With Wine's default, `wineserver`
-exits within about ten seconds of the last program closing and the services go
-with it, so a session that kept only the mount paid those two seconds again on
-every launch after a pause.
+exits about three seconds after the last program closes and the services leave
+a few seconds later, so a session that kept only the mount paid those two
+seconds again on every launch after a pause.
 
-The anchor now starts `wineserver -p` itself, after recording the session and
-before it reports ready, so the server and its services last as long as the
-session does. Measured on the same machine with a trivial program and a session
+The anchor now starts `wineserver -p` itself, after the mount and before it
+records the session, so no launch can join and start an ordinary server first.
+The server and its services then last as long as the session does. Measured on the same machine with a trivial program and a session
 up:
 
 | launch after an idle pause of 20 to 30 seconds | |
@@ -285,12 +285,19 @@ The cost is memory: the eight processes of a session at rest come to about
 program in the session, so even the first launch joins standing services.
 
 A persistent server outlives a Wine upgrade, and a client of the newer Wine
-cannot talk to it. The anchor records which `wineserver` binary it started; a
-launch that finds it replaced ends an idle session and starts a fresh one, and
+cannot talk to it. The anchor records the server's pid, and pacman's upgrade
+leaves that process running a deleted file, which `/proc/<pid>/exe` shows. A
+launch that finds it so ends an idle session and starts a fresh one, and
 refuses with a message naming `raven env stop` when a program from the old Wine
 still runs. The same persistence means a killed anchor leaves its services
 behind for good, so a launch that finds Wine's services with no anchor among
-them ends them before it mounts.
+them ends them before it mounts. Both decisions are taken under the start lock,
+so two launches cannot act on the same session at once.
+
+Persistence is lost without a word if the server dies: the OOM killer, or a
+`wineserver -k` run inside the session. The next program starts an ordinary
+server, and the session is back to the old behaviour until it is stopped and
+started again.
 
 ### What a game's start-up actually costs, and how little of it is Raven
 

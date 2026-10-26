@@ -13,9 +13,11 @@
 //! alive. Later launches `setns` into that anchor's namespaces and run there,
 //! sharing the mount *and* the wineserver already inside it.
 //!
-//! The crash property survives intact. The mount is still owned by the anchor's
-//! process tree; if the anchor dies the mount goes with it, and nothing is left
-//! behind for the next boot to trip over.
+//! The crash property survives intact. The mount belongs to the namespace, and
+//! the namespace lives as long as any process inside it: the anchor, the
+//! session's persistent wineserver, Wine's services, the user's programs. If
+//! the anchor dies, the server keeps the mount up until the next launch finds
+//! it orphaned and stops it; nothing outlives a reboot.
 //!
 //! Joining needs no privilege, which is the fact this whole design rests on.
 //! Kernel uids are absolute and a namespace only supplies a *view* of them: the
@@ -66,31 +68,83 @@ impl Environment {
         self.holds(pid).then_some(pid)
     }
 
-    /// Where the anchor records which wineserver binary it started.
+    /// Where the anchor records the pid of the wineserver it started.
     fn server_file(&self) -> Result<PathBuf, Error> {
         Ok(paths::runtime_dir(&self.name)?.join("wineserver"))
     }
 
-    /// Whether the wineserver this session started has been replaced on disk
-    /// since - a Wine upgrade, typically. The running server is the old one,
-    /// and a client of the new Wine cannot talk to it.
+    /// The session's persistent wineserver, if the anchor started one and it
+    /// is still running. A recorded pid that is no longer a wineserver is a
+    /// server that died or was killed, and the pid may be anybody's by now.
+    fn server(&self) -> Option<u32> {
+        let text = std::fs::read_to_string(self.server_file().ok()?).ok()?;
+        let pid: u32 = text.trim().parse().ok()?;
+        is_wineserver(pid).then_some(pid)
+    }
+
+    /// Whether this session's wineserver stays up between programs. Older
+    /// releases started none, and starting one can fail; either way the
+    /// session works as before and its services leave a few seconds after
+    /// the last program.
+    pub fn server_persistent(&self) -> bool {
+        self.server().is_some()
+    }
+
+    /// Whether this session's wineserver was replaced on disk after it
+    /// started - a Wine upgrade, typically. The running server is the old
+    /// one, and a client of the new Wine cannot talk to it.
     fn server_replaced(&self) -> bool {
-        let Some(recorded) = self
-            .server_file()
-            .ok()
-            .and_then(|f| std::fs::read_to_string(f).ok())
-        else {
-            // A session from a release that started no server of its own.
-            return false;
-        };
-        is_stale(
-            recorded.trim(),
-            wineserver_binary().as_deref().and_then(identity_of),
-        )
+        self.server().is_some_and(runs_a_deleted_binary)
     }
 
     /// The pid of a session to join, starting one if none is running.
     pub fn ensure_session(&self) -> Result<u32, Error> {
+        if let Some(pid) = self.session()
+            && !self.server_replaced()
+        {
+            return Ok(pid);
+        }
+
+        // Everything after this point is check-then-act, and two cold
+        // launches arriving together - a file manager double-click registering
+        // twice, a script starting two programs - would both see no session
+        // and both start an anchor. Only one can mount, and the loser died on
+        // a bare EBUSY. O_EXCL on a lock file settles which of them gets to
+        // try. It sits with the record, in a directory the first launch has
+        // to create.
+        let run = paths::runtime_dir(&self.name)?;
+        std::fs::create_dir_all(&run).map_err(|e| Error::Layer(run.clone(), e))?;
+        let lock = run.join("session.lock");
+        let held = loop {
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&lock)
+            {
+                Ok(_) => break LockGuard(lock.clone()),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    // Somebody else is starting one. Wait for their session
+                    // rather than racing it, and fall back to trying
+                    // ourselves if their attempt died without cleaning up.
+                    if let Some(pid) = self.wait_for_session(&lock) {
+                        return Ok(pid);
+                    }
+                    let _ = std::fs::remove_file(&lock);
+                }
+                Err(e) => return Err(Error::Layer(lock.clone(), e)),
+            }
+        };
+        let started = self.replace_session();
+        drop(held);
+        started
+    }
+
+    /// Clears whatever stands in the way and starts a session. Called with
+    /// the start lock held, so nothing seen here changes under it: before,
+    /// a launch could stop a session another had just started, or tidy away
+    /// the services of one still coming up.
+    fn replace_session(&self) -> Result<u32, Error> {
+        // Somebody may have started one while this launch waited for the lock.
         if let Some(pid) = self.session() {
             if !self.server_replaced() {
                 return Ok(pid);
@@ -118,45 +172,14 @@ impl Environment {
             self.stop()?;
         }
 
-        // No session, but something else still holds the upper layer -
-        // typically the Wine services of a session whose anchor has just died,
-        // which outlive it by a few seconds. overlayfs will not mount the same
-        // upper twice, so a new anchor would fail with a bare EBUSY. Name the
-        // real cause instead: this is the pre-session error, and it is still
-        // the right one here.
+        // No session, but something else still holds the upper layer - a
+        // program of the user's that outlived its session's anchor, say.
+        // overlayfs will not mount the same upper twice, so a new anchor
+        // would fail with a bare EBUSY. Name the real cause instead: this is
+        // the pre-session error, and it is still the right one here.
         self.ensure_not_running()?;
 
-        // Everything above is check-then-act, and two cold launches arriving
-        // together - a file manager double-click registering twice, a script
-        // starting two programs - would both see no session and both start an
-        // anchor. Only one can mount, and the loser died on a bare EBUSY.
-        // O_EXCL on a lock file settles which of them gets to try. It sits
-        // with the record, in a directory the first launch has to create.
-        let run = paths::runtime_dir(&self.name)?;
-        std::fs::create_dir_all(&run).map_err(|e| Error::Layer(run.clone(), e))?;
-        let lock = run.join("session.lock");
-        let held = loop {
-            match std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&lock)
-            {
-                Ok(_) => break LockGuard(lock.clone()),
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                    // Somebody else is starting one. Wait for their session
-                    // rather than racing it, and fall back to trying
-                    // ourselves if their attempt died without cleaning up.
-                    if let Some(pid) = self.wait_for_session(&lock) {
-                        return Ok(pid);
-                    }
-                    let _ = std::fs::remove_file(&lock);
-                }
-                Err(e) => return Err(Error::Layer(lock.clone(), e)),
-            }
-        };
-        let started = self.start_session();
-        drop(held);
-        started
+        self.start_session()
     }
 
     /// Waits for somebody else's anchor to come up, or for them to give up.
@@ -170,7 +193,9 @@ impl Environment {
     fn wait_for_session(&self, lock: &std::path::Path) -> Option<u32> {
         let deadline = std::time::Instant::now() + READY_TIMEOUT;
         while std::time::Instant::now() < deadline {
-            if let Some(pid) = self.session() {
+            // A session whose server is out of date is one the lock holder is
+            // about to replace, not one to join.
+            if let Some(pid) = self.session().filter(|_| !self.server_replaced()) {
                 return Some(pid);
             }
             if !lock.exists() {
@@ -440,6 +465,11 @@ pub fn anchor(name: &str) -> ! {
     if let Err(err) = crate::mount::UserNsOverlay.mount(&spec) {
         report(format_args!("{}: {}", t("could_not_mount"), because(&err)));
     }
+    // Before the record: a launch that finds the record joins at once, and
+    // one that ran a program before the server existed would have started an
+    // ordinary server, which `-p` cannot then make persistent. Until the
+    // record exists a launch waits on the start lock instead.
+    start_server(&e);
     let pid = std::process::id();
     // Written only after the mount exists, so a reader of this file never
     // sees a session that cannot be joined. Its directory is the mount
@@ -453,10 +483,6 @@ pub fn anchor(name: &str) -> ! {
             )
         ));
     }
-    // After the record, so a second launch arriving now joins this session
-    // instead of finding a mount with no record and refusing; before "ready",
-    // so the launch that started the anchor finds the server already up.
-    start_server(&e);
     println!("ready {pid}");
     let _ = std::io::stdout().flush();
     loop {
@@ -468,13 +494,16 @@ pub fn anchor(name: &str) -> ! {
 ///
 /// Started by a program, wineserver exits a few seconds after the last one,
 /// and Wine's services go with it: a launch after a pause paid their whole
-/// start again, about 1.9 s against 0.16 s. `-p` keeps the server, and so the
+/// start again, about 1.9 s against 0.25 s. `-p` keeps the server, and so the
 /// services, for as long as the session lives; `env stop` ends it with the
 /// rest. That costs about 50 MiB while the session is up.
 ///
 /// Best effort. If it cannot start, the first program starts an ordinary
-/// server and the session behaves as it did before. stdout is the launcher's
-/// readiness pipe, so the server must not inherit it.
+/// server and the session behaves as it did before. The same goes for a
+/// server that dies later, killed by the OOM killer or by a `wineserver -k`
+/// run inside the session: the next program starts an ordinary one, and the
+/// session stays without persistence until it is stopped. stdout is the
+/// launcher's readiness pipe, so the server must not inherit it.
 fn start_server(e: &Environment) {
     let Some(bin) = wineserver_binary() else {
         return;
@@ -487,39 +516,46 @@ fn start_server(e: &Environment) {
         .stderr(Stdio::null())
         .status()
         .is_ok_and(|s| s.success());
-    if let (true, Some(id), Ok(file)) = (started, identity_of(&bin), e.server_file()) {
-        let _ = std::fs::write(file, id);
+    if !started {
+        return;
+    }
+    // The server forks into the background, so the pid to keep is not the
+    // one just spawned. It is the only one in this new namespace.
+    let server = e.holders().into_iter().find(|h| h.comm == "wineserver");
+    if let (Some(server), Ok(file)) = (server, e.server_file()) {
+        let _ = std::fs::write(file, format!("{}\n", server.pid));
     }
 }
 
-/// The wineserver binary a `wine` started here would use: `WINESERVER` when
-/// it is set, which Wine honours, otherwise the first on `PATH`.
+/// The wineserver a `wine` started here talks to. Wine looks beside its own
+/// binary first and only then at `WINESERVER` and `PATH`, so asking in
+/// another order could start a server its programs never use.
 fn wineserver_binary() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("WINESERVER") {
-        return Some(PathBuf::from(p));
-    }
-    std::env::split_paths(&std::env::var_os("PATH")?)
-        .map(|d| d.join("wineserver"))
-        .find(|p| p.is_file())
+    let path = std::env::var_os("PATH");
+    let on_path = |name: &str| {
+        std::env::split_paths(path.as_deref()?)
+            .map(|d| d.join(name))
+            .find(|p| p.is_file())
+    };
+    on_path("wine")
+        .and_then(|wine| std::fs::canonicalize(wine).ok())
+        .map(|wine| wine.with_file_name("wineserver"))
+        .filter(|p| p.is_file())
+        .or_else(|| std::env::var_os("WINESERVER").map(PathBuf::from))
+        .or_else(|| on_path("wineserver"))
 }
 
-/// Which file a path is right now. pacman installs a new file rather than
-/// rewriting the old one, so an upgrade changes the inode as well as the
-/// mtime.
-fn identity_of(path: &std::path::Path) -> Option<String> {
-    use std::os::unix::fs::MetadataExt as _;
-    let m = std::fs::metadata(path).ok()?;
-    Some(format!(
-        "{}:{}:{}.{}",
-        m.dev(),
-        m.ino(),
-        m.mtime(),
-        m.mtime_nsec()
-    ))
+fn is_wineserver(pid: u32) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| c.trim() == "wineserver")
 }
 
-fn is_stale(recorded: &str, now: Option<String>) -> bool {
-    now.as_deref() != Some(recorded)
+/// Whether a process runs a binary that has since been deleted. pacman
+/// installs a new file rather than rewriting the old one, and the kernel marks
+/// the link of a process still running the old one.
+fn runs_a_deleted_binary(pid: u32) -> bool {
+    use std::os::unix::ffi::OsStrExt as _;
+    std::fs::read_link(format!("/proc/{pid}/exe"))
+        .is_ok_and(|exe| exe.as_os_str().as_bytes().ends_with(b" (deleted)"))
 }
 
 /// An error and the causes underneath it, as one line.
@@ -545,29 +581,30 @@ fn because(e: &(dyn std::error::Error + 'static)) -> String {
 
 #[cfg(test)]
 mod server_tests {
-    use super::{identity_of, is_stale};
+    use super::{is_wineserver, runs_a_deleted_binary};
 
     #[test]
-    fn a_replaced_wineserver_is_told_apart_from_the_one_a_session_started() {
+    fn a_server_whose_binary_was_replaced_is_told_apart() {
         // A persistent server outlives a Wine upgrade, and a client of the new
-        // Wine cannot talk to it ("version mismatch"). pacman replaces the
-        // binary with a new file, which is what the identity has to catch.
+        // Wine cannot talk to it ("version mismatch"). pacman removes the old
+        // file, which is what has to be caught. A copy of sleep named
+        // wineserver stands in for the server.
         let dir = std::env::temp_dir().join(format!("raven-ws-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let bin = dir.join("wineserver");
-        std::fs::write(&bin, b"old").unwrap();
-        let started = identity_of(&bin).expect("an existing file has an identity");
+        std::fs::copy("/usr/bin/sleep", &bin).unwrap();
+        let mut server = std::process::Command::new(&bin).arg("30").spawn().unwrap();
+        let pid = server.id();
 
-        assert!(!is_stale(&started, identity_of(&bin)), "unchanged");
-        let next = dir.join("wineserver.new");
-        std::fs::write(&next, b"new").unwrap();
-        std::fs::rename(&next, &bin).unwrap();
-        assert!(
-            is_stale(&started, identity_of(&bin)),
-            "replaced like an upgrade"
-        );
-        assert!(is_stale(&started, None), "gone altogether");
+        assert!(is_wineserver(pid));
+        assert!(!runs_a_deleted_binary(pid), "unchanged");
+        std::fs::remove_file(&bin).unwrap();
+        assert!(runs_a_deleted_binary(pid), "removed like an upgrade");
+
+        let _ = server.kill();
+        let _ = server.wait();
+        assert!(!is_wineserver(pid), "gone");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
