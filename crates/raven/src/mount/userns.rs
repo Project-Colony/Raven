@@ -13,6 +13,7 @@
 use std::ffi::CString;
 use std::fs;
 use std::io::Write;
+use std::time::{Duration, Instant};
 
 use rustix::mount::{MountFlags, MountPropagationFlags};
 use rustix::thread::UnshareFlags;
@@ -109,18 +110,34 @@ impl MountBackend for UserNsOverlay {
             ))
         })?;
 
-        rustix::mount::mount(
-            "overlay",
-            &spec.target,
-            "overlay",
-            MountFlags::empty(),
-            options.as_c_str(),
-        )
-        .map_err(|e| MountError::Mount(e.into()))?;
-
-        Ok(())
+        let deadline = Instant::now() + RELEASE_GRACE;
+        loop {
+            match rustix::mount::mount(
+                "overlay",
+                &spec.target,
+                "overlay",
+                MountFlags::empty(),
+                options.as_c_str(),
+            ) {
+                Err(rustix::io::Errno::BUSY) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                result => return result.map_err(|e| MountError::Mount(e.into())),
+            }
+        }
     }
 }
+
+/// How long a mount waits for an upper layer that reads as busy to be let go.
+///
+/// The last process of a namespace takes its mounts down on its way out,
+/// after its `/proc/<pid>/mountinfo` is already gone, and overlayfs keeps the
+/// upper layer locked until that superblock is destroyed. A mount landing in
+/// between failed with EBUSY although nothing held the environment any more,
+/// which is what `env start` right after `env stop` ran into. Measured: up to
+/// 56 ms after `stop` returned, about 180 ms with 1 GB still to write back.
+/// A second live mount of the same upper still fails, only this much later.
+const RELEASE_GRACE: Duration = Duration::from_secs(10);
 
 /// The uid/gid map files accept exactly one write and reject a second one, so
 /// this deliberately opens, writes and closes rather than holding a handle.

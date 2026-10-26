@@ -157,3 +157,59 @@ fn an_environment_running_nothing_reports_no_holders() {
     );
     let _ = fs::remove_dir_all(&root);
 }
+
+#[test]
+fn a_mount_waits_for_an_upper_layer_that_is_being_released() {
+    if !userns_available() {
+        eprintln!("skipped: this kernel restricts unprivileged user namespaces");
+        return;
+    }
+    // `stop` returns once no process shows the mount any more, but the last
+    // one is still taking it down, and overlayfs refuses the upper layer
+    // until it has: `env start` right after `env stop` failed with EBUSY. A
+    // holder that exits by itself a second later stands in for that window
+    // and makes it long enough to hit every time.
+    let root = std::env::temp_dir().join(format!("raven-release-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    for d in ["base", "upper", "work", "merged"] {
+        fs::create_dir_all(root.join(d)).unwrap();
+    }
+    let exec = |argv: &[&str]| {
+        let mut cmd = Command::new(raven_bin());
+        cmd.args(["exec", "--lower"])
+            .arg(root.join("base"))
+            .arg("--upper")
+            .arg(root.join("upper"))
+            .arg("--work")
+            .arg(root.join("work"))
+            .arg("--target")
+            .arg(root.join("merged"))
+            .arg("--")
+            .args(argv);
+        cmd
+    };
+    let env = Environment {
+        name: format!("release-test-{}", std::process::id()),
+        manifest: Manifest {
+            base: "none".into(),
+        },
+        root: root.clone(),
+    };
+
+    let mut leaving = exec(&["sleep", "1"]).spawn().expect("spawn raven exec");
+    for _ in 0..50 {
+        if !env.holders().is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(!env.holders().is_empty(), "the first mount must be up");
+
+    let second = exec(&["true"]).status().expect("spawn raven exec");
+    assert!(
+        second.success(),
+        "a mount must wait for the upper layer to be let go, not fail with EBUSY"
+    );
+    let _ = leaving.wait();
+    let _ = fs::remove_dir_all(&root);
+}
