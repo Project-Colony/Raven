@@ -79,12 +79,20 @@ refuses with exactly these two commands rather than a bare
 
 ## A launch refuses after a Wine update
 
-A session keeps its `wineserver` running, and a client of a newer Wine cannot
-talk to an older server. After an update, the next launch replaces an idle
-session, which costs about as much as a first launch. If a program started
+A session keeps its `wineserver` running, and a client of another Wine
+version cannot talk to it. After an update, or once another Wine comes first on
+`PATH`, the next launch replaces an idle session, which costs about as much as
+a first launch. If a program started
 before the update is still running in the environment, the launch refuses and
 names the fix: close that program, or end the session with
 `raven env stop <name>`.
+
+## A script hangs on `wineserver -w`
+
+winetricks and many install scripts wait with `wineserver -w` for Wine to
+finish. In a session the server does not exit on its own, so the wait lasts
+until `raven env stop`. [usage.md](usage.md#why-the-second-launch-is-faster) has the
+way out.
 
 ## Launching feels slower than Proton
 

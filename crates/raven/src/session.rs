@@ -90,11 +90,17 @@ impl Environment {
         self.server().is_some()
     }
 
-    /// Whether this session's wineserver was replaced on disk after it
-    /// started - a Wine upgrade, typically. The running server is the old
-    /// one, and a client of the new Wine cannot talk to it.
-    fn server_replaced(&self) -> bool {
-        self.server().is_some_and(runs_a_deleted_binary)
+    /// Whether this session's wineserver is not the one a `wine` started
+    /// here would use: replaced on disk since it started, as pacman does, or
+    /// another Wine first on `PATH` now. A client cannot talk to a server of
+    /// another version, and a persistent one never leaves to make room.
+    pub fn server_replaced(&self) -> bool {
+        self.server().is_some_and(|pid| {
+            runs_a_deleted_binary(pid)
+                || wineserver_binary().is_some_and(|ours| {
+                    std::fs::read_link(format!("/proc/{pid}/exe")).is_ok_and(|exe| exe != ours)
+                })
+        })
     }
 
     /// The pid of a session to join, starting one if none is running.
@@ -527,22 +533,24 @@ fn start_server(e: &Environment) {
     }
 }
 
-/// The wineserver a `wine` started here talks to. Wine looks beside its own
-/// binary first and only then at `WINESERVER` and `PATH`, so asking in
-/// another order could start a server its programs never use.
+/// The wineserver of the `wine` on `PATH`, when it can be told for certain.
+///
+/// Wine starts the server from its own install tree, so the server is the
+/// one beside the real `wine` binary. A `wine` that is a wrapper script has no
+/// server beside it, and guessing from `WINESERVER` or `PATH` could start a
+/// server of another version, which every program would then refuse to talk
+/// to for as long as the session lives. Then there is no persistent server,
+/// and the first program starts its own as before.
 fn wineserver_binary() -> Option<PathBuf> {
-    let path = std::env::var_os("PATH");
-    let on_path = |name: &str| {
-        std::env::split_paths(path.as_deref()?)
-            .map(|d| d.join(name))
-            .find(|p| p.is_file())
-    };
-    on_path("wine")
-        .and_then(|wine| std::fs::canonicalize(wine).ok())
-        .map(|wine| wine.with_file_name("wineserver"))
-        .filter(|p| p.is_file())
-        .or_else(|| std::env::var_os("WINESERVER").map(PathBuf::from))
-        .or_else(|| on_path("wineserver"))
+    let wine = std::env::split_paths(&std::env::var_os("PATH")?)
+        .map(|d| d.join("wine"))
+        .find(|p| p.is_file())?;
+    Some(
+        std::fs::canonicalize(wine)
+            .ok()?
+            .with_file_name("wineserver"),
+    )
+    .filter(|p| p.is_file())
 }
 
 fn is_wineserver(pid: u32) -> bool {

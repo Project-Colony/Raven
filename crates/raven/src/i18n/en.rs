@@ -28,7 +28,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("help_env_status", "Report whether an environment is running and what holds it"),
     ("help_env_stop", "Release an environment: terminate every process holding its mount"),
     ("help_env_start", "Bring an environment up: mount it and start Wine's services"),
-    ("help_env_start_long", "Bring an environment up: mount it and start Wine's services.\n\nMounting costs 0.04s and lasts until `env stop`. Wine's services cost about 1.7s and exit a few seconds after the last program does, so only a launch made within those seconds skips them."),
+    ("help_env_start_long", "Bring an environment up: mount it and start Wine's services.\n\nMounting costs 0.04s and lasts until `env stop`. Wine's services cost about 1.7s; the session's wineserver is persistent, so they stay up until `env stop` and every later launch skips them."),
     ("help_env_attach", "Attach a block device to an environment as a raw drive"),
     ("help_env_attach_long", "Attach a block device to an environment as a raw drive.\n\nDangerous by design: a program in the environment can then read and WRITE the device's sectors directly. Tools that discover disks through Windows enumeration still will not see it - the docs say why."),
     ("help_env_attach_device", "The unix block device, e.g. /dev/sdc"),

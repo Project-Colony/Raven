@@ -25,7 +25,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("help_env_status", "Indiquer si un environnement tourne et ce qui le retient"),
     ("help_env_stop", "Libérer un environnement : terminer tous les processus qui retiennent son montage"),
     ("help_env_start", "Démarrer un environnement : le monter et lancer les services de Wine"),
-    ("help_env_start_long", "Démarrer un environnement : le monter et lancer les services de Wine.\n\nLe montage coûte 0,04 s et dure jusqu'à `env stop`. Les services de Wine coûtent environ 1,7 s et s'arrêtent quelques secondes après le dernier programme ; seul un lancement fait dans ces quelques secondes s'en dispense."),
+    ("help_env_start_long", "Démarrer un environnement : le monter et lancer les services de Wine.\n\nLe montage coûte 0,04 s et dure jusqu'à `env stop`. Les services de Wine coûtent environ 1,7 s ; le wineserver de la session est persistant, donc ils restent en place jusqu'à `env stop` et chaque lancement suivant s'en dispense."),
     ("help_env_attach", "Rattacher un périphérique bloc à un environnement comme disque brut"),
     ("help_env_attach_long", "Rattacher un périphérique bloc à un environnement comme disque brut.\n\nDangereux par nature : un programme de l'environnement peut alors lire et ÉCRIRE directement les secteurs du périphérique. Les outils qui découvrent les disques par l'énumération de Windows ne le verront toujours pas ; la documentation explique pourquoi."),
     ("help_env_attach_device", "Le périphérique bloc Unix, par exemple /dev/sdc"),

@@ -161,7 +161,7 @@ Four conceptual verbs, and how they map onto the real commands:
 |---|---|---|
 | **create** | `raven env create` | allocate `upper/` and `work/`, build the Wine prefix, normalise the layer's casing, set the shadow masks, project the registry |
 | **activate** | implicit in `run` / `launch`, or `raven env start` | the first launch starts an anchor that mounts the overlay and holds it; every later one joins that namespace |
-| **deactivate** | `raven env stop` | the mount dies with the anchor's process tree, so it outlives any one program; `env status` names everything holding it and marks the anchor |
+| **deactivate** | `raven env stop` | ends the anchor, the session's persistent `wineserver` and every other process in the namespace, and the mount dies with them; until then it outlives any one program; `env status` names everything holding it and marks the anchor and Wine's services |
 | **destroy** | `raven env destroy` | refuse if held, then delete the environment directory; the base is untouched |
 
 Nothing in that list writes to a base. That is checkable, and it should be

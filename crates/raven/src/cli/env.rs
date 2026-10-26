@@ -146,7 +146,9 @@ pub fn env_cmd(cmd: EnvCmd) -> Result<()> {
         }
         EnvCmd::Start { name } => {
             let e = env::Environment::open(&name)?;
-            if e.session().is_some() {
+            // A session whose server is out of date is one the next launch
+            // would replace, paying the cold start this command is for.
+            if e.session().is_some() && !e.server_replaced() {
                 out!("{}", tf("env_already_up", &[("name", &name)]));
                 return Ok(());
             }

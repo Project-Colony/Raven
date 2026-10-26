@@ -276,14 +276,22 @@ const WINE_SERVICES: &[&str] = &[
 
 /// Whether a process is one of Wine's own. `explorer.exe` is only when it is
 /// Wine's desktop: the same name is the file browser a user or a program can
-/// open, and that window is the user's to close.
+/// open, and that window is the user's to close. `wineserver` is not when it
+/// was asked to wait or to kill: that is a script's client - winetricks', or
+/// the tail of Raven's own registry import - and ending it would end the work
+/// it is waiting for.
 fn is_wine_service(comm: &str, cmdline: &[u8]) -> bool {
-    if comm == "explorer.exe" {
-        return cmdline
-            .split(|b| *b == 0)
-            .any(|arg| arg.eq_ignore_ascii_case(b"/desktop"));
+    let mut args = cmdline.split(|b| *b == 0).skip(1);
+    match comm {
+        "explorer.exe" => args.any(|arg| arg.eq_ignore_ascii_case(b"/desktop")),
+        "wineserver" => !args.any(|arg| {
+            arg.starts_with(b"-w")
+                || arg.starts_with(b"-k")
+                || arg.starts_with(b"--wait")
+                || arg.starts_with(b"--kill")
+        }),
+        _ => WINE_SERVICES.contains(&comm),
     }
-    WINE_SERVICES.contains(&comm)
 }
 
 impl Holder {
@@ -595,6 +603,12 @@ mod holder_tests {
         // shares a Wine service's: both are the user's.
         assert!(!h_with("explorer.exe", false, b"explorer.exe\0C:\\\0").is_session());
         assert!(!h("msiexec.exe", false).is_session());
+        // A script waiting for the server is the script's, not the session's:
+        // with the server persistent that wait lasts until `env stop`, and
+        // a registry import ends on one.
+        assert!(h_with("wineserver", false, b"/usr/bin/wineserver\0-p\0").is_session());
+        assert!(!h_with("wineserver", false, b"wineserver\0-w\0").is_session());
+        assert!(!h_with("wineserver", false, b"wineserver\0--kill=9\0").is_session());
     }
 
     #[test]

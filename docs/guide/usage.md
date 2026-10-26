@@ -176,9 +176,18 @@ You need that only to change the environment itself - installing DXVK, attaching
 a device, re-running the projection - because those cannot safely happen under a
 live Wine. They will tell you so, and name this command.
 
-If Raven dies, the mount dies with it. That is not a courtesy: the mount lives
-inside the session's own namespace, so there is nothing left to clean up after a
-crash and nothing stale for the next boot to trip over.
+The mount lives inside the session's own namespace, so a crash leaves nothing
+on the host and nothing stale for the next boot to trip over. If the anchor
+dies, the session's `wineserver` and Wine's services keep C: mounted inside
+that namespace until the next launch ends them, `raven env stop` does, or the
+machine restarts.
+
+The session's `wineserver` does not exit on its own, so `wineserver -w`, which
+waits for it to exit, waits until `raven env stop`. winetricks runs it after
+most verbs and stalls there. To let such a script go on once its installer has
+finished, run `raven run games -- wineserver -k` from another terminal. That
+also closes every program open in the environment, and the session has no
+persistent server until it is stopped and started again.
 
 ## Starting over
 

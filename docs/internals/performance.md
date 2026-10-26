@@ -231,9 +231,11 @@ every process on the machine - 37 ms of a 32 ms launch, on 454 processes. The
 scan was the launch. Reading the one process's `mountinfo` gives the same
 answer, and what is left of Raven on a warm launch is about 2 ms.
 
-The crash property that motivated the old design is intact: the mount is still
-owned by the anchor's process tree, and killing the anchor was verified to take
-the mount with it and leave nothing visible on the host.
+The crash property that motivated the old design is intact: the mount belongs
+to the session's namespace, and killing everything in it was verified to take
+the mount with it and leave nothing visible on the host. Since the server is
+persistent, killing only the anchor leaves the server and Wine's services
+holding the namespace until the next launch ends them.
 
 One thing had to change underneath to make a long-lived namespace safe. The
 mount was made `MS_PRIVATE`, which stops propagation in **both** directions -
@@ -286,13 +288,26 @@ program in the session, so even the first launch joins standing services.
 
 A persistent server outlives a Wine upgrade, and a client of the newer Wine
 cannot talk to it. The anchor records the server's pid, and pacman's upgrade
-leaves that process running a deleted file, which `/proc/<pid>/exe` shows. A
-launch that finds it so ends an idle session and starts a fresh one, and
+leaves that process running a deleted file, which `/proc/<pid>/exe` shows; a
+launch also compares that link with the `wineserver` beside the `wine` on its
+own `PATH`, which catches another Wine install. A launch that finds either
+ends an idle session and starts a fresh one, and
 refuses with a message naming `raven env stop` when a program from the old Wine
 still runs. The same persistence means a killed anchor leaves its services
 behind for good, so a launch that finds Wine's services with no anchor among
 them ends them before it mounts. Both decisions are taken under the start lock,
 so two launches cannot act on the same session at once.
+
+No server is started when the `wine` on `PATH` is a wrapper script with no
+`wineserver` beside it: Wine starts the server from its own install tree, and
+guessing another could start one every program refuses. The first program then
+starts an ordinary server, as before.
+
+A persistent server also means `wineserver -w`, which waits for the server to
+exit, waits until `raven env stop`. winetricks runs it after most verbs. A
+waiting `wineserver -w` or `-k` is counted as the user's process, not the
+session's, so nothing ends it as a leftover and the window does not call the
+environment idle.
 
 Persistence is lost without a word if the server dies: the OOM killer, or a
 `wineserver -k` run inside the session. The next program starts an ordinary
