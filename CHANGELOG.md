@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.3](https://github.com/Project-Colony/Raven/compare/v0.5.2...v0.5.3) (2026-10-26)
+
+
+### Fixes
+
+* let the base's .NET Framework and WinRT metadata through Wine's layer ([#31](https://github.com/Project-Colony/Raven/issues/31)) ([b4e187c](https://github.com/Project-Colony/Raven/commit/b4e187cbb68fc706ea396b235240c1da0de16200))
+* wait out an upper layer the kernel is still releasing ([#32](https://github.com/Project-Colony/Raven/issues/32)) ([95b381a](https://github.com/Project-Colony/Raven/commit/95b381a3531c6b79f6803ae33e9dd6bd5a45cb3c))
+
 ## [0.5.2](https://github.com/Project-Colony/Raven/compare/v0.5.1...v0.5.2) (2026-10-26)
 
 
