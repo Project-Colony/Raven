@@ -146,11 +146,12 @@ There is no distinct "CachyOS DXVK" to prefer.
 ## Why the second launch is faster
 
 The first program you run in an environment starts a **session**: Raven mounts
-C: once and keeps it, so every later launch joins what is already there instead
-of building a world of its own. Measured with a trivial program, the first
-launch of the day costs about two seconds and a launch that follows another
-within a few seconds about a quarter of one - still about twice plain Wine's
-0.12 s once its own server is warm. A
+C: once, starts Wine's server and services, and keeps all of them until you stop
+the session, so every later launch joins what is already there instead of
+building a world of its own. Measured with a trivial program, the first launch
+of the day costs about two seconds and every later one about a quarter of a
+second, after a pause as much as straight after the previous launch - still
+about twice plain Wine's 0.12 s once its own server is warm. A
 real program adds its own start-up on top: a Direct3D 11 game took 7.7 to 9.5
 seconds to show its window, against 7.9 under plain Wine. The figures are in
 [../internals/performance.md](../internals/performance.md).
@@ -161,13 +162,9 @@ You can also bring an environment up before you need it:
 raven env start games
 ```
 
-Mounting costs four hundredths of a second, and the session keeps the mount
-until you stop it. `start` also brings Wine's services up, which costs about
-1.7 seconds, but they do not stay: Wine shuts them down three to six seconds
-after the last program in the environment exits, and Raven does not keep them
-running. A launch within those few seconds joins them and costs about a quarter
-of a second plus the program's own start-up; a later one starts them again. A
-launch some time after `start` has not been measured.
+Mounting costs four hundredths of a second. `start` also brings Wine's services
+up, which costs about 1.7 seconds, so even the first launch joins them. While
+the session is up they use about 50 MiB of memory.
 
 The session holds C: until you release it:
 
@@ -179,9 +176,18 @@ You need that only to change the environment itself - installing DXVK, attaching
 a device, re-running the projection - because those cannot safely happen under a
 live Wine. They will tell you so, and name this command.
 
-If Raven dies, the mount dies with it. That is not a courtesy: the mount lives
-inside the session's own namespace, so there is nothing left to clean up after a
-crash and nothing stale for the next boot to trip over.
+The mount lives inside the session's own namespace, so a crash leaves nothing
+on the host and nothing stale for the next boot to trip over. If the anchor
+dies, the session's `wineserver` and Wine's services keep C: mounted inside
+that namespace until the next launch ends them, `raven env stop` does, or the
+machine restarts.
+
+The session's `wineserver` does not exit on its own, so `wineserver -w`, which
+waits for it to exit, waits until `raven env stop`. winetricks runs it after
+most verbs and stalls there. To let such a script go on once its installer has
+finished, run `raven run games -- wineserver -k` from another terminal. That
+also closes every program open in the environment, and the session has no
+persistent server until it is stopped and started again.
 
 ## Starting over
 

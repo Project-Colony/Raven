@@ -213,6 +213,10 @@ pub fn error_message_in(lang: Lang, error: &Error) -> String {
             "error_session_holds",
             &[("quoted", &q(name)), ("name", name)],
         ),
+        Error::WineChanged(name) => f(
+            "error_wine_changed",
+            &[("quoted", &q(name)), ("name", name)],
+        ),
         Error::D3dWouldOverwrite(path) => {
             f("error_d3d_would_overwrite", &[("path", &path.display())])
         }
@@ -359,6 +363,7 @@ mod tests {
             Error::NotAD3dBuild("dxvk", p()),
             Error::SessionFailed("why".into()),
             Error::SessionHolds("games".into()),
+            Error::WineChanged("games".into()),
             Error::D3dWouldOverwrite(p()),
             Error::D3dLink(p()),
         ];
@@ -390,6 +395,7 @@ mod tests {
                 | Error::NotAD3dBuild(..)
                 | Error::SessionFailed(_)
                 | Error::SessionHolds(_)
+                | Error::WineChanged(_)
                 | Error::D3dWouldOverwrite(_)
                 | Error::D3dLink(_) => {}
             }

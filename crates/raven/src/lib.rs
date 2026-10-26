@@ -50,6 +50,7 @@ pub enum Error {
     NotAD3dBuild(&'static str, std::path::PathBuf),
     SessionFailed(String),
     SessionHolds(String),
+    WineChanged(String),
     D3dWouldOverwrite(std::path::PathBuf),
     D3dLink(std::path::PathBuf),
 }

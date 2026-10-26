@@ -16,8 +16,10 @@ pub struct EnvRow {
     pub base: String,
     /// The session anchor's pid, when one is live.
     pub session: Option<u32>,
-    /// How many processes hold the mount, the anchor included.
-    pub holders: usize,
+    /// How many of the user's processes hold the mount. The anchor and
+    /// Wine's services are the session itself, and with the server
+    /// persistent they are always there.
+    pub programs: usize,
     /// The installed build, as the release named itself.
     pub dxvk: Option<String>,
     pub vkd3d: Option<String>,
@@ -36,7 +38,10 @@ impl EnvRow {
         if !self.is_running() {
             return crate::i18n::t("card_not_running").into();
         }
-        crate::i18n::tn("card_running", self.holders, &[])
+        if self.programs == 0 {
+            return crate::i18n::t("card_idle").into();
+        }
+        crate::i18n::tn("card_running", self.programs, &[])
     }
 }
 
@@ -49,7 +54,7 @@ pub fn env_rows(envs: Vec<Environment>) -> Vec<EnvRow> {
             name: e.name.clone(),
             base: e.manifest.base.clone(),
             session: e.session(),
-            holders: e.holders().len(),
+            programs: e.holders().iter().filter(|h| !h.is_session()).count(),
             dxvk: e.d3d_build(&DXVK),
             vkd3d: e.d3d_build(&VKD3D),
             attachments: e
@@ -203,13 +208,13 @@ mod tests {
             name: "games".into(),
             base: "win11-26200-pro".into(),
             session: Some(4242),
-            holders: 9,
+            programs: 2,
             dxvk: Some("dxvk-3.1".into()),
             vkd3d: None,
             attachments: vec![],
         };
         assert!(row.is_running());
-        assert_eq!(row.status_line(), "running - 9 processes");
+        assert_eq!(row.status_line(), "running - 2 processes");
     }
 
     #[test]
@@ -218,7 +223,7 @@ mod tests {
             name: "games".into(),
             base: "b".into(),
             session: None,
-            holders: 0,
+            programs: 0,
             dxvk: None,
             vkd3d: None,
             attachments: vec![],
@@ -226,7 +231,8 @@ mod tests {
         assert!(!row.is_running());
         assert_eq!(row.status_line(), "not running");
         row.session = Some(1);
-        row.holders = 1;
+        assert_eq!(row.status_line(), "running - idle", "only the session");
+        row.programs = 1;
         assert_eq!(row.status_line(), "running - 1 process");
     }
 

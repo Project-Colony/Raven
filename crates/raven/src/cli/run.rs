@@ -39,9 +39,9 @@ pub fn run(name: &str, argv: Vec<String>, cwd: Option<PathBuf>) -> Result<()> {
     let e = env::Environment::open(name)?;
     // Join the environment's session rather than building a world of our own.
     // The first launch of the day starts the anchor and pays for the mount;
-    // every later one lands in that namespace, and one made within seconds of
-    // the last finds a warm wineserver in it, which is where plain Wine's
-    // thirteenfold advantage came from.
+    // every later one lands in that namespace and finds the session's
+    // persistent wineserver and Wine's services already standing, which is
+    // where plain Wine's thirteenfold advantage came from.
     let anchor = e.ensure_session()?;
     e.join_session(anchor)?;
 

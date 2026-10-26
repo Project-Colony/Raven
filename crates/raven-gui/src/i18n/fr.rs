@@ -20,6 +20,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("envs_empty_title", "Aucun environnement pour l'instant"),
     ("envs_empty_hint", "Pour en créer un :  raven env create <nom> --base <base>"),
     ("card_not_running", "arrêté"),
+    ("card_idle", "en marche - au repos"),
     ("card_running_one", "en marche - {n} processus"),
     ("card_running_other", "en marche - {n} processus"),
     ("detail_back", "← Environnements"),

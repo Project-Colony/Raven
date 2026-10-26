@@ -139,7 +139,7 @@ impl Environment {
             // ensure_not_running, because the environment may not open, and
             // that is exactly how it came to be the one command still saying
             // "still running - held by raven".
-            if holders.iter().all(|h| h.anchor) {
+            if session_at_rest(&holders) {
                 return Err(Error::SessionHolds(name.to_owned()));
             }
             return Err(Error::EnvironmentBusy {
@@ -189,7 +189,7 @@ impl Environment {
         // A session anchor holding it is the ordinary state after a launch,
         // not a stuck process, and saying "still running - held by raven"
         // reads like a bug in Raven rather than the thing the user asked for.
-        if holders.iter().all(|h| h.anchor) {
+        if session_at_rest(&holders) {
             return Err(Error::SessionHolds(self.name.clone()));
         }
         Err(Error::EnvironmentBusy {
@@ -239,6 +239,83 @@ pub struct Holder {
     /// `raven` from the launcher and `raven-gui` from the window, and a
     /// test on the name called the window's own session a foreign program.
     pub anchor: bool,
+    /// Whether this is one of Wine's own processes rather than a program the
+    /// user started - see `is_wine_service`.
+    pub service: bool,
+}
+
+/// Wine's own processes, by `comm` - which the kernel cuts at 15 bytes, so
+/// `PresentationFontCache.exe` is `presentationfon`. Once a session's
+/// wineserver is persistent they stay standing between programs, so finding
+/// them means the session, not a program of the user's.
+///
+/// `lsass.exe` belongs here because any program that loads `secur32.dll` -
+/// every one that makes an HTTP request through wininet or winhttp - starts
+/// it, and with the server persistent it never leaves. `msiexec.exe` does not,
+/// although Wine runs it as a service too: it is also the installer a user
+/// starts, and counting it as the session would let a Wine upgrade end an
+/// install in progress. A third-party Windows service, a game's updater or an
+/// anti-cheat's, lingers the same way and no list can name it; it makes the
+/// session read as busy, which errs on the safe side.
+const WINE_SERVICES: &[&str] = &[
+    "wineserver",
+    "services.exe",
+    "winedevice.exe",
+    "plugplay.exe",
+    "svchost.exe",
+    "rpcss.exe",
+    "conhost.exe",
+    "winemenubuilder",
+    "lsass.exe",
+    "winmgmt.exe",
+    "spoolsv.exe",
+    "termsv.exe",
+    "wuauserv.exe",
+    "presentationfon",
+];
+
+/// Whether a process is one of Wine's own. `explorer.exe` is only when it is
+/// Wine's desktop: the same name is the file browser a user or a program can
+/// open, and that window is the user's to close. `wineserver` is not when it
+/// was asked to wait or to kill: that is a script's client - winetricks', or
+/// the tail of Raven's own registry import - and ending it would end the work
+/// it is waiting for.
+fn is_wine_service(comm: &str, cmdline: &[u8]) -> bool {
+    let mut args = cmdline.split(|b| *b == 0).skip(1);
+    match comm {
+        "explorer.exe" => args.any(|arg| arg.eq_ignore_ascii_case(b"/desktop")),
+        "wineserver" => !args.any(|arg| {
+            arg.starts_with(b"-w")
+                || arg.starts_with(b"-k")
+                || arg.starts_with(b"--wait")
+                || arg.starts_with(b"--kill")
+        }),
+        _ => WINE_SERVICES.contains(&comm),
+    }
+}
+
+impl Holder {
+    /// Whether this process is the session itself - its anchor, or one of
+    /// Wine's services - rather than a program the user started.
+    pub fn is_session(&self) -> bool {
+        self.anchor || self.service
+    }
+}
+
+/// Whether the holders are a live session at rest: its anchor and nothing but
+/// Wine's own processes beside it. Without the anchor they are a dead
+/// session's leftovers, which is a different thing to tell the user.
+fn session_at_rest(holders: &[Holder]) -> bool {
+    holders.iter().all(Holder::is_session) && holders.iter().any(|h| h.anchor)
+}
+
+/// Whether the holders are what a dead session left: Wine's services with no
+/// anchor among them. A session being started cannot look like this, because
+/// its anchor holds the mount before its server exists.
+pub(crate) fn orphaned(holders: &[Holder]) -> bool {
+    !holders.is_empty()
+        && holders.iter().all(Holder::is_session)
+        && !holders.iter().any(|h| h.anchor)
 }
 
 fn describe(holders: &[Holder]) -> String {
@@ -287,10 +364,15 @@ fn holders_of(upper: &std::path::Path) -> Vec<Holder> {
             let comm = std::fs::read_to_string(entry.path().join("comm"))
                 .map(|s| s.trim().to_owned())
                 .unwrap_or_else(|_| "?".to_owned());
-            let anchor = std::fs::read(entry.path().join("cmdline"))
-                .map(|c| is_anchor_cmdline(&c))
-                .unwrap_or(false);
-            held.push(Holder { pid, comm, anchor });
+            let cmdline = std::fs::read(entry.path().join("cmdline")).unwrap_or_default();
+            let anchor = is_anchor_cmdline(&cmdline);
+            let service = is_wine_service(&comm, &cmdline);
+            held.push(Holder {
+                pid,
+                comm,
+                anchor,
+                service,
+            });
         }
     }
     held
@@ -473,6 +555,75 @@ mod rules_tests {
         );
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+#[cfg(test)]
+mod holder_tests {
+    use super::Holder;
+
+    fn h(comm: &str, anchor: bool) -> Holder {
+        h_with(comm, anchor, b"")
+    }
+
+    fn h_with(comm: &str, anchor: bool, cmdline: &[u8]) -> Holder {
+        Holder {
+            pid: 1,
+            comm: comm.into(),
+            anchor,
+            service: super::is_wine_service(comm, cmdline),
+        }
+    }
+
+    #[test]
+    fn a_session_at_rest_is_its_anchor_and_wines_own_services() {
+        // Once its wineserver is persistent, a session nobody is using still
+        // has the server and Wine's services standing. That is the session,
+        // not a program of the user's, and calling it one would offer "Stop
+        // everything using it" over an environment that runs nothing.
+        let rest = [
+            h("raven", true),
+            h("wineserver", false),
+            h("services.exe", false),
+            h("winedevice.exe", false),
+            h("plugplay.exe", false),
+            h("svchost.exe", false),
+            h("rpcss.exe", false),
+            h("lsass.exe", false),
+            h_with(
+                "explorer.exe",
+                false,
+                b"C:\\windows\\explorer.exe\0/desktop\0",
+            ),
+        ];
+        assert!(rest.iter().all(Holder::is_session));
+        assert!(!h("ShineHill.exe", false).is_session());
+        assert!(!h("Game.exe", false).is_session());
+        // The file browser shares Wine's desktop's name, and an installer
+        // shares a Wine service's: both are the user's.
+        assert!(!h_with("explorer.exe", false, b"explorer.exe\0C:\\\0").is_session());
+        assert!(!h("msiexec.exe", false).is_session());
+        // A script waiting for the server is the script's, not the session's:
+        // with the server persistent that wait lasts until `env stop`, and
+        // a registry import ends on one.
+        assert!(h_with("wineserver", false, b"/usr/bin/wineserver\0-p\0").is_session());
+        assert!(!h_with("wineserver", false, b"wineserver\0-w\0").is_session());
+        assert!(!h_with("wineserver", false, b"wineserver\0--kill=9\0").is_session());
+    }
+
+    #[test]
+    fn wines_services_without_an_anchor_are_what_a_dead_session_left() {
+        // The server is persistent, so if the anchor dies its services never
+        // leave on their own. They are safe to end only when nothing of the
+        // user's is among them, and a session being started is not mistaken
+        // for them: its anchor holds the mount before its server exists.
+        let orphans = [h("wineserver", false), h("services.exe", false)];
+        assert!(super::orphaned(&orphans));
+        let starting = [h("raven", true), h("wineserver", false)];
+        assert!(!super::orphaned(&starting));
+        let in_use = [h("wineserver", false), h("Game.exe", false)];
+        assert!(!super::orphaned(&in_use));
+        assert!(!super::orphaned(&[]));
     }
 }
 
