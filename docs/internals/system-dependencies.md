@@ -117,6 +117,29 @@ exists to end), `/etc/binfmt.d/wine.conf`, and
 `/usr/share/applications/raven.desktop`. `raven doctor` confirms the kernel
 now hands `.exe` files to `/usr/bin/raven`.
 
+### 2026-10-26: Raven 0.5.3
+
+```
+BUILDDIR=… PKGDEST=… SRCDEST=… makepkg -f --noconfirm   # on a copy of packaging/PKGBUILD
+sudo pacman -U raven-git-0.5.3.r154.4964d64-1-x86_64.pkg.tar.zst
+```
+
+| Package | Version | How it arrived |
+|---|---|---|
+| `raven-git` | 0.5.3.r154.4964d64-1 | built from `packaging/PKGBUILD` at `main` 4964d64 (tag v0.5.3), upgrading 0.5.1.r146.00eacf8-1 |
+
+The PKGBUILD was copied out of the repository before building, so `makepkg`
+rewrote the copy's `pkgver` and not the tracked file. Its `check()` ran the
+suite: 179 tests passed. The transaction touched no other package and the
+`systemd-binfmt` hook ran in it, at 22:06:33. `raven`, `rvn` and `raven-gui`
+report 0.5.3, and `raven doctor` reports `raven-pe -> /usr/bin/raven`. The
+`-debug` package was again not installed.
+
+A session already running keeps the binary its anchor was started from. The
+0.5.3 fix that acts at session start, taking Wine's `mscoree.dll` and `.winmd`
+files out of the layers, reaches an environment the next time its session
+starts.
+
 ### 2026-09-01: sound and video in games
 
 ```
