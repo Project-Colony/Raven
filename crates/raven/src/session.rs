@@ -356,19 +356,6 @@ pub fn anchor(name: &str) -> ! {
         let _ = std::io::stdout().flush();
         std::process::exit(1);
     };
-    // `Error::Layer` reads "preparing the layer failed at <path>" and keeps
-    // the errno as a source, which anyhow prints for the CLI and `Display`
-    // drops. This line is all the launcher ever shows, and "permission
-    // denied" is the difference between a bug and a chmod.
-    let because = |e: &(dyn std::error::Error + 'static)| -> String {
-        let mut out = crate::i18n::describe(e);
-        let mut source = e.source();
-        while let Some(s) = source {
-            out.push_str(&format!(": {s}"));
-            source = s.source();
-        }
-        out
-    };
     let e = match crate::env::Environment::open(name) {
         Ok(e) => e,
         Err(err) => report(format_args!("{}", crate::i18n::error_message(&err))),
@@ -423,6 +410,50 @@ pub fn anchor(name: &str) -> ! {
     let _ = std::io::stdout().flush();
     loop {
         std::thread::sleep(std::time::Duration::from_secs(3600));
+    }
+}
+
+/// An error and the causes underneath it, as one line.
+///
+/// `Error::Layer` reads "preparing the layer failed at <path>" and keeps the
+/// errno as a source, which anyhow prints for the CLI and `Display` drops.
+/// An anchor's line is all the launcher ever shows, and "permission denied"
+/// is the difference between a bug and a chmod.
+fn because(e: &(dyn std::error::Error + 'static)) -> String {
+    let mut out = crate::i18n::describe(e);
+    let mut source = e.source();
+    while let Some(s) = source {
+        // Some messages already name their cause (a mount error's names the
+        // errno), and appending it again prints it twice.
+        let cause = s.to_string();
+        if !out.contains(&cause) {
+            out.push_str(&format!(": {cause}"));
+        }
+        source = s.source();
+    }
+    out
+}
+
+#[cfg(test)]
+mod because_tests {
+    use super::because;
+
+    #[test]
+    fn a_cause_the_message_already_gives_is_not_repeated() {
+        // The mount error's own message names the errno, and so does its
+        // source. Printed twice, the one line a launcher shows read
+        // "Device or resource busy (os error 16): Device or resource busy
+        // (os error 16)".
+        let busy = crate::mount::MountError::Mount(std::io::Error::from_raw_os_error(16));
+        let line = because(&busy);
+        assert_eq!(line.matches("os error 16").count(), 1, "{line}");
+    }
+
+    #[test]
+    fn a_cause_the_message_leaves_out_is_still_given() {
+        let denied = crate::Error::Layer("/tmp/x".into(), std::io::Error::from_raw_os_error(13));
+        let line = because(&denied);
+        assert!(line.contains("os error 13"), "{line}");
     }
 }
 
