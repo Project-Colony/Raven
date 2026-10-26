@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.2](https://github.com/Project-Colony/Raven/compare/v0.5.1...v0.5.2) (2026-10-26)
+
+
+### Fixes
+
+* an anchor's error no longer repeats its cause ([#29](https://github.com/Project-Colony/Raven/issues/29)) ([a853be4](https://github.com/Project-Colony/Raven/commit/a853be44e5828f8758d9262265845e041c9e171b))
+
+
+### Documentation
+
+* log the upgrade of the installed package to 0.5.1 ([#28](https://github.com/Project-Colony/Raven/issues/28)) ([a7ec868](https://github.com/Project-Colony/Raven/commit/a7ec8686f6b47ca9500c4de2a6335777ced80c9e))
+
 ## [0.5.1](https://github.com/Project-Colony/Raven/compare/v0.5.0...v0.5.1) (2026-10-14)
 
 
