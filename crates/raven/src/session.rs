@@ -599,6 +599,31 @@ fn because(e: &(dyn std::error::Error + 'static)) -> String {
 mod server_tests {
     use super::{is_wineserver, runs_a_deleted_binary, runs_another_binary};
 
+    /// Runs a binary just copied, as a stand-in server. Another test's fork
+    /// can still hold the copy's write descriptor for a moment, and exec
+    /// then fails with ETXTBSY; and spawn can return a moment before the
+    /// kernel renames the child after its binary. Both are the test harness,
+    /// not the code, so both are waited out.
+    fn start(bin: &std::path::Path) -> std::process::Child {
+        for _ in 0..100 {
+            match std::process::Command::new(bin).arg("30").spawn() {
+                Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {}
+                other => {
+                    let child = other.unwrap();
+                    for _ in 0..100 {
+                        if is_wineserver(child.id()) {
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                    return child;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("{} stayed busy", bin.display());
+    }
+
     #[test]
     fn a_server_whose_binary_was_replaced_is_told_apart() {
         // A persistent server outlives a Wine upgrade, and a client of the new
@@ -610,7 +635,7 @@ mod server_tests {
         std::fs::create_dir_all(&dir).unwrap();
         let bin = dir.join("wineserver");
         std::fs::copy("/usr/bin/sleep", &bin).unwrap();
-        let mut server = std::process::Command::new(&bin).arg("30").spawn().unwrap();
+        let mut server = start(&bin);
         let pid = server.id();
 
         assert!(is_wineserver(pid));
@@ -634,10 +659,7 @@ mod server_tests {
         std::fs::copy("/usr/bin/sleep", dir.join("wineserver64")).unwrap();
         std::os::unix::fs::symlink("wineserver64", dir.join("wineserver")).unwrap();
         std::fs::copy("/usr/bin/sleep", dir.join("other")).unwrap();
-        let mut server = std::process::Command::new(dir.join("wineserver"))
-            .arg("30")
-            .spawn()
-            .unwrap();
+        let mut server = start(&dir.join("wineserver"));
         let pid = server.id();
 
         assert!(is_wineserver(pid));
