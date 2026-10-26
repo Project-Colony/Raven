@@ -160,6 +160,71 @@ What the entry cost: a program that reads Microsoft's font *files* - not just
 the faces - would not find them. None was ever seen. The cost that withdrew
 the entry was a different one, set out below.
 
+## Files the layer must not cover: `mscoree.dll` and `WinMetadata`
+
+The layer wins at every path where Wine ships a file, and that includes paths
+where the program needs Microsoft's. `wineboot` installs Wine's `mscoree.dll`
+into `System32` and `SysWOW64` like any other builtin, and in the layer it
+hid the base's. Wine's `mscoree` runs managed code on Wine Mono. Raven builds
+its prefixes without Mono, so every .NET program failed in a new environment
+although the base carries .NET Framework 4.8:
+
+```
+err:mscoree:CLRRuntimeInfo_GetRuntimeHost Wine Mono is not installed
+```
+
+On the `win11-26200-pro` base with Wine 11.20 this stopped
+`MSBuild.exe -version` (exit code 255) and the WiX managed custom actions of
+the Epic Online Services MSI (`SFXCA: Failed to bind to the CLR`, then error
+1603). `csc.exe /help` proves nothing here: the C# 5 compiler that ships with
+.NET Framework is native code and runs with or without the CLR.
+
+These two files are the only paths the layer and the base's .NET share; the
+rest of .NET lives under `Windows\Microsoft.NET`, where the layer has nothing.
+With them gone, `MSBuild.exe -version` prints `4.8.9221.0` from both
+`Framework` and `Framework64`, `WINEDEBUG=+loaddll` shows `mscoree.dll`,
+`mscoreei.dll` and `clr.dll` loaded native, and the Epic Online Services MSI
+installs under `/qn` with all six of its managed custom actions.
+
+No `DllOverrides` entry is involved. Wine loads a native file it finds in
+`System32` as native, and the custom-action servers `msiserver` starts for
+deferred actions do the same, so there is nothing for a service to inherit.
+
+With .NET running, the next failure was the Windows Runtime. Wine ships ten
+`.winmd` files of its own in `System32\WinMetadata` and `SysWOW64\WinMetadata`,
+and they hid the base's: Wine's `Windows.Networking.winmd` is 5.7 KB,
+Microsoft's 262 KB. Wine's `RoResolveNamespace` hands .NET whichever file it
+finds there, so a lookup of a type Wine's file does not describe failed. The
+Visual Studio 2019 Build Tools installer died on
+
+```
+Error 0x80131522: Could not find Windows Runtime type 'Windows.Networking.Connectivity.NetworkCostType'
+```
+
+and a short C# program doing the same lookup reproduced it. With Wine's
+`.winmd` files gone from the layer, the type resolves from the base's file,
+and activating `Windows.Networking.Connectivity.NetworkInformation` returns a
+`ConnectionProfile` from Wine's own implementation. The registry needed
+nothing: Wine registers its WinRT classes itself, and the projection does not
+have to carry `HKLM\Software\Microsoft\WindowsRuntime`.
+
+Both entries are in `layer::UNCOVERED`, and `env create` deletes them from the
+new layer. A Wine upgrade treats them differently. `wineboot -u` finds a file
+at `System32\mscoree.dll` that is not one of Wine's and leaves its content
+alone. It does open it for writing, so overlayfs copies the base's file into
+the upper layer, byte for byte. The `.winmd` files are copied over the base's
+on every update (`wine.inf` lists them in `[WinmdFiles]`), into the upper
+layer, and the lookup fails again for the rest of that session.
+
+`layer::reconcile` runs before every session mount and removes Wine's copies
+from the layer and from the upper layer. That heals both an environment
+created before these entries existed and one a Wine upgrade has just written
+over. For `mscoree.dll` it removes only a file that carries Wine's signature,
+so a native copy an installer or a person put in the upper layer stays. Wine's
+`.winmd` files carry no signature, so in `WinMetadata` every file the base also
+has is removed; nothing but `wineboot` writes the OS's own namespaces there. A
+session that is already running keeps what it has until it is stopped.
+
 ## The two mechanisms
 
 **`WINEDLLOVERRIDES`** asks Wine which implementation to prefer, per library:
