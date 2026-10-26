@@ -55,10 +55,12 @@ pick, and prints the masking fix when it is not Raven's.
 
 A launch into an environment that already has a session joins it rather than
 refusing - that is what a session is for - so this is no longer what an
-ordinary second launch does. What still holds an environment busy is the
-wreckage of a session: when the anchor dies, `wineserver` and a handful of Wine
-services stay alive inside the mount namespace for a few seconds afterwards,
-and overlayfs will not mount the same upper layer twice while they are there.
+ordinary second launch does. When a session's anchor dies, its persistent
+`wineserver` and Wine's services stay behind; the next launch sees that nothing
+of yours is among them and ends them before it starts a fresh session. What
+can still hold an environment busy is a program of yours that kept running
+after its session's anchor died, and overlayfs will not mount the same upper
+layer twice while it is there.
 
 ```bash
 raven env status games
@@ -74,6 +76,15 @@ raven env stop games
 terminates them and releases the environment. A launch that cannot mount
 refuses with exactly these two commands rather than a bare
 `Device or resource busy`.
+
+## A launch refuses after a Wine update
+
+A session keeps its `wineserver` running, and a client of a newer Wine cannot
+talk to an older server. After an update, the next launch replaces an idle
+session, which costs about as much as a first launch. If a program started
+before the update is still running in the environment, the launch refuses and
+names the fix: close that program, or end the session with
+`raven env stop <name>`.
 
 ## Launching feels slower than Proton
 

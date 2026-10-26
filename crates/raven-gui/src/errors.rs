@@ -11,8 +11,9 @@ use raven::Error;
 /// What the window offers to do about an error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
-    /// Release Raven's own session anchor. Nothing of the user's is running:
-    /// the library raises `SessionHolds` only when every holder is Raven.
+    /// Release the session. Nothing of the user's is running: the library
+    /// raises `SessionHolds` only when every holder is the session's own -
+    /// Raven's anchor, or one of Wine's services.
     StopSession(String),
     /// Terminate every process holding the environment, the user's programs
     /// included - `stop()` signals holders without asking who they are. Kept

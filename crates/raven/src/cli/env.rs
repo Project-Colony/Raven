@@ -76,6 +76,8 @@ pub fn env_cmd(cmd: EnvCmd) -> Result<()> {
                 for h in &holders {
                     let role = if h.anchor {
                         t("env_session_anchor")
+                    } else if h.is_session() {
+                        t("env_wine_service")
                     } else {
                         ""
                     };

@@ -265,21 +265,32 @@ the mount timed apart from Wine:
 layers, not the number of files, so a 500 GB base would mount in the same
 0.04 s. The two seconds are `wineserver`, `services.exe`, `plugplay.exe`,
 `explorer.exe` and `rpcss.exe` coming up - and once up they serve any launch
-that arrives while they are still running, which is what the session made
-possible. Nothing keeps them running: Raven does not make `wineserver`
-persistent, so with Wine's default it exits, and the services with it, three to
-six seconds after the last program closes (see the refusal window below). The
-session keeps the mount, not Wine.
+that arrives while they are still running. With Wine's default, `wineserver`
+exits within about ten seconds of the last program closing and the services go
+with it, so a session that kept only the mount paid those two seconds again on
+every launch after a pause.
 
-The obvious lever is therefore to bring those services up *before* the user
-asks for a program, and to keep them up. `raven env start` does the first half
-by running the smallest possible program in the session, which on its own helps
-only a launch made within those few seconds. A session started at login, or by
-hand, would leave the first double-click paying only a warm launch, about
-0.26 s, plus the program's own start-up - once the session also holds a
-persistent `wineserver` (`wineserver -p`), which it does not yet. Nothing in the
-design prevents it - the anchor already exists and does nothing after mounting.
-A launch made some time after `env start` has not been measured.
+The anchor now starts `wineserver -p` itself, after recording the session and
+before it reports ready, so the server and its services last as long as the
+session does. Measured on the same machine with a trivial program and a session
+up:
+
+| launch after an idle pause of 20 to 30 seconds | |
+|---|---|
+| server started by the first program (before) | ~1.95 s |
+| persistent server started by the anchor | **0.25 s** |
+
+The cost is memory: the eight processes of a session at rest come to about
+50 MiB of proportional set size. `raven env start` runs the smallest possible
+program in the session, so even the first launch joins standing services.
+
+A persistent server outlives a Wine upgrade, and a client of the newer Wine
+cannot talk to it. The anchor records which `wineserver` binary it started; a
+launch that finds it replaced ends an idle session and starts a fresh one, and
+refuses with a message naming `raven env stop` when a program from the old Wine
+still runs. The same persistence means a killed anchor leaves its services
+behind for good, so a launch that finds Wine's services with no anchor among
+them ends them before it mounts.
 
 ### What a game's start-up actually costs, and how little of it is Raven
 
