@@ -160,6 +160,49 @@ What the entry cost: a program that reads Microsoft's font *files* - not just
 the faces - would not find them. None was ever seen. The cost that withdrew
 the entry was a different one, set out below.
 
+## A file the layer must not cover: `mscoree.dll`
+
+The layer wins at every path where Wine ships a file, and that includes paths
+where the program needs Microsoft's. `wineboot` installs Wine's `mscoree.dll`
+into `System32` and `SysWOW64` like any other builtin, and in the layer it
+hid the base's. Wine's `mscoree` runs managed code on Wine Mono. Raven builds
+its prefixes without Mono, so every .NET program failed in a new environment
+although the base carries .NET Framework 4.8:
+
+```
+err:mscoree:CLRRuntimeInfo_GetRuntimeHost Wine Mono is not installed
+```
+
+On the `win11-26200-pro` base with Wine 11.20 this stopped
+`MSBuild.exe -version` (exit code 255) and the WiX managed custom actions of
+the Epic Online Services MSI (`SFXCA: Failed to bind to the CLR`, then error
+1603). `csc.exe /help` proves nothing here: the C# 5 compiler that ships with
+.NET Framework is native code and runs with or without the CLR.
+
+These two files are the only paths the layer and the base's .NET share; the
+rest of .NET lives under `Windows\Microsoft.NET`, where the layer has nothing.
+`layer::UNCOVERED` lists them and `env create` deletes them from the new
+layer. With them gone, `MSBuild.exe -version` prints `4.8.9221.0` from both
+`Framework` and `Framework64`, `WINEDEBUG=+loaddll` shows `mscoree.dll`,
+`mscoreei.dll` and `clr.dll` loaded native, and the Epic Online Services MSI
+installs under `/qn` with all six of its managed custom actions.
+
+No `DllOverrides` entry is involved. Wine loads a native file it finds in
+`System32` as native, and the custom-action servers `msiserver` starts for
+deferred actions do the same, so there is nothing for a service to inherit.
+
+A Wine upgrade does not put Wine's copy back. `wineboot -u` finds a file at
+`System32\mscoree.dll` that is not one of Wine's and leaves its content alone.
+It does open it for writing, so overlayfs copies the base's file into the
+upper layer, byte for byte.
+
+Environments created before the entry existed heal at their next session
+start: `layer::reconcile` removes Wine's `mscoree.dll` from the layer, and from
+the upper layer, where the `wineboot` of an earlier Wine upgrade may have
+written one. It removes only files that carry Wine's signature, so a native
+copy someone put in the upper layer stays. A session that is already running
+keeps the old state until it is stopped.
+
 ## The two mechanisms
 
 **`WINEDLLOVERRIDES`** asks Wine which implementation to prefer, per library:

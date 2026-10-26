@@ -103,7 +103,9 @@ read-only Wine layer can shadow a file or directory outright where the
 override is not enough.
 
 Today the shadow set is a short, measurement-justified constant in
-`crates/raven/src/layer.rs` - one directory mask, `Windows/WinSxS`.
+`crates/raven/src/layer.rs` - one directory mask, `Windows/WinSxS`, and one
+file Wine's layer must not cover, `mscoree.dll`, so the base's .NET Framework
+runs.
 `Windows/Fonts` was masked there too and has been withdrawn: the spawn time it
 bought was not worth a Windows that declared 961 fonts and had none. The
 per-library table the corpus will produce is planned as a data file keyed
