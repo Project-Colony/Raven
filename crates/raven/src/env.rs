@@ -415,7 +415,7 @@ pub fn create(name: &str, base_id: &str) -> Result<Environment, Error> {
             layer::shadow(&env.layer(), rel)?;
         }
         for rel in layer::UNCOVERED {
-            layer::uncover(&env.layer(), rel)?;
+            layer::uncover(&env.layer(), &base.path, rel)?;
         }
         prefix::point_c_drive(&env.prefix(), &paths::mount_point(name)?)?;
 
