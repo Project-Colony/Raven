@@ -160,11 +160,54 @@ pub fn unshadow(layer: &Path, relative: &str) -> Result<(), Error> {
     }
 }
 
-/// Brings a layer's markers in line with the current shadow set.
+/// Files Wine's layer must not put in front of the base's, and why.
+///
+/// The reverse of `SHADOWED`: there the base's copy has to disappear, here
+/// Wine's does. Same rule for getting in: one measurement per entry.
+///
+/// `mscoree.dll`: the loader every .NET program starts through. Wine's copy
+/// hands managed code to Wine Mono, which an environment does not have, so
+/// with it in front every managed program stopped at "Wine Mono is not
+/// installed" while the base carried .NET Framework 4.8. With Wine's copy
+/// gone, Microsoft's loads and finds `clr.dll` under `Microsoft.NET`. No DLL
+/// override is needed: Wine loads a native file it finds in System32 as
+/// native.
+pub const UNCOVERED: &[&str] = &[
+    "Windows/System32/mscoree.dll",
+    "Windows/SysWOW64/mscoree.dll",
+];
+
+/// Deletes Wine's copy of `relative` from `dir`, letting the layer below show
+/// through. A file there that is not Wine's is left exactly as it is: in the
+/// upper layer it belongs to whatever put it there.
+pub fn uncover(dir: &Path, relative: &str) -> Result<(), Error> {
+    let target = dir.join(relative);
+    if !is_wine_builtin(&target) {
+        return Ok(());
+    }
+    fs::remove_file(&target).map_err(|e| Error::Layer(target, e))
+}
+
+/// Whether `path` is one of Wine's own PE files. Wine signs them right after
+/// the 64-byte DOS header: "Wine builtin DLL" on the libraries current Wine
+/// installs, "Wine placeholder DLL" on the stubs older Wine wrote instead.
+fn is_wine_builtin(path: &Path) -> bool {
+    use std::io::Read as _;
+    let mut head = [0u8; 0x40 + 20];
+    fs::File::open(path)
+        .and_then(|mut f| f.read_exact(&mut head))
+        .is_ok_and(|()| {
+            let sig = &head[0x40..];
+            sig.starts_with(b"Wine builtin DLL") || sig.starts_with(b"Wine placeholder DLL")
+        })
+}
+
+/// Brings a layer's markers in line with the current shadow set, and takes
+/// Wine's copies of the uncovered files out of both layers.
 ///
 /// Idempotent and cheap, so it can run before every mount rather than needing
 /// a migration the user has to know about.
-pub fn reconcile(layer: &Path) -> Result<(), Error> {
+pub fn reconcile(layer: &Path, upper: &Path) -> Result<(), Error> {
     for rel in FORMERLY_SHADOWED {
         unshadow(layer, rel)?;
     }
@@ -172,6 +215,13 @@ pub fn reconcile(layer: &Path) -> Result<(), Error> {
         if layer.join(rel).is_dir() {
             shadow(layer, rel)?;
         }
+    }
+    // The upper layer too: a Wine upgrade reruns wineboot inside the mount,
+    // and in an environment whose layer still held Wine's copy that wrote a
+    // fresh one into the upper layer, where it hides the base just the same.
+    for rel in UNCOVERED {
+        uncover(layer, rel)?;
+        uncover(upper, rel)?;
     }
     Ok(())
 }
@@ -211,7 +261,7 @@ mod tests {
         shadow(layer, "Windows/Fonts").unwrap();
         shadow(layer, "Windows/WinSxS").unwrap();
 
-        reconcile(layer).unwrap();
+        reconcile(layer, &tmp.0.join("upper")).unwrap();
 
         assert!(
             rustix::fs::getxattr(
@@ -232,7 +282,58 @@ mod tests {
             "WinSxS is still shadowed and must stay so"
         );
         // Running it twice must not fail on the marker that is already gone.
-        reconcile(layer).unwrap();
+        reconcile(layer, &tmp.0.join("upper")).unwrap();
+    }
+
+    /// The start of a PE file signed the way Wine signs its own, padded
+    /// because a real one never ends at its signature.
+    fn signed(sig: &str) -> String {
+        format!("MZ{}{sig}{}", "\0".repeat(0x40 - 2), "\0".repeat(64))
+    }
+
+    #[test]
+    fn reconciling_takes_wines_mscoree_out_of_both_layers() {
+        // Measured on a Windows 11 base: with Wine's mscoree.dll in front of
+        // Microsoft's, every .NET program died on "Wine Mono is not
+        // installed". `games` also had a copy in its upper layer, written
+        // there by the wineboot of a Wine upgrade.
+        let tmp = Tmp::new("uncover");
+        tmp.file(
+            "layer/Windows/System32/mscoree.dll",
+            &signed("Wine builtin DLL"),
+        )
+        .file(
+            "layer/Windows/SysWOW64/mscoree.dll",
+            &signed("Wine builtin DLL"),
+        )
+        .file(
+            "upper/Windows/System32/mscoree.dll",
+            &signed("Wine placeholder DLL"),
+        )
+        // Copied in by hand from the base: not Wine's, so not Raven's to
+        // delete.
+        .file("upper/Windows/SysWOW64/mscoree.dll", &signed("Microsoft"))
+        .file(
+            "layer/Windows/System32/kernel32.dll",
+            &signed("Wine builtin DLL"),
+        );
+        let (layer, upper) = (tmp.0.join("layer"), tmp.0.join("upper"));
+
+        reconcile(&layer, &upper).unwrap();
+
+        assert!(!layer.join("Windows/System32/mscoree.dll").exists());
+        assert!(!layer.join("Windows/SysWOW64/mscoree.dll").exists());
+        assert!(!upper.join("Windows/System32/mscoree.dll").exists());
+        assert!(
+            upper.join("Windows/SysWOW64/mscoree.dll").exists(),
+            "a native copy in the upper layer must survive"
+        );
+        assert!(
+            layer.join("Windows/System32/kernel32.dll").exists(),
+            "only the uncovered files go"
+        );
+        // Nothing left to remove the second time round.
+        reconcile(&layer, &upper).unwrap();
     }
 
     #[test]
