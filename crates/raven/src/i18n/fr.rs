@@ -210,7 +210,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("error_not_attached", "le lecteur {letter}: n'a aucun périphérique rattaché"),
     ("error_not_a_d3d_build", "{path} ne ressemble pas à une version de {runtime} : il faut un répertoire contenant x64/ (et un répertoire 32 bits à côté), ou son archive de publication"),
     ("error_session_failed", "impossible de démarrer une session pour l'environnement : {why}"),
-    ("error_wine_changed", "Wine a été mis à jour après le démarrage de l'environnement {quoted}, et des programmes de l'ancien Wine y tournent encore ; un nouveau programme ne peut pas les rejoindre\n  fermez-les, ou arrêtez-les tous : raven env stop {name}"),
+    ("error_wine_changed", "Wine a été mis à jour, ou un autre Wine passe en premier dans PATH, depuis le démarrage de l'environnement {quoted}, et des programmes de son Wine y tournent encore ; un nouveau programme ne peut pas les rejoindre\n  fermez-les, ou arrêtez-les tous : raven env stop {name}"),
     ("error_session_holds", "l'environnement {quoted} a une session active qui retient son C:, et c'est ce qui rend les lancements rapides\n  pour la libérer : raven env stop {name}"),
     ("error_d3d_would_overwrite", "{path} est déjà dans cet environnement et ce n'est pas Raven qui l'y a mis : l'installation l'écraserait et le retrait le supprimerait ; déplacez-le d'abord si vous voulez que ce moteur prenne le relais"),
     ("error_d3d_link", "{path} est atteint par un lien symbolique dans l'archive : Raven n'installe que des fichiers ordinaires depuis une archive, pour qu'un lien ne puisse pas faire entrer dans l'environnement un fichier venu d'ailleurs sur cette machine"),

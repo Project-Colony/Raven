@@ -216,7 +216,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("error_not_attached", "drive {letter}: has no device attached"),
     ("error_not_a_d3d_build", "{path} does not look like a {runtime} build - expected a directory holding x64/ (and a 32-bit directory beside it), or a release archive of one"),
     ("error_session_failed", "could not start a session for the environment: {why}"),
-    ("error_wine_changed", "Wine was updated after environment {quoted} started, and programs from the old Wine still run in it; a new program cannot join them\n  close them, or end them all: raven env stop {name}"),
+    ("error_wine_changed", "Wine was updated, or another Wine comes first on PATH, since environment {quoted} started, and programs from its Wine still run in it; a new program cannot join them\n  close them, or end them all: raven env stop {name}"),
     ("error_session_holds", "environment {quoted} has a live session holding its C:, which is what makes launches fast\n  release it: raven env stop {name}"),
     ("error_d3d_would_overwrite", "{path} is already in this environment and Raven did not put it there - installing would overwrite it and removing would delete it; move it aside first if you want this runtime to take over"),
     ("error_d3d_link", "{path} is reached through a symbolic link inside the archive - Raven installs only regular files from an archive, so a link cannot carry a file from elsewhere on this machine into the environment"),

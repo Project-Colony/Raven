@@ -97,9 +97,7 @@ impl Environment {
     pub fn server_replaced(&self) -> bool {
         self.server().is_some_and(|pid| {
             runs_a_deleted_binary(pid)
-                || wineserver_binary().is_some_and(|ours| {
-                    std::fs::read_link(format!("/proc/{pid}/exe")).is_ok_and(|exe| exe != ours)
-                })
+                || wineserver_binary().is_some_and(|ours| runs_another_binary(pid, &ours))
         })
     }
 
@@ -557,6 +555,16 @@ fn is_wineserver(pid: u32) -> bool {
     std::fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| c.trim() == "wineserver")
 }
 
+/// Whether a process runs another file than `ours`. The kernel's link names
+/// the file it resolved, so `ours` is resolved too: a `wineserver` that is a
+/// symlink, as some distributions install it, is still the same server.
+fn runs_another_binary(pid: u32, ours: &std::path::Path) -> bool {
+    let Ok(ours) = std::fs::canonicalize(ours) else {
+        return false;
+    };
+    std::fs::read_link(format!("/proc/{pid}/exe")).is_ok_and(|exe| exe != ours)
+}
+
 /// Whether a process runs a binary that has since been deleted. pacman
 /// installs a new file rather than rewriting the old one, and the kernel marks
 /// the link of a process still running the old one.
@@ -589,7 +597,7 @@ fn because(e: &(dyn std::error::Error + 'static)) -> String {
 
 #[cfg(test)]
 mod server_tests {
-    use super::{is_wineserver, runs_a_deleted_binary};
+    use super::{is_wineserver, runs_a_deleted_binary, runs_another_binary};
 
     #[test]
     fn a_server_whose_binary_was_replaced_is_told_apart() {
@@ -613,6 +621,31 @@ mod server_tests {
         let _ = server.kill();
         let _ = server.wait();
         assert!(!is_wineserver(pid), "gone");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_server_started_through_a_symlink_is_still_ours() {
+        // The kernel reports the file it resolved, wineserver64 here, while
+        // the server was started, and is looked up, as wineserver.
+        let dir = std::env::temp_dir().join(format!("raven-wsl-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::copy("/usr/bin/sleep", dir.join("wineserver64")).unwrap();
+        std::os::unix::fs::symlink("wineserver64", dir.join("wineserver")).unwrap();
+        std::fs::copy("/usr/bin/sleep", dir.join("other")).unwrap();
+        let mut server = std::process::Command::new(dir.join("wineserver"))
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let pid = server.id();
+
+        assert!(is_wineserver(pid));
+        assert!(!runs_another_binary(pid, &dir.join("wineserver")));
+        assert!(runs_another_binary(pid, &dir.join("other")), "another Wine");
+
+        let _ = server.kill();
+        let _ = server.wait();
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
