@@ -228,6 +228,48 @@ impl Environment {
     }
 }
 
+/// What `respell_base` changed.
+pub struct Respelled {
+    /// Directories renamed, across the base and its environments' layers.
+    pub directories: usize,
+    /// Environments built on the base, all of them brought along.
+    pub environments: usize,
+}
+
+/// Renames a base's directories to the spelling Wine looks them up by, in the
+/// base and in the layer and upper of every environment built on it.
+///
+/// For a base deployed before Raven adopted that spelling; a new one is
+/// deployed in it. All the environments move together or none does, because
+/// an overlay merges its layers by exact name, and none may be running:
+/// renaming a lower layer under a live mount is undefined.
+pub fn respell_base(base_id: &str) -> Result<Respelled, Error> {
+    let base = Base::find(base_id)?;
+    if !base.looks_like_windows() {
+        return Err(Error::NotAWindowsBase(base.id));
+    }
+    let envs: Vec<Environment> = Environment::list()?
+        .into_iter()
+        .filter(|e| e.manifest.base == base.id)
+        .collect();
+    for e in &envs {
+        e.ensure_not_running()?;
+    }
+    let mut roots = vec![base.path.clone()];
+    for e in &envs {
+        roots.push(e.layer());
+        roots.push(e.upper());
+    }
+    let renamed = layer::adopt_wine_spelling(&roots)?;
+    for e in &envs {
+        e.respell_d3d_manifests()?;
+    }
+    Ok(Respelled {
+        directories: renamed.len(),
+        environments: envs.len(),
+    })
+}
+
 /// A process keeping an environment's C: mounted.
 #[derive(Debug)]
 pub struct Holder {

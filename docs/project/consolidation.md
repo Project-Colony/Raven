@@ -107,8 +107,9 @@ handler pointing at a path that no longer exists.
 **Partly done** - see [performance.md](../internals/performance.md). A fixed
 workload, identical in both conditions, wall-clock: process spawn was **2.0×**
 (113 → 228 ms), and **1.19×** (113 → 135 ms) while `Windows\Fonts` was masked
-(a mask since withdrawn on correctness grounds, so 2.0× is again what a cold
-spawn costs, see 2.2 and 4), and directory enumeration is 6.6×, of which 6.0×
+(a mask since withdrawn on correctness grounds; a base in Wine's spelling
+now spawns in 157 ms against 123, 1.28×, with the fonts visible, see 2.2, 4
+and [performance.md](../internals/performance.md#directory-names-in-wines-spelling)), and directory enumeration is 6.6×, of which 6.0×
 is the real `System32` holding six times the entries, leaving **~17% per
 entry** as the overlay's share. The lesson joined the list above: a ratio
 between two differently-sized workloads measures the workload.

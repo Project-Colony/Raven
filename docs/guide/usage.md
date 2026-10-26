@@ -6,7 +6,7 @@ From an installation image to a running program. Three commands, and then
 ## 1. Deploy a base
 
 A **base** is a real Windows, deployed once, mounted read-only, and shared by
-every environment. It is never written to.
+every environment. Programs never write to it.
 
 ```bash
 raven base editions --image install.wim
@@ -35,7 +35,7 @@ raven env create games --base win11-pro
 ```
 
 Twenty seconds, during which Raven builds a Wine prefix, turns its `drive_c`
-into a read-only layer above the base, renames that layer to match Windows'
+into a read-only layer above the base, renames that layer to match the base's
 spelling so the two actually merge, points the prefix's C: at the runtime mount,
 and projects the real registry into it.
 
@@ -149,9 +149,10 @@ The first program you run in an environment starts a **session**: Raven mounts
 C: once, starts Wine's server and services, and keeps all of them until you stop
 the session, so every later launch joins what is already there instead of
 building a world of its own. Measured with a trivial program, the first launch
-of the day costs about two seconds and every later one about a quarter of a
-second, after a pause as much as straight after the previous launch - still
-about twice plain Wine's 0.12 s once its own server is warm. A
+of the day costs about two seconds and every later one about 0.16 s, after a
+pause as much as straight after the previous launch, against plain Wine's
+0.12 s once its own server is warm. On a base from an earlier release a later
+launch costs about a quarter of a second until the base is converted (below). A
 real program adds its own start-up on top: a Direct3D 11 game took 7.7 to 9.5
 seconds to show its window, against 7.9 under plain Wine. The figures are in
 [../internals/performance.md](../internals/performance.md).
@@ -188,6 +189,25 @@ most verbs and stalls there. To let such a script go on once its installer has
 finished, run `raven run games -- wineserver -k` from another terminal. That
 also closes every program open in the environment, and the session has no
 persistent server until it is stopped and started again.
+
+## Converting a base from an earlier release
+
+Raven deploys a base with `windows`, `system32`, `fonts`, `users` and 24 other
+directories spelled the way Wine looks them up. A base deployed by an earlier
+release still spells them `Windows`, `System32` and so on. It works, but every
+file lookup under `C:\windows` makes Wine list a directory, and a process
+start costs about 240 ms instead of 160. `raven doctor` names such a base.
+
+Stop every environment built on it, then convert it:
+
+```bash
+raven env stop games
+raven base respell win11-pro
+```
+
+This renames those directories in the base and in the layers of each of its
+environments, all together; no file's content changes, and the programs and
+saves in the environments stay where they are. It takes well under a second.
 
 ## Starting over
 

@@ -2,8 +2,10 @@
 
 What running against a real Windows costs, what it does not cost, what has
 been ruled out - and what has been fixed. The spawn overhead is attributed
-(fonts), though the mask that removed it has since been withdrawn on
-correctness grounds; what stays deferred is an in-game frame-time measurement.
+and mostly fixed: most of it was Wine's case-insensitive fallback while it
+opened the base's fonts, and spelling the base's directories Wine's way removed
+it. The fonts themselves cost about 30 ms. What stays deferred is an in-game
+frame-time measurement.
 
 ## The wall-clock benchmark
 
@@ -29,7 +31,8 @@ earlier by a cruder method - twenty seconds of pure overhead for an installer
 spawning two hundred processes. With `Windows/Fonts` masked it fell to **~135
 ms (1.19×), about +22 ms per process** - some four seconds for the same
 installer - but that mask has since been withdrawn on correctness grounds, so
-the table above is what a spawn costs today.
+the table above is what a spawn cost until the base's directories were spelled
+Wine's way: 157 ms against 123, see [Directory names in Wine's spelling](#directory-names-in-wines-spelling).
 
 **Directory enumeration** (30 × `dir C:\windows\system32` inside one `cmd`,
 three samples each):
@@ -55,7 +58,8 @@ correction). Review caught it; the direction survived, the number did not.
 
 So the honest summary is: per-process launch cost is doubled (113 → 228 ms).
 The fonts mask brought it to ~19% (113 → 135 ms) while it stood, and it no
-longer stands. The sustained filesystem path is modestly slower. What this
+longer stands. On a base in Wine's spelling, measured later under its own
+protocol, it is 157 ms against plain Wine's 123. The sustained filesystem path is modestly slower. What this
 benchmark does *not* answer is whether a running game feels any of it - that needs a frame-time or
 input-to-response measurement in the same scene, which no one has made yet.
 
@@ -139,8 +143,10 @@ fontconfig), so plain Wine never pays this. One opaque-overlay mask on
 (`crates/raven/src/layer.rs`), leaving ~20 ms of overlay and the rest of the
 real tree. Fonts still rendered - through fontconfig, exactly as under plain
 Wine - and the game still reached its title screen with the mask on. The mask
-has since been withdrawn on correctness grounds, so the 227 ms column is what
-a spawn costs today; the reasoning is in [shadow-set.md](shadow-set.md). The
+has since been withdrawn on correctness grounds, so the 227 ms column was what
+a spawn cost until the base's directories were spelled Wine's way; the
+reasoning is in [shadow-set.md](shadow-set.md). Most of the 92 ms was not the
+fonts but the case misses Wine paid to open them, see [Directory names in Wine's spelling](#directory-names-in-wines-spelling). The
 cost it carried while it stood: programs that want Microsoft's font *files*,
 not just the faces, would not see them; the corpus
 will say whether such a program exists.
@@ -161,6 +167,10 @@ measurable, and false; the control experiments - an overlay with nothing real
 in it, a skeleton inflated to real size, a tree renamed to real casing - are
 what separated the variables, and the last one took the attribution down to a
 single directory name.
+
+The case-mismatch result did not hold on the real base. Measured again in
+October 2026 it was 85 ms per process start; see
+[Directory names in Wine's spelling](#directory-names-in-wines-spelling).
 
 ## Raven was always cold, and that was the whole gap
 
@@ -212,10 +222,12 @@ is seven to eight times faster** (1.89-2.07 s cold against 0.26 s); for
 GPU device, about three times (2.71 s against 0.92 s). The first launch is
 unchanged. (The session was first measured at 0.16 s while `Windows/Fonts` was
 masked; the mask has since been removed on correctness grounds and the figure
-is 0.26 s - see [shadow-set.md](shadow-set.md).) A warm launch still costs
-about twice plain Wine's warm 0.12 s. Raven's own share of the difference is
-about 2 ms (below); about 0.1 s is the font files the mask used to hide, and the
-rest is the real Windows being larger than a Wine prefix.
+is 0.26 s - see [shadow-set.md](shadow-set.md).) On a base still in Windows'
+spelling a warm launch costs about twice plain Wine's warm 0.12 s. Raven's own
+share of the difference is about 2 ms (below); most of the rest was Wine's
+case-insensitive fallback opening the base's fonts, and spelling the base
+Wine's way took a warm launch to 0.16 s, of which the fonts are about 0.03 s -
+see [Directory names in Wine's spelling](#directory-names-in-wines-spelling).
 
 Raven's own share of that was measured directly afterwards, by running a
 trivial *native* program through the same path so Wine's start-up is excluded:
@@ -346,6 +358,57 @@ honest, but the experience was not: the user had done nothing wrong and had no
 reason to expect a wait. Sessions removed the window rather than papering over
 it - a second launch now joins what is already there.
 
+## Directory names in Wine's spelling
+
+Wine asks for `C:\windows\system32`, `C:\windows\fonts` and `C:\users` in
+lower case. A real Windows names them `Windows`, `System32`, `Fonts` and
+`Users`. On a case-sensitive filesystem the exact lookup misses, and Wine falls
+back to listing the parent directory and matching without case. Under Raven
+that listing goes through the overlay, which merges the directory from all
+three layers, on every miss.
+
+Traced with bpftrace on 2026-10-26, a process start against the real base
+missed about 1 400 lookups, most of them win32u opening the base's 338 fonts.
+Renaming the directories to Wine's spelling, on a reflink copy of the base and
+of an environment, and measuring warm spawns in a session, alternated with
+plain Wine under the same background load:
+
+| | Windows' spelling | Wine's spelling |
+|---|---|---|
+| process start, `wine cmd /c exit` | 242 ms | **157 ms** |
+| one lookup under `C:\windows\system32` | 100 µs | **3 µs** |
+| one lookup under `C:\users` | 67 µs | **~3 µs** |
+| one lookup of a path written `C:\Windows\System32` | 17 µs | 133 µs |
+
+Plain Wine starts the same program in 123 ms, or 153 ms once its prefix is
+given the same 338 fonts, so what is left of the gap is the fonts and not
+Raven. The last row is the price: a path written in Windows' spelling now pays
+the fallback. Wine hands programs `SystemRoot=C:\windows` and an `APPDATA`
+under `C:\users`, so most paths arrive in Wine's spelling. The exception is the
+projected registry, which keeps the base's own values: about 15 of them start
+with `C:\Windows\`, among them .NET Framework's `InstallRoot`, so a .NET
+program pays about 60 µs more for each runtime file it opens through them.
+
+`layer::WINE_SPELLING` lists the 28 directories renamed: every directory down
+to three levels that Wine's prefix and the Windows 11 base both contain under
+different case, plus `windows/fonts`, which Wine creates as `Fonts` and looks
+up as `fonts`. `base deploy` applies it before the base is published.
+`raven base respell <id>` converts a base deployed by an earlier release,
+together with the Wine layer and upper of every environment built on it,
+because an overlay merges its layers by exact name. It refuses while any of
+those environments runs, and a failed rename undoes the ones already made.
+`raven doctor` and the window's diagnostics name a base still in Windows'
+spelling. Raven's own paths into a base go through `layer::locate`, which
+accepts either spelling, so an unconverted base keeps working.
+
+The experiment above that found the case mismatch free used a skeleton tree
+whose fonts directory was empty, as Wine's own is. The misses come from opening
+fonts: each open of `C:\windows\fonts\<name>` misses on `windows` and on
+`fonts`, and lists `C:\` and `C:\Windows` to find them. win32u opens each of
+the 338 fonts twice, which is the 1 400 misses. With no fonts there is nothing
+to open and nothing to miss. The lowercase-shadow hazard described there also goes away: a
+`wineboot` that creates a literal `windows` now finds the base's own.
+
 ## Built
 
 Everything in [architecture.md](architecture.md) is now a description rather
@@ -358,18 +421,21 @@ it fails. A guarantee whose test cannot fail is not a guarantee.
 
 ## Where to start when this is picked up
 
-1. **The spawn cost is attributed, and the fix was given back** - fonts,
-   masked, 227 → 135 ms, then unmasked because a Windows declaring 961 fonts
-   and having none is not the real thing. It is the largest known cost and it
-   has no owner; profile it only if an installer measurement says it matters.
+1. **The spawn cost is attributed and fixed.** Masking the fonts took it from
+   227 to 135 ms and was withdrawn, because a Windows declaring 961 fonts and
+   having none is not the real thing. Spelling the base's directories Wine's
+   way took it from 242 to 157 ms with the fonts visible. What is left over
+   plain Wine's 123 ms is about 30 ms of fonts and a few of overlay.
 2. **`casefold` is closed.** Tested on a casefolding tmpfs against identical
    control trees: detected by Wine, no gain, slight regression on directory
    listing - and one real benefit (the lowercase-shadow hazard becomes
    impossible) recorded above for whenever base deployment chooses a
    filesystem.
-3. **Do not re-derive the falsified theories.** WinSxS, the overlay, the
-   directory cache and the case-mismatch are all ruled out, by experiment, and
-   the experiments are described above.
+3. **Do not re-derive the falsified theories.** WinSxS, the overlay and the
+   directory cache are ruled out, by experiment, and the experiments are
+   described above. The case mismatch was ruled out the same way and wrongly:
+   its control tree had no fonts. It is fixed now, see
+   [Directory names in Wine's spelling](#directory-names-in-wines-spelling).
 
 ## What was gained anyway
 
@@ -389,11 +455,12 @@ is already `lto = "thin"`, `codegen-units = 1`, `strip = "symbols"`, and the
 package builds `--release --locked`. That is worth keeping, but it is not where
 anything left to win lives:
 
-- **A warm launch costs 0.26 s and about 2 ms of it is Raven's code.**
-  Argument parsing, a few dozen `stat` calls, one `setns` and an `exec`. The
-  rest is Wine starting a process against the real Windows, which costs about
-  twice what it does in a plain prefix (0.12 s). A first launch costs about 2 s,
-  nearly all of it Wine's services starting.
+- **A warm launch costs 0.16 s and about 2 ms of it is Raven's code**, on a
+  base in Wine's spelling; 0.25 s on one still in Windows'. Argument parsing,
+  a few dozen `stat` calls, one `setns` and an `exec`. The rest is Wine
+  starting a process against the real Windows: 0.12 s in a plain prefix,
+  0.15 s in one given the same fonts. A first launch costs about 2 s, nearly
+  all of it Wine's services starting.
 - **The one place Raven does real work is the registry projection** - the
   `nt-hive` reader over a 76 MB binary hive, 1 894 keys in 82 ms measured
   today - and it runs at environment creation and on `reproject`, not per
@@ -403,7 +470,8 @@ anything left to win lives:
   (1.89-2.07 s) to 0.26 s, leaving the first one where it was; asking about one process instead
   of all of them took Raven's own share of a warm launch from 32 ms to 2;
   masking fonts was worth 92 ms per process start and was reverted anyway on
-  correctness grounds.
+  correctness grounds; spelling the base's directories Wine's way took a
+  process start from 242 ms to 157 and kept the fonts.
 
 If the projection ever becomes the thing people wait on - a much larger hive, a
 base with far more installed software - that is where profiling should start.

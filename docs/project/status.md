@@ -110,10 +110,13 @@ against plain Wine's 113, 2.0×). The cause was measured - win32u re-checking
 ~340 real font files at every process start - and masking the base's
 `Windows\Fonts` brought it to **135 ms (1.19×)**. That mask has since been
 withdrawn: a Windows whose registry declares 961 fonts while
-`C:\Windows\Fonts` holds none is not the real thing. It was not free to
-reverse: with sessions a warm launch costs about a quarter of a second, and the
-fonts are over a third of that. Four plausible theories were falsified on
-the way, the `wineserver` excess turned out not to exist at all, and the whole
+`C:\Windows\Fonts` holds none is not the real thing. Most of that cost turned
+out to be Wine's case-insensitive fallback while it opened the fonts, not the
+fonts themselves: with the base's directories spelled the way Wine looks them
+up, a process starts in 157 ms against plain Wine's 123, fonts visible, and a
+warm launch costs 0.16 s. Three plausible theories were falsified on the way,
+a fourth, the case mismatch, was ruled out wrongly and then fixed, the
+`wineserver` excess turned out not to exist at all, and the whole
 investigation is in [../internals/performance.md](../internals/performance.md).
 
 ### DXVK initialises against a real Windows
@@ -169,6 +172,7 @@ complete, and so is recovery when something is left holding an environment.
 |---|---|
 | `raven doctor` | namespaces, Wine, `ntsync`, what is deployed - and which handler the kernel gives `.exe` files to, with the fix when it is not Raven's |
 | `raven base editions` / `deploy` / `list` | the immutable Windows installations |
+| `raven base respell` | renaming an older base's directories to the spelling Wine looks them up by |
 | `raven env create` / `list` / `destroy` | environments, cheap and disposable |
 | `raven env status` / `stop` / `start` | who holds a running environment's mount, releasing it, and bringing one up before it is needed |
 | `raven env attach` / `detach` | a real block device wired in as a raw drive |
@@ -188,7 +192,7 @@ Measured against the real Windows 11 base:
   to the prefix, and no `X:` left anywhere.
 - After a full cycle the base holds **143 886 files, none modified**.
 
-**173 tests pass** (`cargo test`, both crates) and `clippy -D warnings` is
+**185 tests pass** (`cargo test`, both crates) and `clippy -D warnings` is
 clean. The ones carrying the design: base immutability under a real write (checked against a sabotaged mount,
 so it can fail), layer precedence with two read-only layers, finding and
 stopping the processes that hold a live mount - through an upper path
@@ -237,7 +241,7 @@ Ordered by how much damage a wrong assumption would do.
 | | Question | Why it matters |
 |---|---|---|
 | 1 | Can Wine be made to resolve `.mui` resources? | Without it every real Windows console utility is mute, and any program that keeps its strings in MUI - which is the modern default - shows blank text. This is now the largest known gap. |
-| 2 | Does the per-process spawn cost matter to a running game? | It is attributed - win32u re-checking the base's ~340 font files - and the mask that removed it was withdrawn on correctness grounds, so it is back at about +115 ms. `casefold` is tested and closed (Wine detects it on any filesystem and gains nothing). What remains needs a frame-time or input-to-response number in a real scene before it deserves an owner. |
+| 2 | Does the per-process spawn cost matter to a running game? | It is attributed and mostly fixed: on a base in Wine's spelling it is about +34 ms (157 ms against 123), about 30 ms of it the base's real fonts. A base from an earlier release pays about +115 ms until `raven base respell` converts it. `casefold` is tested and closed (Wine detects it on any filesystem and gains nothing). What remains needs a frame-time or input-to-response number in a real scene before it deserves an owner. |
 | 3 | Which Wine files must be in the upper lower-layer? | The shadow set, now expressed as "which paths does the Wine layer need to contain". See [../internals/shadow-set.md](../internals/shadow-set.md). |
 | 4 | Does the projection's `X:` to `C:` rewrite cover everything, or is a never-booted hive missing more? | `SystemRoot` was found by looking. What else describes the setup environment is unknown until something reads the whole hive. |
 | 5 | What do hardened systems need? | `linux-hardened`, Ubuntu's AppArmor policy and SELinux-enforcing systems all change the mount story. Rootless Podman solves this with `fuse-overlayfs` and `context=` labelling, so the answers exist; which one Raven needs is unmeasured. |

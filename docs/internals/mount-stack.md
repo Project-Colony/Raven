@@ -87,14 +87,17 @@ its file layer resolves a Windows path against a case-sensitive directory by
 matching case-insensitively. Every Wine prefix on ext4 in the world depends on
 this working.
 
-Raven inherits that solution and adds one rename pass: the Wine layer is
-renamed to the base's spelling at `env create` so the two trees merge at all.
-The lookup cost was profiled and attributed - to fonts, not to case
-resolution - and `casefold` was tested and closed: Wine detects it on any
-filesystem and gains nothing (see
-[performance.md](performance.md)). Its one real benefit is that the
-lowercase-shadow hazard becomes impossible, worth remembering if base
-deployment ever chooses a filesystem.
+Raven inherits that solution and adds two rename passes. The Wine layer is
+renamed to the base's spelling at `env create`, so the two trees merge at all.
+And the base itself is deployed with 28 directories in the spelling Wine looks
+them up by - `windows`, `windows/system32`, `windows/fonts`, `users` and the
+rest of `layer::WINE_SPELLING` - because Wine's case-insensitive fallback lists
+the whole parent directory, through every layer of the overlay, on each miss:
+100 µs a lookup under `C:\windows\system32` against 3 µs. `raven base respell`
+converts a base deployed before that. `casefold` was tested and closed: Wine
+detects it on any filesystem and gains nothing (see
+[performance.md](performance.md)). Its one real benefit, that the
+lowercase-shadow hazard becomes impossible, Wine's spelling now gives as well.
 
 ## Reparse points
 

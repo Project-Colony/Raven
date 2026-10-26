@@ -70,7 +70,18 @@ pub fn doctor() -> Result<()> {
             out!("{}", t("doctor_media_consequence"));
         }
     }
-    out!("{} {}", field("doctor_bases"), base::Base::list()?.len());
+    let bases = base::Base::list()?;
+    out!("{} {}", field("doctor_bases"), bases.len());
+    // A base deployed before Raven adopted Wine's spelling still works, and
+    // pays for it on every lookup under C:\windows: measured at 100 us
+    // against 3, and 242 ms against 157 for a process start.
+    for b in bases
+        .iter()
+        .filter(|b| b.looks_like_windows() && !raven::layer::uses_wine_spelling(&b.path))
+    {
+        out!("{}", tf("doctor_spelling", &[("id", &b.id)]));
+        out!("{}", tf("doctor_spelling_hint", &[("id", &b.id)]));
+    }
     // A deploy that was interrupted leaves several gigabytes under a hidden
     // name that `base list` passes over on purpose. Nothing else would ever
     // mention it, so the diagnostics do.

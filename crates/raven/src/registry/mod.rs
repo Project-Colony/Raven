@@ -28,8 +28,8 @@ pub use rules::Rules;
 /// A hive does not record where it belongs - that is decided by whoever loads
 /// it - so the mapping lives here.
 pub const SOURCES: &[(&str, &str)] = &[
-    ("Windows/System32/config/SOFTWARE", r"HKLM\Software"),
-    ("Users/Default/NTUSER.DAT", r"HKCU"),
+    ("windows/system32/config/SOFTWARE", r"HKLM\Software"),
+    ("users/Default/NTUSER.DAT", r"HKCU"),
 ];
 
 /// Reads every hive in `base` that Raven knows about and renders what the rules
@@ -37,7 +37,7 @@ pub const SOURCES: &[(&str, &str)] = &[
 pub fn project_base(base: &Path, rules: &Rules) -> Result<String, Error> {
     let mut keys = Vec::new();
     for (rel, mount) in SOURCES {
-        let path = base.join(rel);
+        let path = crate::layer::locate(base, rel);
         // A base is allowed not to have every hive. A never-booted Windows has
         // no user profiles, so NTUSER.DAT is routinely absent.
         let Ok(bytes) = std::fs::read(&path) else {

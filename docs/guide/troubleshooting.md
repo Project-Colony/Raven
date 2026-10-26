@@ -96,11 +96,17 @@ way out.
 
 ## Launching feels slower than Proton
 
-Slightly - about 20 ms per process over plain Wine (135 ms against 113,
-measured). It used to be 2× worse until the cause was found: Wine re-checks
-every font file in the base's `C:\windows\fonts` at every process start, and
-masking that directory removed 92 of the 105 milliseconds. Four plausible
-explanations were measured and destroyed before that one -
+Slightly. A process starts in about 157 ms in a Raven session and 123 ms in a
+plain Wine prefix. Almost all of the difference is the base's 338 real fonts,
+which Wine checks at every process start: a plain prefix given the same fonts
+takes 153 ms.
+
+If a start takes nearer 240 ms, the base was probably deployed by an earlier
+release and still spells its directories the way Windows does. `raven doctor`
+says so; stop the base's environments and run `raven base respell <base>`. See
+[usage.md](usage.md#converting-a-base-from-an-earlier-release).
+
+Several plausible explanations were measured and ruled out along the way -
 [../internals/performance.md](../internals/performance.md) has the numbers, so
 nobody repeats them.
 

@@ -19,6 +19,139 @@ use std::path::Path;
 
 use crate::Error;
 
+/// Directories a real Windows and Wine both have but spell differently, in
+/// the spelling Wine looks them up by, parents before children.
+///
+/// Wine asks for `C:\windows\system32`; Windows names it `Windows\System32`.
+/// On a case-sensitive filesystem the exact lookup misses, and Wine then reads
+/// the whole parent directory to find the case-insensitive match - through
+/// every layer of the overlay, on every access. Measured on a real base, a
+/// process start went from 242 ms to 157 ms and one file lookup under
+/// `C:\windows` from 100 us to 3 us once these were spelled Wine's way.
+///
+/// The list is every directory down to three levels that Wine's own prefix
+/// and the Windows 11 base both contain under different case, plus `fonts`,
+/// which Wine creates as `Fonts` but looks fonts up under in lower case.
+pub const WINE_SPELLING: &[&str] = &[
+    "users",
+    "windows",
+    "windows/fonts",
+    "windows/globalization",
+    "windows/globalization/sorting",
+    "windows/help",
+    "windows/inf",
+    "windows/logs",
+    "windows/performance",
+    "windows/performance/winsat",
+    "windows/resources",
+    "windows/resources/themes",
+    "windows/system",
+    "windows/system32",
+    "windows/system32/catroot",
+    "windows/system32/driverstore",
+    "windows/system32/mui",
+    "windows/system32/tasks",
+    "windows/system32/winmetadata",
+    "windows/syswow64",
+    "windows/syswow64/drivers",
+    "windows/syswow64/mui",
+    "windows/syswow64/winmetadata",
+    "windows/tasks",
+    "windows/temp",
+    "windows/winsxs",
+    "windows/winsxs/manifests",
+    "Program Files/Common Files/Microsoft Shared",
+];
+
+/// Where `relative` is under `root`, whatever case each of its directories is
+/// spelled in there.
+///
+/// Raven names Windows paths in Wine's spelling, and a base deployed before
+/// it adopted that spelling still has Windows'. Each component is tried as
+/// written and, failing that, matched without case; a component that is not
+/// there at all keeps the spelling it was asked for.
+pub fn locate(root: &Path, relative: &str) -> std::path::PathBuf {
+    let mut at = root.to_path_buf();
+    for part in relative.split('/').filter(|p| !p.is_empty()) {
+        at = match_case(&at, part).unwrap_or_else(|| at.join(part));
+    }
+    at
+}
+
+/// The entry of `dir` named `name`, exactly or else without regard to case.
+fn match_case(dir: &Path, name: &str) -> Option<std::path::PathBuf> {
+    let exact = dir.join(name);
+    if fs::symlink_metadata(&exact).is_ok() {
+        return Some(exact);
+    }
+    fs::read_dir(dir)
+        .ok()?
+        .filter_map(Result::ok)
+        .find_map(|e| {
+            e.file_name()
+                .to_str()
+                .is_some_and(|n| n.eq_ignore_ascii_case(name))
+                .then(|| e.path())
+        })
+}
+
+/// `relative` as it is spelled under `root`, for a path to write into another
+/// layer of the same stack: the layers merge by exact name, so a file added to
+/// the upper layer must use the directory names the layers below already use.
+pub fn spelled(root: &Path, relative: &str) -> String {
+    let at = locate(root, relative);
+    at.strip_prefix(root)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| relative.to_owned())
+}
+
+/// Whether a base already spells its directories the way Wine looks them up.
+pub fn uses_wine_spelling(base: &Path) -> bool {
+    base.join("windows").is_dir()
+}
+
+/// Renames every directory in [`WINE_SPELLING`] to that spelling, in each of
+/// `roots` - a base, and the layer and upper of every environment on it.
+///
+/// All of them or none: the layers of an overlay are merged by exact name, so
+/// a base renamed without its environments' layers would show both spellings
+/// side by side. Any failed rename undoes the ones already made. Returns what
+/// was renamed, which is empty once a layout is already Wine's.
+///
+/// Nothing may have these mounted: changing a lower layer under a live
+/// overlay is undefined. The callers check that first.
+pub fn adopt_wine_spelling(
+    roots: &[std::path::PathBuf],
+) -> Result<Vec<(std::path::PathBuf, std::path::PathBuf)>, Error> {
+    let mut done: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
+    let undo = |done: &[(std::path::PathBuf, std::path::PathBuf)]| {
+        for (from, to) in done.iter().rev() {
+            let _ = fs::rename(to, from);
+        }
+    };
+    for root in roots {
+        for rel in WINE_SPELLING {
+            let (parent, name) = match rel.rsplit_once('/') {
+                Some((parent, name)) => (locate(root, parent), name),
+                None => (root.clone(), *rel),
+            };
+            let want = parent.join(name);
+            if fs::symlink_metadata(&want).is_ok() {
+                continue;
+            }
+            let Some(have) = match_case(&parent, name) else {
+                continue;
+            };
+            if let Err(e) = fs::rename(&have, &want) {
+                undo(&done);
+                return Err(Error::Layer(have, e));
+            }
+            done.push((have, want));
+        }
+    }
+    Ok(done)
+}
+
 /// Renames entries in `layer` to match `reference`'s spelling wherever the two
 /// differ only by case. Returns how many paths were renamed.
 ///
@@ -100,7 +233,7 @@ fn walk(layer: &Path, reference: &Path, renamed: &mut usize) -> Result<(), Error
 /// unaffected: an installer that registers its own assemblies into the
 /// environment still works.
 pub fn shadow(layer: &Path, relative: &str) -> Result<(), Error> {
-    let target = layer.join(relative);
+    let target = locate(layer, relative);
     std::fs::create_dir_all(&target).map_err(|e| Error::Layer(target.clone(), e))?;
     // `user.` rather than `trusted.`: Raven mounts with `userxattr` because it
     // is unprivileged, and an unprivileged process cannot set trusted xattrs.
@@ -132,7 +265,7 @@ pub fn shadow(layer: &Path, relative: &str) -> Result<(), Error> {
 /// seconds, so the same 92 ms is a fraction of a much smaller number. A real
 /// Windows whose fonts are hidden is not a real Windows, which is the whole
 /// premise, so the fonts are back.
-pub const SHADOWED: &[&str] = &["Windows/WinSxS"];
+pub const SHADOWED: &[&str] = &["windows/winsxs"];
 
 /// Subtrees that *used* to be shadowed and no longer are.
 ///
@@ -145,12 +278,12 @@ pub const SHADOWED: &[&str] = &["Windows/WinSxS"];
 /// An entry stays here indefinitely: it costs one `removexattr` on a directory
 /// that usually does not carry the marker, and removing it would silently
 /// strand anyone who had not started that environment since.
-const FORMERLY_SHADOWED: &[&str] = &["Windows/Fonts"];
+const FORMERLY_SHADOWED: &[&str] = &["windows/fonts"];
 
 /// Removes an opaque marker, letting the base's version of a subtree show
 /// through again.
 pub fn unshadow(layer: &Path, relative: &str) -> Result<(), Error> {
-    let target = layer.join(relative);
+    let target = locate(layer, relative);
     match rustix::fs::removexattr(&target, "user.overlay.opaque") {
         Ok(()) => Ok(()),
         // Absent marker or absent directory: nothing to undo, which is the
@@ -180,10 +313,10 @@ pub fn unshadow(layer: &Path, relative: &str) -> Result<(), Error> {
 /// Windows Runtime type", which is how the Visual Studio 2019 installer died
 /// on `Windows.Networking.Connectivity.NetworkCostType`.
 pub const UNCOVERED: &[&str] = &[
-    "Windows/System32/mscoree.dll",
-    "Windows/SysWOW64/mscoree.dll",
-    "Windows/System32/WinMetadata",
-    "Windows/SysWOW64/WinMetadata",
+    "windows/system32/mscoree.dll",
+    "windows/syswow64/mscoree.dll",
+    "windows/system32/winmetadata",
+    "windows/syswow64/winmetadata",
 ];
 
 /// Deletes Wine's copy of `relative` from `dir`, letting the base show
@@ -195,8 +328,8 @@ pub const UNCOVERED: &[&str] = &[
 /// for a directory every file the base also has is taken as Wine's. Nothing
 /// but Wine's wineboot writes the OS's own namespaces into `WinMetadata`.
 pub fn uncover(dir: &Path, base: &Path, relative: &str) -> Result<(), Error> {
-    let target = dir.join(relative);
-    let theirs = base.join(relative);
+    let target = locate(dir, relative);
+    let theirs = locate(base, relative);
     if !theirs.is_dir() {
         if !is_wine_builtin(&target) {
             return Ok(());
@@ -239,7 +372,7 @@ pub fn reconcile(layer: &Path, upper: &Path, base: &Path) -> Result<(), Error> {
         unshadow(layer, rel)?;
     }
     for rel in SHADOWED {
-        if layer.join(rel).is_dir() {
+        if locate(layer, rel).is_dir() {
             shadow(layer, rel)?;
         }
     }
@@ -277,6 +410,76 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn every_layer_takes_the_spelling_wine_looks_its_directories_up_by() {
+        // Wine asks for C:\windows\system32 and C:\windows\fonts; a real
+        // Windows spells them Windows, System32, Fonts. A lookup in the wrong
+        // case misses, and Wine then reads the whole parent directory to find
+        // the match - through every layer of the overlay, on every access.
+        let tmp = Tmp::new("spelling");
+        tmp.file("base/Windows/System32/kernel32.dll", "ms")
+            .file("base/Windows/Fonts/arial.ttf", "ms")
+            .file("base/Users/Public/desktop.ini", "ms")
+            .file("layer/Windows/System32/wine.dll", "wine")
+            .file("upper/Windows/System32/d3d11.dll", "dxvk")
+            .file("upper/Users/me/AppData/save.dat", "the user's save");
+        fs::create_dir_all(tmp.0.join("layer/Windows/WinSxS")).unwrap();
+        shadow(&tmp.0.join("layer"), "Windows/WinSxS").unwrap();
+        let roots = [tmp.0.join("base"), tmp.0.join("layer"), tmp.0.join("upper")];
+
+        let renamed = adopt_wine_spelling(&roots).unwrap();
+        assert!(!renamed.is_empty());
+        for (path, body) in [
+            ("base/windows/system32/kernel32.dll", "ms"),
+            ("base/windows/fonts/arial.ttf", "ms"),
+            ("base/users/Public/desktop.ini", "ms"),
+            ("layer/windows/system32/wine.dll", "wine"),
+            ("upper/windows/system32/d3d11.dll", "dxvk"),
+            ("upper/users/me/AppData/save.dat", "the user's save"),
+        ] {
+            assert_eq!(
+                fs::read_to_string(tmp.0.join(path)).unwrap(),
+                body,
+                "{path}"
+            );
+        }
+        assert!(!tmp.0.join("base/Windows").exists(), "renamed, not copied");
+        // The shadow marker travels with the directory it is set on.
+        assert!(
+            rustix::fs::getxattr(
+                tmp.0.join("layer/windows/winsxs"),
+                "user.overlay.opaque",
+                &mut [0u8; 1]
+            )
+            .is_ok(),
+            "the WinSxS mask must survive the rename"
+        );
+        assert!(uses_wine_spelling(&roots[0]));
+        assert!(
+            adopt_wine_spelling(&roots).unwrap().is_empty(),
+            "a second run changes nothing"
+        );
+    }
+
+    #[test]
+    fn a_path_is_found_whatever_case_its_directories_are_spelled_in() {
+        let tmp = Tmp::new("locate");
+        tmp.file("Windows/System32/config/SOFTWARE", "hive");
+        let found = locate(&tmp.0, "windows/system32/config/SOFTWARE");
+        assert_eq!(found, tmp.0.join("Windows/System32/config/SOFTWARE"));
+        assert!(!uses_wine_spelling(&tmp.0));
+        adopt_wine_spelling(std::slice::from_ref(&tmp.0)).unwrap();
+        assert_eq!(
+            locate(&tmp.0, "Windows/System32/config/SOFTWARE"),
+            tmp.0.join("windows/system32/config/SOFTWARE")
+        );
+        // Something that is not there keeps the spelling it was asked for.
+        assert_eq!(
+            locate(&tmp.0, "windows/nope/x"),
+            tmp.0.join("windows/nope/x")
+        );
     }
 
     #[test]
