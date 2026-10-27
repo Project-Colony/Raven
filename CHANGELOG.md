@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.6](https://github.com/Project-Colony/Raven/compare/v0.5.5...v0.5.6) (2026-10-27)
+
+
+### Performance
+
+* spell a base's directories the way Wine looks them up ([#38](https://github.com/Project-Colony/Raven/issues/38)) ([7d55529](https://github.com/Project-Colony/Raven/commit/7d55529ab3df7b47f005808c681a9f80f4813d8f))
+
 ## [0.5.5](https://github.com/Project-Colony/Raven/compare/v0.5.4...v0.5.5) (2026-10-26)
 
 
