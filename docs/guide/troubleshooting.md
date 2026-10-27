@@ -142,6 +142,59 @@ The same Rufus is still a useful data point: under plain Wine it crashes at
 startup before showing a window; against a Raven environment it runs and
 renders. Real-Windows worlds sometimes fix programs, not just break them.
 
+## The Epic Games Launcher asks you to sign in at every start
+
+Seen with launcher 20.3.6 under Wine 11.20. The first sign-in works and holds
+while the launcher runs. At the next start the saved sign-in is refused, and
+the launcher's log
+(`%LOCALAPPDATA%\EpicGamesLauncher\Saved\Logs\EpicGamesLauncher.log`) shows
+`errors.com.epicgames.common.oauth.invalid_dpop_proof` with "Signatures of
+refresh tokens do not match".
+
+The launcher binds its saved sign-in to a named key it creates through CNG in
+the Microsoft Software Key Storage Provider, and signs a proof with that key at
+every refresh (DPoP). Wine's `ncrypt.dll` keeps a named key only in the process
+that created it: `NCryptOpenKey` is a stub that returns `NTE_NOT_SUPPORTED`
+(0x80090029). The launcher therefore creates a new key at each start, and
+Epic's server rejects the saved token. A .NET probe in a throwaway environment
+shows the same: `CngKey.Create` of a named ECDSA P-256 key succeeds, and
+`CngKey.Open` of that name from a second process fails with 0x80090029.
+
+The base's own `ncrypt.dll` is no way around it. Loaded as native under Wine
+11.20 it unloads again before the first call, and the provider behind it keeps
+keys through the KeyIso service in `lsass.exe`, which Wine does not have.
+
+This is Wine's to fix: `NCryptOpenKey` is still a stub on Wine's master branch
+in October 2026. Until then, sign in once each time the launcher starts.
+
+## Install Engine does nothing in the Epic Games Launcher
+
+Seen with launcher 20.3.6: "Install Engine" does nothing, and the log shows
+`EoshState = WaitingForBuildsAndItemFiles` and `found 0 entitled apps`. This is
+not Raven's or Wine's: the same lines were reported on Windows 11 with launcher
+20.3.5 in
+[Epic's forum](https://forums.unrealengine.com/t/launcher-20-3-5-install-engine-and-do-nothing-0-entitled-apps-eula-never-shown/2840448),
+along with an empty Engine Versions list, a greyed-out "+" and no licence
+agreement.
+The workaround posted there, not yet tried under Raven: in Unreal Engine >
+Samples, add a free sample such as the Game Animation Sample to the library and
+try to create a project from it. The launcher says the engine is missing, and
+from then on "Install Engine" and "+" work.
+
+The logs of Epic Online Services (EOS), the background service the launcher
+hands installs to, also show `EOS_SESSION_GUID environment variable is
+required.` and exit code 91. That comes from EOS's own update step, which its
+service runs every two hours
+(`EpicOnlineServicesHost.exe startandwait --mode=stage`). Installs go through another copy of the same helper, which the
+launcher starts itself with that variable set: it reports `MAINSERVICE_READY`
+and accepts the launcher's sign-in. The update step fails because Wine runs a
+service under the user's account, not LocalSystem: a test service registered
+with `sc create` saw the SID `S-1-5-21-0-0-0-1000`. EOS's helper checks for
+LocalSystem (`IsWellKnownSid` in its `os_toolbox.node`), logs
+`isSystemUser: false`, and takes the path that needs the variable. Installing
+EOS through its MSI package works: EOS's installer logged
+`MSI completed with Success (0)`.
+
 ## Anti-cheat refuses to start the game
 
 If the publisher has enabled Easy Anti-Cheat or BattlEye's Linux support, the
