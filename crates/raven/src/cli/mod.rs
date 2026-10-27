@@ -97,6 +97,9 @@ enum BaseCmd {
         #[arg(long)]
         name: String,
     },
+    Respell {
+        id: String,
+    },
 }
 
 #[derive(Args)]

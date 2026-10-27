@@ -68,14 +68,14 @@ pub const DXVK: Runtime = Runtime {
         "d3d10",
         "d3d10_1",
     ],
-    arches: &[("x64", "Windows/System32"), ("x32", "Windows/SysWOW64")],
+    arches: &[("x64", "windows/system32"), ("x32", "windows/syswow64")],
 };
 
 /// Direct3D 12, which DXVK does not implement at all.
 pub const VKD3D: Runtime = Runtime {
     key: "vkd3d",
     dlls: &["d3d12", "d3d12core"],
-    arches: &[("x64", "Windows/System32"), ("x86", "Windows/SysWOW64")],
+    arches: &[("x64", "windows/system32"), ("x86", "windows/syswow64")],
 };
 
 /// One installed DLL: which module, and the Windows directory it shadows in.
@@ -119,6 +119,11 @@ impl Environment {
         let ours = self.d3d_manifest(rt);
         let mut plan: Vec<(PathBuf, PathBuf, String, &str, &'static str)> = Vec::new();
         for (arch, windir) in rt.arches {
+            // In the spelling the environment's layers already use: a base
+            // from before Raven adopted Wine's spelling still says
+            // Windows/System32, and a lower-case directory written beside it
+            // would show as a second one.
+            let windir = crate::layer::spelled(&self.layer(), windir);
             let from_dir = root.join(arch);
             if !from_dir.is_dir() {
                 // A 64-bit-only build is legitimate; a missing x64 is not, and
@@ -297,7 +302,7 @@ impl Environment {
             let arch = rt
                 .arches
                 .iter()
-                .find(|(_, windir)| rel.starts_with(windir))
+                .find(|(_, windir)| rel.to_ascii_lowercase().starts_with(windir))
                 .map(|(a, _)| *a)
                 .unwrap_or("?");
             let dll = module_of(&rel).unwrap_or_else(|| rel.clone());
@@ -323,6 +328,24 @@ impl Environment {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// Rewrites the Direct3D manifests after the layers' directories were
+    /// renamed, so each path names where the file now is.
+    pub(crate) fn respell_d3d_manifests(&self) -> Result<(), Error> {
+        for rt in [&DXVK, &VKD3D] {
+            let files = self.d3d_manifest(rt);
+            if files.is_empty() {
+                continue;
+            }
+            let moved: Vec<String> = files
+                .iter()
+                .map(|rel| crate::layer::spelled(&self.upper(), rel))
+                .collect();
+            let build = self.d3d_build(rt).unwrap_or_else(|| "unknown".into());
+            write_manifest(&self.d3d_manifest_path(rt), &build, &moved)?;
+        }
+        Ok(())
     }
 
     /// Which DXVK build is installed, as the release named itself.

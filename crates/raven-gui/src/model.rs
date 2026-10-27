@@ -108,6 +108,12 @@ pub fn checks() -> Vec<Check> {
     let wine = raven::prefix::wine_available();
     let ntsync = std::path::Path::new("/dev/ntsync").exists();
     let media = raven::prefix::media_decoders();
+    let slow: Vec<String> = raven::base::Base::list()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|b| b.looks_like_windows() && !raven::layer::uses_wine_spelling(&b.path))
+        .map(|b| b.id)
+        .collect();
 
     vec![
         exe_handler(),
@@ -145,6 +151,16 @@ pub fn checks() -> Vec<Check> {
                     "check_media_incomplete",
                     &[("missing", &missing.join("; "))],
                 ),
+            },
+        },
+        // The same judgement `raven doctor` makes under "bases".
+        Check {
+            label: t("check_spelling").into(),
+            ok: slow.is_empty(),
+            detail: if slow.is_empty() {
+                t("check_spelling_ok").into()
+            } else {
+                tf("check_spelling_slow", &[("ids", &slow.join(", "))])
             },
         },
     ]

@@ -73,7 +73,7 @@ cargo build --release
 cargo test
 ```
 
-179 tests, no root required, no Windows base required.
+185 tests, no root required, no Windows base required.
 
 Two things that are true, and stay true:
 

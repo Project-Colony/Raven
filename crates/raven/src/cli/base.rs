@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use raven::base;
-use raven::i18n::{t, tf};
+use raven::i18n::{t, tf, tn};
 
 use super::BaseCmd;
 
@@ -35,6 +35,22 @@ pub fn base_cmd(cmd: BaseCmd) -> Result<()> {
                             ("name", &e.name),
                             ("build", &build)
                         ]
+                    )
+                );
+            }
+            Ok(())
+        }
+        BaseCmd::Respell { id } => {
+            let done = raven::env::respell_base(&id)?;
+            if done.directories == 0 {
+                out!("{}", tf("base_respelled_already", &[("id", &id)]));
+            } else {
+                out!(
+                    "{}",
+                    tn(
+                        "base_respelled",
+                        done.environments,
+                        &[("id", &id), ("dirs", &done.directories)]
                     )
                 );
             }

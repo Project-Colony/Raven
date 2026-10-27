@@ -36,7 +36,8 @@ and write to through an overlay.
 > second drawing on the GPU through DXVK and Direct3D 11; vkd3d-proton installs,
 > but no Direct3D 12 title has been tried; one installer framework exercised;
 > programs that keep their strings in `.mui` files run mute. The honest ledger,
-> including five performance theories that measurement destroyed, is in
+> including four performance theories that measurement destroyed and one it
+> ruled out wrongly and then fixed, is in
 > [docs/project/status.md](docs/project/status.md) and
 > [docs/internals/performance.md](docs/internals/performance.md).
 

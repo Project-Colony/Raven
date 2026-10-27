@@ -6,7 +6,10 @@
 //! bind the installation to hardware that is not there.
 //!
 //! A base is immutable once deployed. Nothing here ever writes to an existing
-//! one, and nothing anywhere else is allowed to either.
+//! one, and nothing anywhere else is allowed to either. The one exception is
+//! `raven base respell`, which renames up to 28 directories of a base deployed
+//! before Raven used Wine's spelling, with every environment on it stopped.
+//! No file's content changes.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -65,7 +68,7 @@ impl Base {
     /// Checked before a base is used, because pointing an environment at the
     /// wrong directory produces failures that look like Wine bugs.
     pub fn looks_like_windows(&self) -> bool {
-        self.path.join("Windows/System32/config/SOFTWARE").is_file()
+        crate::layer::locate(&self.path, "windows/system32/config/SOFTWARE").is_file()
     }
 }
 
@@ -164,6 +167,10 @@ pub fn deploy(image: &Path, index: u32, id: &str) -> Result<Base, Error> {
     // Before the rename, so the name only ever appears on a base whose
     // junctions already resolve inside it.
     repoint_absolute_symlinks(&partial)?;
+    // Wine's spelling from the start, so no environment built on it ever pays
+    // the case-insensitive scan Wine falls back to - see
+    // `layer::WINE_SPELLING`. Nothing is mounted yet, so this is safe.
+    crate::layer::adopt_wine_spelling(std::slice::from_ref(&partial))?;
     std::fs::rename(&partial, &dir).map_err(|e| Error::Layer(dir.clone(), e))?;
     Ok(Base {
         id: id.to_owned(),
