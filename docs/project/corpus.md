@@ -63,6 +63,7 @@ same investigation from being run twice.
 | *ShineHill*, second run onward | Game, Direct3D 11 | **Runs**, and a relaunch immediately after closing now works | - | What sessions bought: before them a relaunch inside three to six seconds was refused outright. The remaining several-second wait is the game's own start-up - plain Wine takes 7.9 s to the same window |
 | `dxdiag.exe` (Windows 11 26200) | Microsoft's DirectX diagnostic | **Runs**, drove DXVK to initialise and enumerate the GPU | - | How Direct3D-on-Vulkan was first shown to work at all against a real Windows. Its DirectDraw probe went through WineD3D and its D3D9 probe through DXVK, in one process |
 | BS_SoSR 1.15 (NW.js 0.103.1 / Chromium 140, RPG Maker MV) | Game, 64-bit | **Startup crash fixed; WebGL initializes.** Gameplay not verified | `raven` | Tested 2026-09-15 with Wine 11.17. Twice aborted in `remote_font_face_source.cc:357`: no fallback font. The real Windows font files were visible but their registrations were excluded. Registering the existing Arial alone removed the abort; projecting the base's `CurrentVersion\Fonts` also passed the startup check. Existing environments need the narrow rule added and reprojection; see [registry projection](../internals/registry-projection.md#font-registrations). |
+| Epic Games Launcher 20.3.6, with Epic Online Services 5.8.1 | Store client (UE5, CEF 90) and its Node.js service | **Runs and signs in**, installs EOS through its MSI. The sign-in is lost at every start, and "Install Engine" does nothing | `wine` (sign-in) | Tested 2026-10-26/27 with Wine 11.20. Sign-in: Wine's `ncrypt` keeps no named keys. Install Engine: the same log lines appear on Windows 11, so the bug is Epic's. EOS's service starts and runs its helper under Wine's Service Control Manager, under the user's SID. See [troubleshooting](../guide/troubleshooting.md#the-epic-games-launcher-asks-you-to-sign-in-at-every-start) |
 
 ## Experiment: Proton's Wine against a real Windows
 
@@ -115,9 +116,12 @@ Named so the gaps are visible rather than merely absent:
 - **A 32-bit Direct3D title.** The x32 libraries are installed and unexercised.
 - **Anything using COM**, the category most likely to be broken by a design
   decision rather than a bug.
-- **A program whose service must actually *run*, not merely register.**
-  `sc create` and `sc query` work; nothing has yet been made to start and stay
-  up under Wine's Service Control Manager.
-- **A second installer framework.** NSIS, MSI, InstallShield - all untried.
+- **A service that needs LocalSystem.** Epic Online Services' service starts
+  and runs under Wine's Service Control Manager, but Wine runs every service
+  under the user's SID, so a service that checks for LocalSystem takes another
+  path. EOS's own update step fails that way; no program has yet been found
+  that cannot run at all because of it.
+- **A second installer framework.** NSIS and InstallShield are untried. MSI ran
+  through Epic Online Services' package, including its managed custom actions.
 - **Anything with a `.mui` file**, to see how mute "mute" really is.
 - **A 32-bit program of any kind other than the RPG Maker game.**
