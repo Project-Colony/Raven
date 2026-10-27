@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.7](https://github.com/Project-Colony/Raven/compare/v0.5.6...v0.5.7) (2026-10-27)
+
+
+### Fixes
+
+* bring Cargo.lock to 0.5.6 so locked builds work again ([#41](https://github.com/Project-Colony/Raven/issues/41)) ([4494a3d](https://github.com/Project-Colony/Raven/commit/4494a3d3624baeb67fb203a3c2806284be88ade2))
+
+
+### Documentation
+
+* record what the Epic Games Launcher needs that Wine lacks ([#40](https://github.com/Project-Colony/Raven/issues/40)) ([fb524ae](https://github.com/Project-Colony/Raven/commit/fb524ae3aeb819a359dc2af892a78447bf43fb8e))
+
 ## [0.5.6](https://github.com/Project-Colony/Raven/compare/v0.5.5...v0.5.6) (2026-10-27)
 
 
