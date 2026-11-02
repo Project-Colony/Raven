@@ -58,13 +58,14 @@ pub enum Message {
     // carries the error across that boundary without the library changing.
     Acted(Result<(), std::sync::Arc<raven::Error>>),
     Open(String),
+    // `rt` is a runtime's key, as `raven::d3d::RUNTIMES` names it.
     InstallD3d {
         env: String,
-        vkd3d: bool,
+        rt: &'static str,
     },
     RemoveD3d {
         env: String,
-        vkd3d: bool,
+        rt: &'static str,
     },
     Detach {
         env: String,
@@ -278,21 +279,18 @@ impl App {
                 self.offer = Some(errors::explain(&e));
                 self.reload_environments()
             }
-            Message::InstallD3d { env, vkd3d } => {
-                let which = if vkd3d { "vkd3d" } else { "dxvk" };
+            Message::InstallD3d { env, rt } => {
                 self.offer = Some(Offer::notice(i18n::tf(
                     "install_d3d_notice",
-                    &[("which", &which), ("env", &env)],
+                    &[("which", &rt), ("env", &env)],
                 )));
                 Task::none()
             }
-            Message::RemoveD3d { env, vkd3d } => act(env, move |e| {
-                let rt = if vkd3d {
-                    &raven::d3d::VKD3D
-                } else {
-                    &raven::d3d::DXVK
-                };
-                e.remove_d3d(rt).map(|_| ())
+            Message::RemoveD3d { env, rt } => act(env, move |e| {
+                match raven::d3d::RUNTIMES.into_iter().find(|r| r.key == rt) {
+                    Some(r) => e.remove_d3d(r).map(|_| ()),
+                    None => Ok(()),
+                }
             }),
             Message::Detach { env, letter } => act(env, move |e| e.detach(letter)),
             Message::Reproject(env) => act(env, |e| e.project_registry().map(|_| ())),

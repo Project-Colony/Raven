@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use raven::d3d::{DXVK, VKD3D};
+use raven::d3d::{DXVK, NVAPI, VKD3D};
 use raven::env::Environment;
 
 /// One environment, as a card draws it.
@@ -23,6 +23,7 @@ pub struct EnvRow {
     /// The installed build, as the release named itself.
     pub dxvk: Option<String>,
     pub vkd3d: Option<String>,
+    pub nvapi: Option<String>,
     /// Drive letter and the device behind it.
     pub attachments: Vec<(char, PathBuf)>,
 }
@@ -57,6 +58,7 @@ pub fn env_rows(envs: Vec<Environment>) -> Vec<EnvRow> {
             programs: e.holders().iter().filter(|h| !h.is_session()).count(),
             dxvk: e.d3d_build(&DXVK),
             vkd3d: e.d3d_build(&VKD3D),
+            nvapi: e.d3d_build(&NVAPI),
             attachments: e
                 .attachments()
                 .into_iter()
@@ -227,6 +229,7 @@ mod tests {
             programs: 2,
             dxvk: Some("dxvk-3.1".into()),
             vkd3d: None,
+            nvapi: None,
             attachments: vec![],
         };
         assert!(row.is_running());
@@ -242,6 +245,7 @@ mod tests {
             programs: 0,
             dxvk: None,
             vkd3d: None,
+            nvapi: None,
             attachments: vec![],
         };
         assert!(!row.is_running());

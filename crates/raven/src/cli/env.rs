@@ -135,6 +135,7 @@ pub fn env_cmd(cmd: EnvCmd) -> Result<()> {
         }
         EnvCmd::Dxvk { name, from, remove } => d3d_cmd(&raven::d3d::DXVK, &name, from, remove),
         EnvCmd::Vkd3d { name, from, remove } => d3d_cmd(&raven::d3d::VKD3D, &name, from, remove),
+        EnvCmd::Nvapi { name, from, remove } => d3d_cmd(&raven::d3d::NVAPI, &name, from, remove),
         EnvCmd::Detach { name, letter } => {
             let e = env::Environment::open(&name)?;
             e.detach(letter)?;
@@ -224,6 +225,9 @@ fn d3d_cmd(
             )
         );
         out!("{}", t("d3d_installed_shadow"));
+        if !rt.from_driver.is_empty() && !dlls.iter().any(|d| rt.from_driver.contains(d)) {
+            out!("{}", t("nvapi_no_driver"));
+        }
         out!(
             "{}",
             tf("d3d_undo", &[("runtime", runtime), ("name", &name)])
@@ -256,11 +260,21 @@ fn d3d_cmd(
             }
             let over = e.d3d_overrides(rt);
             // The two halves are reported apart on purpose: a file with no
-            // override is a library Wine will ignore.
+            // override is a library Wine will ignore. The driver's libraries
+            // need none, Wine having no builtin to prefer over them.
             for f in &files {
-                if !over.iter().any(|(n, _)| n == &f.dll) {
+                if rt.dlls.contains(&f.dll.as_str()) && !over.iter().any(|(n, _)| n == &f.dll) {
                     out!("{}", tf("d3d_no_override", &[("dll", &f.dll)]));
                 }
+            }
+            // Also when the links were made and the driver has since moved
+            // away: DLSS then fails at launch with nothing said anywhere.
+            if !rt.from_driver.is_empty()
+                && !files
+                    .iter()
+                    .any(|f| rt.from_driver.contains(&f.dll.as_str()))
+            {
+                out!("{}", t("nvapi_no_driver"));
             }
         }
     }

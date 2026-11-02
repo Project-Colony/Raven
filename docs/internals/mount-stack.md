@@ -217,8 +217,8 @@ A base is data, not cache, despite being reproducible from an ISO: reproducing
 it requires an ISO the user may no longer have, and the rule is that deleting
 the cache must cost nothing but time.
 
-`raven env dxvk` and `raven env vkd3d` given an archive unpack it into the cache,
-never into `/tmp`. A name in a shared directory can be created first by another
+`raven env dxvk`, `raven env vkd3d` and `raven env nvapi` given an archive unpack
+it into the cache, never into `/tmp`. A name in a shared directory can be created first by another
 user, and libraries extracted into a directory they own could be swapped before
 they are copied into the upper layer. Each install gets a directory of its own,
 created exclusively with mode `0700` and never reused if the name is already

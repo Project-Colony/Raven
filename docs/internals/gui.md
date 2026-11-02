@@ -148,8 +148,9 @@ services, which makes a launch soon after it fast.
 Selecting a card opens its detail:
 
 - **Session** - running or not, which processes hold it, start and stop.
-- **Direct3D** - DXVK and vkd3d-proton side by side: installed build, install
-  from a file, remove. They are separate runtimes, not versions of one.
+- **Direct3D** - DXVK, vkd3d-proton and dxvk-nvapi side by side: installed
+  build, install from a file, remove. They are separate runtimes, not versions
+  of one.
 - **Devices** - what is attached, and detach. Attaching is deferred to the
   picker spec; until then the detail explains how and shows the CLI command.
 - **Registry** - the environment's rules, and Reproject.

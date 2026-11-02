@@ -27,7 +27,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("detail_session", "Session"),
     ("detail_direct3d", "Direct3D"),
     ("detail_runtime_missing", "{runtime} : non installé"),
-    ("detail_separate_runtimes", "Ce sont deux moteurs distincts, et non deux versions d'un même moteur."),
+    ("detail_separate_runtimes", "Ce sont des moteurs distincts, et non des versions d'un même moteur."),
     ("detail_devices", "Périphériques"),
     ("detail_no_devices", "Aucun rattaché. Pour en rattacher un :  raven env attach <nom> /dev/sdX"),
     ("detail_registry", "Registre"),

@@ -39,7 +39,7 @@ pub fn screen(e: &EnvRow) -> Element<'_, Message> {
     ]
     .spacing(t.sz(6));
 
-    let runtime = |label: &'static str, build: &Option<String>, vkd3d: bool| {
+    let runtime = |label: &'static str, build: &Option<String>, rt: &'static str| {
         let name = e.name.clone();
         match build {
             Some(v) => row![
@@ -53,7 +53,7 @@ pub fn screen(e: &EnvRow) -> Element<'_, Message> {
                         .font(t.regular)
                 )
                 .style(theme::button_style(p))
-                .on_press(Message::RemoveD3d { env: name, vkd3d }),
+                .on_press(Message::RemoveD3d { env: name, rt }),
             ],
             None => row![
                 text(i18n::tf("detail_runtime_missing", &[("runtime", &label)]))
@@ -66,7 +66,7 @@ pub fn screen(e: &EnvRow) -> Element<'_, Message> {
                         .font(t.regular)
                 )
                 .style(theme::button_style(p))
-                .on_press(Message::InstallD3d { env: name, vkd3d }),
+                .on_press(Message::InstallD3d { env: name, rt }),
             ],
         }
         .spacing(t.sz(8))
@@ -75,8 +75,9 @@ pub fn screen(e: &EnvRow) -> Element<'_, Message> {
 
     let d3d = column![
         heading(i18n::t("detail_direct3d")),
-        runtime("DXVK (D3D 8-11)", &e.dxvk, false),
-        runtime("vkd3d-proton (D3D 12)", &e.vkd3d, true),
+        runtime("DXVK (D3D 8-11)", &e.dxvk, "dxvk"),
+        runtime("vkd3d-proton (D3D 12)", &e.vkd3d, "vkd3d"),
+        runtime("dxvk-nvapi (DLSS, Reflex)", &e.nvapi, "nvapi"),
         text(i18n::t("detail_separate_runtimes"))
             .size(t.sz(11))
             .font(t.regular)

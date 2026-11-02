@@ -42,6 +42,8 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("help_env_dxvk_long", "Install, remove or report DXVK - Direct3D 8 through 11 on Vulkan.\n\nRaven fetches nothing: point `--from` at a build you already have, the way `base deploy` takes an ISO you already have. With no flag, this reports what is installed."),
     ("help_env_vkd3d", "Install, remove or report vkd3d-proton - Direct3D 12 on Vulkan"),
     ("help_env_vkd3d_long", "Install, remove or report vkd3d-proton - Direct3D 12 on Vulkan.\n\nA separate runtime from DXVK, not a newer one: DXVK does not implement Direct3D 12 at all. They install side by side."),
+    ("help_env_nvapi", "Install, remove or report dxvk-nvapi - DLSS and Reflex on NVIDIA cards"),
+    ("help_env_nvapi_long", "Install, remove or report dxvk-nvapi - DLSS and Reflex on NVIDIA cards.\n\nIt needs DXVK installed; Direct3D 12 games also need vkd3d-proton. The NVIDIA driver's nvngx.dll and _nvngx.dll, which DLSS loads, are linked in from the driver's directory, and every program then starts with DXVK_ENABLE_NVAPI=1 unless you set it yourself."),
     ("help_arg_from", "An extracted release, or a release archive of one"),
     ("help_arg_remove", "Uncover the real Windows again by deleting what was installed"),
     ("help_env_detach", "Detach a previously attached device. The device itself is untouched"),
@@ -181,6 +183,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("d3d_none", "{name}: no {runtime} installed"),
     ("d3d_build_unrecorded", "{runtime}, build unrecorded"),
     ("d3d_no_override", "warning: {dll} is installed but has no DLL override"),
+    ("nvapi_no_driver", "warning: no nvngx.dll from the NVIDIA driver was found in /usr/lib/nvidia/wine, /usr/lib64/nvidia/wine or /usr/lib/x86_64-linux-gnu/nvidia/wine, so DLSS cannot load. Reflex does not need it. Install again once the driver provides it."),
     // Starting a program, and the session it runs in.
     ("could_not_run", "could not run {program}"),
     ("could_not_mount", "could not mount the overlay"),
