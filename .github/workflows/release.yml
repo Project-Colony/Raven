@@ -70,17 +70,14 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # release-please publishes the release, and moves /releases/latest,
-      # before any binary exists. Held as a draft; sign-and-publish refuses
-      # anything else and publishes it last. `-R` is not optional: this job has
-      # no checkout, so `gh` has no git remote to infer the repository from,
-      # and a failure here used to publish the tag with no assets at all.
-      - name: Hold the release as a draft
-        if: ${{ steps.release.outputs.release_created }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.release.outputs.tag_name }}
-        run: gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --draft=true
+      # The release is created as a draft (`draft` in release-please-config.json)
+      # and published once, by sign-and-publish, after its assets are signed.
+      # It used to be published here and turned back into a draft seconds
+      # later: watchers were notified of the first publication, and the link
+      # led to the draft's `untagged-…` address, a 404 for anyone but a
+      # maintainer (#49). GitHub creates no tag for a draft, and the build
+      # below checks the tag out, so `force-tag-creation` makes release-please
+      # create it first.
 
       # `release-type: simple` rewrites Cargo.toml and nothing else, but
       # Cargo.lock pins every workspace member by version and the build below
