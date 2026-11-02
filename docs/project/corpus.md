@@ -64,6 +64,7 @@ same investigation from being run twice.
 | `dxdiag.exe` (Windows 11 26200) | Microsoft's DirectX diagnostic | **Runs**, drove DXVK to initialise and enumerate the GPU | - | How Direct3D-on-Vulkan was first shown to work at all against a real Windows. Its DirectDraw probe went through WineD3D and its D3D9 probe through DXVK, in one process |
 | BS_SoSR 1.15 (NW.js 0.103.1 / Chromium 140, RPG Maker MV) | Game, 64-bit | **Startup crash fixed; WebGL initializes.** Gameplay not verified | `raven` | Tested 2026-09-15 with Wine 11.17. Twice aborted in `remote_font_face_source.cc:357`: no fallback font. The real Windows font files were visible but their registrations were excluded. Registering the existing Arial alone removed the abort; projecting the base's `CurrentVersion\Fonts` also passed the startup check. Existing environments need the narrow rule added and reprojection; see [registry projection](../internals/registry-projection.md#font-registrations). |
 | Epic Games Launcher 20.3.6, with Epic Online Services 5.8.1 | Store client (UE5, CEF 90) and its Node.js service | **Runs and signs in**, installs EOS through its MSI. The sign-in is lost at every start, and "Install Engine" does nothing | `wine` (sign-in) | Tested 2026-10-26/27 with Wine 11.20. Sign-in: Wine's `ncrypt` keeps no named keys. Install Engine: the same log lines appear on Windows 11, so the bug is Epic's. EOS's service starts and runs its helper under Wine's Service Control Manager, under the user's SID. See [troubleshooting](../guide/troubleshooting.md#the-epic-games-launcher-asks-you-to-sign-in-at-every-start) |
+| FiveM, GTA V game build 3258, with the Rockstar Games Launcher | Multiplayer client for GTA V (Direct3D 11, CEF menu) | **Runs and joins a server in LAN mode** with the community build `izmystic/fivem-linux` build 8. The official client reaches the game with its menu half drawn. Public servers refuse it | `com` (updater), `wine` (two crashes), `d3d` (menu) | Tested 2026-11-02 with Wine 11.20 and DXVK 3.1.1, against a copy of GTA V bought on Epic. Three crashes before the game: XAML, whose WinRT class the projection keeps out, and two checks that assume Microsoft's ntdll. Under Wine FiveM has no anti-cheat client and so no authentication ticket |
 
 ## Experiment: Proton's Wine against a real Windows
 
@@ -115,7 +116,10 @@ Named so the gaps are visible rather than merely absent:
   the type specimen sitting untested.
 - **A 32-bit Direct3D title.** The x32 libraries are installed and unexercised.
 - **Anything using COM**, the category most likely to be broken by a design
-  decision rather than a bug.
+  decision rather than a bug. FiveM's updater is the first brush with it: it
+  activates a WinRT class, `Windows.UI.Xaml.Hosting.WindowsXamlManager`, whose
+  registration the projection keeps out. FiveM has a switch around it, so
+  whether the base's own XAML would run once let through was not tested.
 - **A service that needs LocalSystem.** Epic Online Services' service starts
   and runs under Wine's Service Control Manager, but Wine runs every service
   under the user's SID, so a service that checks for LocalSystem takes another
