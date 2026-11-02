@@ -59,6 +59,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("help_run", "Run a program inside an environment"),
     ("help_run_name", "The environment to run in"),
     ("help_run_argv", "The command, after `--`. A bare `wine <program.exe>` is the usual one"),
+    ("help_run_cwd", "The directory to start it in, as seen inside the environment, where C: is mounted"),
     ("help_exec", "Mount a layer stack and run a command, without an environment"),
     ("help_exec_long", "Mount a layer stack and run a command, without an environment.\n\nThe primitive `run` is built on. Useful for testing a stack before committing it to an environment."),
     ("help_exec_lower", "A read-only layer. Repeat it; the FIRST wins where layers overlap"),

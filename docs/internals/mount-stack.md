@@ -138,7 +138,7 @@ Child processes inherit the namespace, so a launcher starting a game needs no
 special handling, and the mount is destroyed with the process tree that owns it.
 Nothing has to hold privilege while Raven runs.
 
-Three consequences worth stating:
+Four consequences worth stating:
 
 - **Concurrent independent launches into one environment join it.**
   `overlayfs` does not support two live mounts sharing an `upperdir`, and the
@@ -161,6 +161,15 @@ Three consequences worth stating:
   outside the namespace; libdbus's `dbus-send` sends 0 from inside and is
   refused. A `file:` link stays inside, with `xdg-open`, because its path may
   be under C:, which nothing outside can see.
+- **A desktop entry Wine writes runs outside.** `winemenubuilder` writes one
+  for each shortcut, file type and link scheme a program registers, with
+  `env "WINEPREFIX=<prefix>" wine …` as its command. Started by the desktop,
+  that Wine finds an empty C: and no session to join (its server directory is
+  `/tmp/.wine-<uid>`, and the uid differs on each side), so it starts a second
+  `wineserver` on the same prefix and fails to load `kernel32.dll`. Raven
+  rewrites those entries to run `raven run <name>`: when the environment is
+  created, when a session starts, and every two seconds while the anchor runs
+  (`desktop::reroute`).
 
 Where unprivileged namespaces are unavailable - `linux-hardened`, Ubuntu's
 AppArmor policy, some enterprise configurations - the mount goes through a

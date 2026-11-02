@@ -219,6 +219,29 @@ Three things stop it:
 An environment created before this picks it up at its next session start
 (`raven env stop <name>` once, if one is running).
 
+## A shortcut or a link back to a program does nothing
+
+When a program creates a Start menu or desktop shortcut, or registers a file
+type or a link scheme of its own (`com.epicgames.launcher://`, `fivem://`),
+Wine writes a desktop entry for it: `wine-protocol-*.desktop` or
+`wine-extension-*.desktop` in `~/.local/share/applications/`, a menu entry
+under `~/.local/share/applications/wine/`, or a launcher on your desktop.
+Wine's command for it, `env "WINEPREFIX=<prefix>" wine …`, runs outside the
+environment. There C: is an empty directory, so Wine starts a second
+`wineserver` on the environment's prefix beside the session's, then stops with
+`could not load kernel32.dll`. A sign-in that returns to the program through
+its own link scheme is lost.
+
+Raven rewrites those entries to start through `raven run <name>`, with the
+working directory Wine gave them passed as `--cwd`. It does this when it
+creates an environment, when a session starts, and every two seconds while
+the session runs. An entry that names a Raven binary that has since moved is
+pointed at the current one the same way. An entry written before this is fixed at the environment's
+next session start (`raven env stop <name>` once, if one is running).
+
+Entries for an environment you have since destroyed are left as they are and
+start nothing. Delete them by hand if they bother you.
+
 ## Anti-cheat refuses to start the game
 
 If the publisher has enabled Easy Anti-Cheat or BattlEye's Linux support, the

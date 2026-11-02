@@ -548,6 +548,13 @@ pub fn create(name: &str, base_id: &str) -> Result<Environment, Error> {
             .map_err(|e| Error::Layer(env.rules_file(), e))?;
         env.project_registry()?;
 
+        // Wine registered its file types for the new prefix, with entries
+        // that start Wine outside any session. Last, because the registry
+        // import above starts Wine again and it writes them again.
+        if let Ok(helper) = crate::session::helper() {
+            crate::desktop::reroute(&env.prefix(), name, &helper, None);
+        }
+
         let manifest = toml::to_string(&env.manifest)
             .map_err(|e| Error::Manifest(root.join("environment.toml"), e.to_string()))?;
         std::fs::write(root.join("environment.toml"), manifest)
