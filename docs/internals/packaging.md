@@ -81,8 +81,10 @@ two more `install` lines, and the release workflow names a second asset.
 [`.github/workflows/release.yml`](../../.github/workflows/release.yml) is the
 organisation's release template with two Raven-specific parts.
 
-Merging the release pull request tags the version and holds the release as a
-draft. One Linux job builds the whole workspace with `--locked` and stages
+Merging the release pull request tags the version and creates the release as
+a draft, so nobody is notified of a release without assets: GitHub creates no
+tag for a draft, so `force-tag-creation` in `release-please-config.json` has
+release-please create it. One Linux job builds the whole workspace with `--locked` and stages
 `raven` as `raven-linux` and `raven-gui` as `raven-gui-linux`. It checks
 `colony.json` against those two names and runs `--version` on both binaries.
 The shared
