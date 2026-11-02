@@ -219,6 +219,89 @@ Three things stop it:
 An environment created before this picks it up at its next session start
 (`raven env stop <name>` once, if one is running).
 
+## FiveM crashes before the game starts, or its menu draws half black
+
+Seen with FiveM on GTA V game build 3258, under Wine 11.20 and DXVK 3.1.1,
+against a copy of GTA V bought on Epic. Four failures stand between FiveM and
+the game, each with its own fix, in the order they appear:
+
+1. **The updater aborts at once.** Wine prints `Failed to find library for
+   L"Windows.UI.Xaml.Hosting.WindowsXamlManager"`, then `Unhandled exception
+   code c0000409`. From Windows 10 build 17763 on, FiveM draws its updater
+   with XAML. The base registers that class under
+   `HKLM\Software\Microsoft\WindowsRuntime`, which the registry projection
+   keeps out, and Wine has no XAML of its own. FiveM has a switch for the
+   classic window:
+
+   ```bash
+   raven run games -- wine reg add 'HKCU\Environment' /v CitizenFX_NoTenUI /d 1 /f
+   ```
+
+2. **`CoreRT.dll+1C471`.** On Windows 10 builds 18362 to 19627, FiveM sets a
+   flag next to `_fltused` in ntdll, assuming Microsoft's ntdll. A program
+   under Raven always gets Wine's ntdll, and Wine reports build 19045, so the
+   write lands in read-only code. Reporting Windows 11 takes the environment
+   out of that range, for every program in it:
+
+   ```bash
+   raven run games -- wine winecfg /v win11
+   ```
+
+3. **`Rockstar Games Launcher could not be found!`** FiveM starts GTA V
+   through the Rockstar Games Launcher, at `C:\Program Files\Rockstar
+   Games\Launcher\Launcher.exe`, even for a copy bought on Epic. Install it in
+   the same environment. Its installer, run silently, wrote the launcher and
+   then never exited; the files it had written were enough.
+
+4. **`Could not find RtlpxLookupFunctionTable`**, in a dialog from
+   `FiveM_ROSLauncher`, `FiveM_ROSService` or the game process. FiveM looks
+   for that function inside ntdll, does not find it in Wine's, and treats that
+   as fatal on Windows 8 and later. Reporting Windows 7 to those three
+   programs only gets past it:
+
+   ```bash
+   for exe in FiveM_ROSLauncher FiveM_ROSService FiveM_b3258_GameProcess.exe; do
+       raven run games -- wine reg add "HKCU\\Software\\Wine\\AppDefaults\\$exe" /v Version /d win7 /f
+   done
+   ```
+
+   The game process is named after the game build, `b3258` here because the
+   server sets `sv_enforceGameBuild 3258`. Another build needs its own entry.
+
+With those four, the official client reaches the game, but its menu draws
+partly black and fills in only when you scroll. The menu is a Chromium page,
+drawn on one Direct3D 11 device and handed to the game's device through a
+shared texture. Under DXVK those are two Vulkan devices, and the likely cause,
+not a proven one, is that the game draws frames Chromium has not finished.
+The community build [izmystic/fivem-linux](https://github.com/izmystic/fivem-linux),
+build 8, draws a usable menu with the same shared texture
+(`nui_useSharedResources true`, its default). Its slower CPU copy
+(`nui_useSharedResources false`) crashed at `glue.dll+A9609`. That build is
+not FiveM's own. It ran with all four fixes above still in place, and whether
+it still needs them was not tested.
+
+Signing in to Cfx.re goes through your browser (see the section above), which
+hands back a `fivem://accept-auth?…` link. Linux has no handler for `fivem://`
+until you register one: a desktop entry for `x-scheme-handler/fivem` whose
+command passes the link on to `raven run games -- wine 'C:\FiveM\FiveM.exe'`.
+A FiveM that is already running picks the link up.
+
+Under Wine, FiveM runs in its insecure mode: it loads `sticky.dll` in place
+of its anti-cheat client and gets no Cfx.re authentication ticket. Public
+servers refuse it with `No authentication ticket was specified`, and nothing
+on the client changes that. A server you run yourself can let it in:
+
+- `set sv_lan 1` in `server.cfg` skips the ticket check, for every player.
+  Nobody gets a `license:` identifier, and anyone who can reach the port joins
+  under any name, so keep the port off the internet while it is on. A
+  framework that keys players by `license:`, such as QBCore, needs a stand-in
+  identifier.
+- A recent FXServer then refuses with `could not get resource mounter for
+  resource mapmanager`. Its `svadhesive` component serves resources through
+  `ci://` links that only the real anti-cheat client opens. Removing
+  `"svadhesive"` from FXServer's `components.json` stops that, and that turns
+  off the server's anti-cheat for everyone. An FXServer update brings it back.
+
 ## Anti-cheat refuses to start the game
 
 If the publisher has enabled Easy Anti-Cheat or BattlEye's Linux support, the
