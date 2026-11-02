@@ -195,6 +195,25 @@ LocalSystem (`IsWellKnownSid` in its `os_toolbox.node`), logs
 EOS through its MSI package works: EOS's installer logged
 `MSI completed with Success (0)`.
 
+## A sign-in link or web page does not open
+
+A program that opens a link - a launcher's "sign in with your browser", a help
+button - goes through Wine's `winebrowser`, and every session points that at
+`raven open-uri`, which asks your desktop to open the link in your browser.
+Two things stop it:
+
+- **No desktop portal.** `raven open-uri` needs `xdg-desktop-portal` (with your
+  desktop's backend) and `busctl` or `gdbus`. Without them the link goes to
+  `xdg-open` inside the environment, where you are root, and a Chromium-based
+  browser refuses to start: `Running as root without --no-sandbox is not
+  supported`.
+- **Your own setting.** A `Browsers` value you put under
+  `HKCU\Software\Wine\WineBrowser` yourself is left alone. Delete it, and the
+  next session start writes Raven's.
+
+An environment created before this picks it up at its next session start
+(`raven env stop <name>` once, if one is running).
+
 ## Anti-cheat refuses to start the game
 
 If the publisher has enabled Easy Anti-Cheat or BattlEye's Linux support, the
