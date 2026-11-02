@@ -138,7 +138,7 @@ Child processes inherit the namespace, so a launcher starting a game needs no
 special handling, and the mount is destroyed with the process tree that owns it.
 Nothing has to hold privilege while Raven runs.
 
-Two consequences worth stating:
+Three consequences worth stating:
 
 - **Concurrent independent launches into one environment join it.**
   `overlayfs` does not support two live mounts sharing an `upperdir`, and the
@@ -155,10 +155,12 @@ Two consequences worth stating:
   Chromium-based browsers refuse to run as root, so a sign-in link did
   nothing, and one that did start would be killed by `env stop`. So the
   session points Wine's `winebrowser` at `raven open-uri`, which hands the
-  link to the desktop portal in the user's own session (`desktop.rs`). D-Bus
-  authenticates by the kernel's uid, which the namespace does not change. A
-  `file:` link stays inside, with `xdg-open`, because its path may be under
-  C:, which nothing outside can see.
+  link to the desktop portal in the user's own session (`desktop.rs`). The
+  call gets through because `busctl` and `gdbus` send no uid when they
+  authenticate, so the bus takes the caller's uid from the kernel as seen
+  outside the namespace; libdbus's `dbus-send` sends 0 from inside and is
+  refused. A `file:` link stays inside, with `xdg-open`, because its path may
+  be under C:, which nothing outside can see.
 
 Where unprivileged namespaces are unavailable - `linux-hardened`, Ubuntu's
 AppArmor policy, some enterprise configurations - the mount goes through a

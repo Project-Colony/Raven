@@ -21,7 +21,7 @@ been developed on Arch.
 | `wine` | the NT-to-Linux syscall bridge; not optional and not replaceable |
 | `wimlib` | deploys a Windows base from an official ISO, with no VM and no boot |
 | `gst-libav` | lets Wine decode the media games ship. **Optional but nearly always wanted**: without it a game runs with its cutscenes black and its music absent, and says so only on a stderr nobody reads. `raven doctor` reports this |
-| `xdg-desktop-portal`, and `systemd` (`busctl`) or `glib2` (`gdbus`) | open the links a program opens in the user's own browser. **Optional**, and present on any desktop: without them a link goes to `xdg-open` inside the environment, where a Chromium-based browser refuses to start as root |
+| `xdg-desktop-portal`, and `systemd` (`busctl`) or `glib2` (`gdbus`) | open the links a program opens in the user's own browser. **Optional**. GNOME and KDE ship the portal with a backend that opens links; wlroots compositors and Hyprland need `xdg-desktop-portal-gtk` beside their own backend, which has no AppChooser and so no OpenURI. Without them a link goes to `xdg-open` inside the environment, where a Chromium-based browser refuses to start as root |
 
 ### For the secondary "bring your own Windows partition" path
 

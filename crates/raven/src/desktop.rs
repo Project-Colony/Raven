@@ -9,11 +9,13 @@
 //! link did nothing at all; and a browser that did start would have been
 //! killed by `env stop` along with the program that opened the link.
 //!
-//! So Raven puts itself first in `winebrowser`'s list, and passes the link to
-//! the desktop portal (`org.freedesktop.portal.OpenURI`). The portal runs in
-//! the user's session and starts their own browser there, as them. D-Bus
-//! authenticates by the kernel's view of the caller's uid, which a user
-//! namespace does not change, so the call works from inside one.
+//! So Raven puts itself in place of `winebrowser`'s list, and passes the link
+//! to the desktop portal (`org.freedesktop.portal.OpenURI`). The portal runs in
+//! the user's session and starts their own browser there, as them. The call
+//! works from inside the namespace because `busctl` and `gdbus` send no uid
+//! when they authenticate: the bus then takes the caller's uid from the
+//! kernel, as seen outside, which is the user's. A client that sends its uid,
+//! as libdbus's `dbus-send` does, sends 0 from in here and is refused.
 //!
 //! A `file:` link stays with `xdg-open` inside the environment: its path may be
 //! under C:, and C: exists only in the environment's mount namespace, so a
@@ -37,22 +39,62 @@ const VERB: &str = "open-uri";
 /// The portal is tried through `busctl`, then `gdbus`: either is enough, and
 /// a desktop without one of them usually has the other. When neither reaches
 /// a portal - no desktop session, or one without the portal service - the link
-/// goes to `xdg-open` as it did before Raven took it.
+/// goes to the programs `winebrowser` would have tried had Raven not replaced
+/// its list, inside the environment, as before.
 pub fn open_uri(uri: &str) -> Result<(), Error> {
     if for_the_desktop(uri) && (portal_via_busctl(uri) || portal_via_gdbus(uri)) {
         return Ok(());
     }
-    let status = Command::new("xdg-open")
-        .arg(uri)
-        .status()
-        .map_err(|e| Error::Tool("xdg-open", e))?;
-    if !status.success() {
-        return Err(Error::ToolFailed(
-            "xdg-open",
-            crate::i18n::tf("tool_exited", &[("status", &status)]),
-        ));
+    // As winebrowser does: the first program that starts is the answer,
+    // whatever it then says.
+    let programs = fallbacks(uri);
+    for &program in programs {
+        // Any failure to start moves on, as it does in winebrowser.
+        let Ok(status) = Command::new(program).arg(uri).status() else {
+            continue;
+        };
+        if !status.success() {
+            return Err(Error::ToolFailed(
+                program,
+                crate::i18n::tf("tool_exited", &[("status", &status)]),
+            ));
+        }
+        return Ok(());
     }
-    Ok(())
+    Err(Error::Tool(
+        programs[programs.len() - 1],
+        std::io::Error::from(std::io::ErrorKind::NotFound),
+    ))
+}
+
+/// `winebrowser`'s own lists, in its order, from Wine 11's
+/// `programs/winebrowser`: what a link went to before Raven's value replaced
+/// them. `mailto:` links go to the mail programs.
+fn fallbacks(uri: &str) -> &'static [&'static str] {
+    const BROWSERS: &[&str] = &[
+        "xdg-open",
+        "/usr/bin/open",
+        "firefox",
+        "konqueror",
+        "mozilla",
+        "opera",
+        "dillo",
+    ];
+    const MAILERS: &[&str] = &[
+        "/usr/bin/open",
+        "xdg-email",
+        "mozilla-thunderbird",
+        "thunderbird",
+        "evolution",
+    ];
+    if uri
+        .get(..7)
+        .is_some_and(|s| s.eq_ignore_ascii_case("mailto:"))
+    {
+        MAILERS
+    } else {
+        BROWSERS
+    }
 }
 
 /// Whether `uri` names something a program outside the environment can open:
@@ -117,9 +159,21 @@ fn quietly(cmd: &mut Command) -> bool {
 /// is followed. A value the user set themselves is left alone; only an absent
 /// one, or one Raven wrote, is (re)written.
 pub fn reconcile(prefix: &Path, helper: &Path) -> Result<(), Error> {
-    let Some(helper) = helper.to_str().filter(|h| !h.contains('"')) else {
-        // Not representable as one quoted argument in the registry's text;
-        // Wine's own default stays.
+    // The window does not answer `open-uri`. One that had to run its own
+    // anchor, with no CLI beside it, would name itself and refuse the verb,
+    // and the link would go nowhere. The CLI may have any name: Colony keeps
+    // the release asset as `raven-linux`.
+    if helper
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.starts_with("raven-gui"))
+    {
+        return Ok(());
+    }
+    // A quote cannot be one quoted argument in the registry's text, and
+    // winebrowser splits its list at every comma, quoted or not. Wine's own
+    // default stays.
+    let Some(helper) = helper.to_str().filter(|h| !h.contains(['"', ','])) else {
         return Ok(());
     };
     let reg = prefix.join("user.reg");
@@ -137,16 +191,44 @@ fn point_at(text: &str, helper: &str) -> String {
     // A command line, as `winebrowser` splits it: the path is quoted so a space
     // in it survives, then escaped for the registry file.
     let ours = crate::registry::emit::escape(&format!("\"{helper}\" {VERB}"));
-    let current = text::values(text, SECTION);
     let mut out = text.to_string();
     for key in ["Browsers", "Mailers"] {
-        let set = current.iter().find(|(name, _)| name == key);
-        let raven_s = set.is_none_or(|(_, value)| value.ends_with(&format!(" {VERB}")));
-        if raven_s && set.is_none_or(|(_, value)| *value != ours) {
+        let lines = lines_setting(text, key);
+        let ours_line = format!("\"{key}\"=\"{ours}\"");
+        // Raven's is one plain string ending in the verb. Anything else - a
+        // list the user typed, a multi-string, a second spelling of the key -
+        // is the user's, and Wine would honour it.
+        let raven_s = match lines.as_slice() {
+            [] => true,
+            [line] => {
+                line.starts_with(&format!("\"{key}\"=\""))
+                    && line.trim_end().ends_with(&format!(" {VERB}\""))
+            }
+            _ => false,
+        };
+        if raven_s && lines.as_slice() != [ours_line.as_str()] {
             out = text::set_value(&out, SECTION, key, Some(&ours));
         }
     }
     out
+}
+
+/// Every line under `SECTION` that sets `key`, whatever the value's type,
+/// matching the section and the name without case, as Wine does when it loads
+/// them.
+fn lines_setting<'a>(text: &'a str, key: &str) -> Vec<&'a str> {
+    let header = format!("[{SECTION}]").to_ascii_lowercase();
+    let name = format!("\"{key}\"=").to_ascii_lowercase();
+    let mut inside = false;
+    text.lines()
+        .filter(|line| {
+            if line.starts_with('[') {
+                inside = line.to_ascii_lowercase().starts_with(&header);
+                return false;
+            }
+            inside && line.to_ascii_lowercase().starts_with(&name)
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -209,6 +291,51 @@ mod tests {
             out.contains("\"Mailers\"=\"\\\"/usr/bin/raven\\\" open-uri\""),
             "the other value is still Raven's to set"
         );
+    }
+
+    #[test]
+    fn a_value_of_the_users_in_another_form_is_kept() {
+        // A multi-string, which winebrowser reads as a list, and the key or
+        // the section spelled in another case, which Wine merges at load.
+        for mine in [
+            format!("{REG}\n[{SECTION}] 200\n\"Browsers\"=str(7):\"firefox\\0chromium\\0\"\n"),
+            format!("{REG}\n[{SECTION}] 200\n\"Browsers\"=hex(7):66,00,00,00,\\\n  00,00\n"),
+            format!("{REG}\n[{SECTION}] 200\n\"browsers\"=\"firefox\"\n"),
+            format!("{REG}\n[Software\\\\Wine\\\\winebrowser] 200\n\"Browsers\"=\"firefox\"\n"),
+        ] {
+            let out = point_at(&mine, "/usr/bin/raven");
+            assert!(
+                !out.contains("\"Browsers\"=\"\\\"/usr/bin/raven"),
+                "overwrote:\n{mine}\ngot:\n{out}"
+            );
+            assert!(out.contains("\"Mailers\"=\"\\\"/usr/bin/raven\\\" open-uri\""));
+        }
+    }
+
+    #[test]
+    fn a_path_wine_cannot_hold_or_a_window_is_left_to_wine() {
+        let dir = std::env::temp_dir().join(format!("raven-desktop-c-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("user.reg"), REG).unwrap();
+        for helper in ["/opt/a,b/raven", "/usr/bin/raven-gui", "/x/raven-gui-linux"] {
+            reconcile(&dir, Path::new(helper)).unwrap();
+        }
+        let after = std::fs::read_to_string(dir.join("user.reg")).unwrap();
+        // The CLI under the name Colony gives the release asset still counts.
+        reconcile(&dir, Path::new("/apps/Raven/raven-linux")).unwrap();
+        let colony = std::fs::read_to_string(dir.join("user.reg")).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(after, REG);
+        assert!(
+            colony.contains("raven-linux\\\" open-uri"),
+            "got:\n{colony}"
+        );
+    }
+
+    #[test]
+    fn without_a_portal_a_link_goes_where_winebrowser_sent_it() {
+        assert_eq!(fallbacks("https://example.com")[0], "xdg-open");
+        assert_eq!(fallbacks("MAILTO:a@b.c")[1], "xdg-email");
     }
 
     #[test]
