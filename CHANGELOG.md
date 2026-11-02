@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.8](https://github.com/Project-Colony/Raven/compare/v0.5.7...v0.5.8) (2026-11-02)
+
+
+### Fixes
+
+* keep winebrowser's fallbacks and a user's own browser setting ([#48](https://github.com/Project-Colony/Raven/issues/48)) ([f625b1a](https://github.com/Project-Colony/Raven/commit/f625b1a3fa22acf2c08df0c2bdfd6971db24e9cf))
+* open the links a program opens in the user's own browser ([#46](https://github.com/Project-Colony/Raven/issues/46)) ([650915c](https://github.com/Project-Colony/Raven/commit/650915c4ef2b56ef2125f361f34cbc9ecf7a0d03))
+
 ## [0.5.7](https://github.com/Project-Colony/Raven/compare/v0.5.6...v0.5.7) (2026-10-27)
 
 
