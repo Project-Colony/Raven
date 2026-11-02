@@ -212,6 +212,7 @@ crates/raven/src/
 ├── session.rs     the anchor holding a namespace open, and joining it
 ├── attach.rs      the real block devices an environment may see
 ├── d3d.rs         installing DXVK and vkd3d-proton into a prefix
+├── desktop.rs     handing the links a program opens to the user's session
 ├── launch.rs      binfmt registration and environment resolution
 ├── layer.rs       case normalisation, and the shadow masks
 ├── prefix.rs      the Wine prefix pieces an environment keeps

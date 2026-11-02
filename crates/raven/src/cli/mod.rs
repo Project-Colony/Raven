@@ -65,6 +65,13 @@ enum Commands {
     SessionAnchor {
         name: String,
     },
+    // What Wine's winebrowser runs to open a link, so it opens in the user's
+    // session. Set up by Raven, not run by hand.
+    #[command(hide = true)]
+    OpenUri {
+        #[arg(allow_hyphen_values = true)]
+        uri: String,
+    },
     Run {
         name: String,
         #[arg(last = true, required = true)]
@@ -276,6 +283,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Commands::Launch { exe, args } => run::launch(&exe, args),
         Commands::Binfmt => doctor::binfmt(),
         Commands::SessionAnchor { name } => raven::session::anchor(&name),
+        Commands::OpenUri { uri } => Ok(raven::desktop::open_uri(&uri)?),
         Commands::Exec {
             lower,
             upper,

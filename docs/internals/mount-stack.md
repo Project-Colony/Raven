@@ -150,6 +150,15 @@ Two consequences worth stating:
 - **`binfmt_misc` still needs root, once.** It is a file in
   `/usr/lib/binfmt.d/` applied by `systemd-binfmt` at boot - a packaging
   concern, handled by the package manager, not a service that runs.
+- **A Linux program Wine starts runs inside too.** It sees the user as uid 0
+  and holds the session open. For a browser that is fatal twice over:
+  Chromium-based browsers refuse to run as root, so a sign-in link did
+  nothing, and one that did start would be killed by `env stop`. So the
+  session points Wine's `winebrowser` at `raven open-uri`, which hands the
+  link to the desktop portal in the user's own session (`desktop.rs`). D-Bus
+  authenticates by the kernel's uid, which the namespace does not change. A
+  `file:` link stays inside, with `xdg-open`, because its path may be under
+  C:, which nothing outside can see.
 
 Where unprivileged namespaces are unavailable - `linux-hardened`, Ubuntu's
 AppArmor policy, some enterprise configurations - the mount goes through a
