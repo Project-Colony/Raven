@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.0](https://github.com/Project-Colony/Raven/compare/v0.5.8...v0.6.0) (2026-11-02)
+
+
+### Features
+
+* install dxvk-nvapi so NVIDIA cards get DLSS and Reflex ([#54](https://github.com/Project-Colony/Raven/issues/54)) ([2bc15c8](https://github.com/Project-Colony/Raven/commit/2bc15c8cf244482598d0b16f10661bb15d6d3ece))
+
+
+### Fixes
+
+* report Windows 11 in an environment on a Windows 11 base ([#52](https://github.com/Project-Colony/Raven/issues/52)) ([49532e6](https://github.com/Project-Colony/Raven/commit/49532e65cf612a9eb5eab6e6ac708ef869ce1631))
+* start the desktop entries Wine writes through Raven ([#55](https://github.com/Project-Colony/Raven/issues/55)) ([480edaa](https://github.com/Project-Colony/Raven/commit/480edaaa87511ad6aee7228e3de7419cfb60374b))
+
+
+### Documentation
+
+* record FiveM in the corpus ([#51](https://github.com/Project-Colony/Raven/issues/51)) ([3abafa1](https://github.com/Project-Colony/Raven/commit/3abafa1bf4a74363a3aa4e472a1a33a95b1aff33))
+
 ## [0.5.8](https://github.com/Project-Colony/Raven/compare/v0.5.7...v0.5.8) (2026-11-02)
 
 
