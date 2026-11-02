@@ -7,6 +7,7 @@
 pub mod attach;
 pub mod base;
 pub mod d3d;
+pub mod desktop;
 pub mod env;
 pub mod i18n;
 pub mod launch;

@@ -463,6 +463,13 @@ pub fn anchor(name: &str) -> ! {
             tf("anchor_no_reconcile", &[("why", &because(&err))])
         ));
     }
+    // Links a program opens are handed to the user's session, not to a
+    // browser started in here as root. Here because no wineserver holds the
+    // registry yet. Best effort and silent: a session without it still runs
+    // everything else, and stdout is the launcher's pipe.
+    if let Ok(helper) = helper() {
+        let _ = crate::desktop::reconcile(&e.prefix(), &helper);
+    }
     if !crate::mount::UserNsOverlay::is_available() {
         report(format_args!("{}", t("userns_restricted")));
     }

@@ -118,7 +118,7 @@ fn hex_list(bytes: &[u8], prefix_len: usize) -> String {
     out
 }
 
-fn escape(s: &str) -> String {
+pub(crate) fn escape(s: &str) -> String {
     s.replace('\\', r"\\").replace('"', "\\\"")
 }
 
