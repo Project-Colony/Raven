@@ -49,6 +49,12 @@ pub fn project_base(base: &Path, rules: &Rules) -> Result<String, Error> {
     Ok(emit::to_reg(&keys))
 }
 
+/// The Windows build of the base at `base`, from its `SOFTWARE` hive.
+pub fn windows_build(base: &Path) -> Option<u32> {
+    let path = crate::layer::locate(base, "windows/system32/config/SOFTWARE");
+    hive::windows_build(&std::fs::read(path).ok()?)
+}
+
 /// Imports a `.reg` file into a prefix, with the environment's C: mounted.
 ///
 /// `regedit` is a Windows program like any other: it needs a working

@@ -526,7 +526,8 @@ pub fn create(name: &str, base_id: &str) -> Result<Environment, Error> {
             root: root.clone(),
         };
 
-        prefix::create(&env.prefix())?;
+        let version = registry::windows_build(&base.path).and_then(prefix::wine_version_for);
+        prefix::create(&env.prefix(), version)?;
 
         // Wine's drive_c becomes the upper read-only layer. It is moved rather
         // than copied: leaving a second copy behind would let Wine and the

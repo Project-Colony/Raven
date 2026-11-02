@@ -26,6 +26,23 @@ pub fn project(bytes: &[u8], mount: &str, rules: &Rules) -> Result<Vec<Key>, Err
     Ok(out)
 }
 
+/// The Windows build a `SOFTWARE` hive records, such as 26200.
+///
+/// Read from `Microsoft\Windows NT\CurrentVersion\CurrentBuildNumber`, which
+/// the projection itself keeps out: this is what the base is, read to choose
+/// which of Wine's versions to report, never copied across. `None` when the
+/// hive cannot be read or does not say.
+pub fn windows_build(bytes: &[u8]) -> Option<u32> {
+    let hive = Hive::new(bytes).ok()?;
+    let root = hive.root_key_node().ok()?;
+    let key = root.subpath(r"Microsoft\Windows NT\CurrentVersion")?.ok()?;
+    let value = key.value("CurrentBuildNumber")?.ok()?;
+    match convert(&value)? {
+        Data::Sz(s) => s.trim().parse().ok(),
+        _ => None,
+    }
+}
+
 /// A hive crafted to be deep would otherwise recurse until the stack runs out.
 /// Real registries are nowhere near this deep.
 const MAX_DEPTH: usize = 512;

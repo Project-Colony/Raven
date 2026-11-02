@@ -10,29 +10,25 @@ use std::process::Command;
 
 use crate::Error;
 
-/// Builds a fresh Wine prefix at `prefix`.
+/// Builds a fresh Wine prefix at `prefix`, reporting `version` if one is given.
 ///
 /// The Mono and Gecko installers are suppressed: they open dialogs, they need
 /// the network, and nothing Raven does at this stage depends on them.
-pub fn create(prefix: &Path) -> Result<(), Error> {
+///
+/// `version` is one of Wine's own names for a Windows, as `winecfg` takes it;
+/// see [`wine_version_for`]. It is set here, while the prefix still has Wine's
+/// own `drive_c`, because `winecfg` is a Windows program and needs a
+/// `C:\Windows\System32` to start from, which later exists only while the
+/// environment is mounted.
+pub fn create(prefix: &Path, version: Option<&str>) -> Result<(), Error> {
     // `wine wineboot` rather than a bare `wineboot`: the latter is a wrapper
     // script that a distribution's wine package happens to ship, and several
     // Wine builds - Proton's among them - provide only `wine` and `wineserver`
     // in their bin directory. Going through `wine` works with every one of
     // them and asks nothing of the packaging.
-    let status = Command::new("wine")
-        .arg("wineboot")
-        .arg("-u")
-        .env("WINEPREFIX", prefix)
-        .env("WINEDLLOVERRIDES", "mscoree,mshtml=")
-        .env("WINEDEBUG", "-all")
-        .status()
-        .map_err(|e| Error::Tool("wine wineboot", e))?;
-    if !status.success() {
-        return Err(Error::ToolFailed(
-            "wine wineboot",
-            crate::i18n::tf("tool_exited", &[("status", &status)]),
-        ));
+    wine(prefix, "wine wineboot", &["wineboot", "-u"])?;
+    if let Some(version) = version {
+        wine(prefix, "wine winecfg", &["winecfg", "/v", version])?;
     }
     // wineserver lingers and holds the prefix open; a later step that moves
     // drive_c out from under it would race with a live server.
@@ -41,6 +37,44 @@ pub fn create(prefix: &Path) -> Result<(), Error> {
         .env("WINEPREFIX", prefix)
         .status();
     Ok(())
+}
+
+/// Runs `wine` with `args` against `prefix`, failing if it does.
+fn wine(prefix: &Path, what: &'static str, args: &[&str]) -> Result<(), Error> {
+    let status = Command::new("wine")
+        .args(args)
+        .env("WINEPREFIX", prefix)
+        .env("WINEDLLOVERRIDES", "mscoree,mshtml=")
+        .env("WINEDEBUG", "-all")
+        .status()
+        .map_err(|e| Error::Tool(what, e))?;
+    if !status.success() {
+        return Err(Error::ToolFailed(
+            what,
+            crate::i18n::tf("tool_exited", &[("status", &status)]),
+        ));
+    }
+    Ok(())
+}
+
+/// Which of Wine's Windows versions an environment on a base of `build`
+/// reports, when it should not be Wine's default.
+///
+/// The projection keeps the base's own version key out, so what a program is
+/// told is Wine's account: one of the versions `winecfg` offers, each with the
+/// build number Wine stands behind. Left alone that is Windows 10, build
+/// 19045, whatever the base is. A Windows 11 base gets Wine's Windows 11,
+/// build 22000, instead - not the base's own build, because the calls that
+/// answer a program are still Wine's.
+///
+/// Telling a Windows 11 base's programs they run on Windows 10 is not merely
+/// untidy. FiveM patches a flag in ntdll on Windows 10 builds 18362 to 19627,
+/// assuming Microsoft's ntdll, and under Wine's 19045 that write lands in
+/// read-only code and crashes it.
+pub fn wine_version_for(build: u32) -> Option<&'static str> {
+    // 22000 is the first Windows 11 build, and the build Wine's own "win11"
+    // reports.
+    (build >= 22000).then_some("win11")
 }
 
 /// Points the prefix's C: drive at `target`.
@@ -97,5 +131,24 @@ pub fn media_decoders() -> Option<Vec<&'static str>> {
         None
     } else {
         Some(missing)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_windows_11_base_reports_wines_windows_11() {
+        assert_eq!(wine_version_for(26200), Some("win11"));
+        assert_eq!(wine_version_for(22000), Some("win11"));
+    }
+
+    #[test]
+    fn a_windows_10_base_keeps_wines_default() {
+        // Wine's default already is Windows 10, and setting it would only
+        // pin a prefix to today's idea of it.
+        assert_eq!(wine_version_for(21999), None);
+        assert_eq!(wine_version_for(19045), None);
     }
 }
