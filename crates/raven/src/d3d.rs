@@ -9,6 +9,12 @@
 //! They install side by side. A game wanting D3D11 and a game wanting D3D12
 //! are different games, and an environment can serve both.
 //!
+//! **dxvk-nvapi** installs the same way and sits on top of both: it is
+//! NVIDIA's NVAPI, which DLSS and Reflex are reached through. Without it DXVK
+//! reports an NVIDIA card as an AMD one, so a game offers neither. It also
+//! needs two libraries the NVIDIA driver ships for Wine, which are linked in
+//! from the driver rather than taken from the build.
+//!
 //! Raven's twist is the whole reason this module exists. C: is a **real**
 //! Windows, so `Windows/System32` already holds Microsoft's own `d3d11.dll` and
 //! `dxgi.dll`. The DXVK copies go into the environment's writable upper layer,
@@ -54,6 +60,9 @@ pub struct Runtime {
     /// Windows. The 32-bit one is **not** named the same by both projects:
     /// DXVK ships `x32`, vkd3d-proton ships `x86`.
     pub arches: &'static [(&'static str, &'static str)],
+    /// Libraries the GPU driver ships for Wine, linked into `System32` from
+    /// the driver's own directory instead of copied out of the build.
+    pub from_driver: &'static [&'static str],
 }
 
 /// Direct3D 8 through 11.
@@ -69,6 +78,7 @@ pub const DXVK: Runtime = Runtime {
         "d3d10_1",
     ],
     arches: &[("x64", "windows/system32"), ("x32", "windows/syswow64")],
+    from_driver: &[],
 };
 
 /// Direct3D 12, which DXVK does not implement at all.
@@ -76,7 +86,39 @@ pub const VKD3D: Runtime = Runtime {
     key: "vkd3d",
     dlls: &["d3d12", "d3d12core"],
     arches: &[("x64", "windows/system32"), ("x86", "windows/syswow64")],
+    from_driver: &[],
 };
+
+/// NVIDIA's NVAPI, for DLSS and Reflex on top of DXVK and vkd3d-proton.
+pub const NVAPI: Runtime = Runtime {
+    key: "nvapi",
+    // A release has no 32-bit `nvofapi`, and no 64-bit `nvapi`: each name
+    // is looked for in both directories and found in one.
+    dlls: &["nvapi64", "nvofapi64", "nvapi"],
+    arches: &[("x64", "windows/system32"), ("x32", "windows/syswow64")],
+    // DLSS loads these from System32. They belong to the driver and change
+    // with each of its updates, which a copy would not follow.
+    from_driver: &["nvngx", "_nvngx"],
+};
+
+/// Every runtime, for whatever has to visit each one.
+pub const RUNTIMES: [&Runtime; 3] = [&DXVK, &VKD3D, &NVAPI];
+
+/// Where the NVIDIA driver keeps the Windows libraries it ships for Wine.
+///
+/// shortcut: three usual library directories, not the linker's search path
+/// that Proton finds through `libGLX_nvidia.so.0`; add a directory here when
+/// a distribution puts the driver somewhere else.
+pub fn nvidia_wine_dir() -> Option<PathBuf> {
+    [
+        "/usr/lib/nvidia/wine",
+        "/usr/lib64/nvidia/wine",
+        "/usr/lib/x86_64-linux-gnu/nvidia/wine",
+    ]
+    .into_iter()
+    .map(PathBuf::from)
+    .find(|d| d.join("nvngx.dll").is_file())
+}
 
 /// One installed DLL: which module, and the Windows directory it shadows in.
 #[derive(Debug, PartialEq, Eq)]
@@ -98,18 +140,31 @@ impl Environment {
         // `guard` lives to the end of this call: the unpacked tree goes away
         // only once everything has been copied out of it.
         let (dir, guard) = unpack(source)?;
-        self.install_tree(rt, &dir, guard.is_some())
+        let driver = if rt.from_driver.is_empty() {
+            None
+        } else {
+            nvidia_wine_dir()
+        };
+        self.install_tree(
+            rt,
+            &dir,
+            guard.is_some().then_some(source),
+            driver.as_deref(),
+        )
     }
 
-    /// The install proper, from a tree already on disk. `from_archive` says
-    /// whether Raven unpacked that tree itself, which decides whether links
-    /// inside it are trusted.
+    /// The install proper, from a tree already on disk. `archive` is the
+    /// archive Raven unpacked that tree from, if it did, which decides whether
+    /// links inside it are trusted. `driver` is where to link the runtime's
+    /// driver libraries from.
     fn install_tree(
         &self,
         rt: &Runtime,
         dir: &Path,
-        from_archive: bool,
+        archive: Option<&Path>,
+        driver: Option<&Path>,
     ) -> Result<Vec<Shadow>, Error> {
+        let from_archive = archive.is_some();
         let root = build_root(dir, rt.key)?;
 
         // Plan every copy before performing any of it. Checking as we went
@@ -117,7 +172,8 @@ impl Environment {
         // blocked the next attempt - the failure mode taught us the rule:
         // decide first, write second.
         let ours = self.d3d_manifest(rt);
-        let mut plan: Vec<(PathBuf, PathBuf, String, &str, &'static str)> = Vec::new();
+        // The last field says whether the file is linked rather than copied.
+        let mut plan: Vec<(PathBuf, PathBuf, String, &str, &'static str, bool)> = Vec::new();
         for (arch, windir) in rt.arches {
             // In the spelling the environment's layers already use: a base
             // from before Raven adopted Wine's spelling still says
@@ -151,27 +207,52 @@ impl Environment {
                 if to.exists() && !ours.contains(&rel) {
                     return Err(Error::D3dWouldOverwrite(to));
                 }
-                plan.push((from, to, rel, dll, arch));
+                plan.push((from, to, rel, dll, arch, false));
             }
         }
         if plan.is_empty() {
             return Err(Error::NotAD3dBuild(rt.key, root));
         }
+        if let Some(driver) = driver {
+            let windir = crate::layer::spelled(&self.layer(), "windows/system32");
+            for dll in rt.from_driver {
+                let from = driver.join(format!("{dll}.dll"));
+                if !from.is_file() {
+                    continue;
+                }
+                let rel = format!("{windir}/{dll}.dll");
+                let to = self.upper().join(&rel);
+                // `symlink_metadata`, so a dangling link someone else left
+                // counts as theirs too.
+                if to.symlink_metadata().is_ok() && !ours.contains(&rel) {
+                    return Err(Error::D3dWouldOverwrite(to));
+                }
+                plan.push((from, to, rel, dll, "x64", true));
+            }
+        }
 
         let mut written: Vec<String> = Vec::new();
         let mut created: Vec<String> = Vec::new();
         let mut done = Vec::new();
-        for (from, to, rel, dll, arch) in &plan {
+        for (from, to, rel, dll, arch, link) in &plan {
             // Whether this call is the reason the file is there. An upgrade
             // copies over the previous install's libraries, and undoing that
             // by deleting them would turn a failed upgrade into an uninstall
             // of the build that was working.
-            let is_new = !to.exists();
+            let is_new = to.symlink_metadata().is_err();
             let copy = (|| {
                 if let Some(parent) = to.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                std::fs::copy(from, to).map(|_| ())
+                if !*link {
+                    return std::fs::copy(from, to).map(|_| ());
+                }
+                // A link of an earlier install is replaced, never written
+                // through: copying onto it would write into the driver.
+                if !is_new {
+                    std::fs::remove_file(to)?;
+                }
+                std::os::unix::fs::symlink(from, to)
             })();
             if let Err(e) = copy {
                 // Undo the half-install rather than leave the environment in a
@@ -217,10 +298,7 @@ impl Environment {
         // the next install refused as somebody else's, telling the user to
         // move aside files Raven had put there itself. `d3d` already skips
         // manifest entries that are not files, so a superset is harmless.
-        let version = root
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "unknown".into());
+        let version = build_name(&root, dir, archive);
         let m = self.d3d_manifest_path(rt);
         let mut described: Vec<String> = written.iter().chain(ours.iter()).cloned().collect();
         described.sort();
@@ -244,7 +322,12 @@ impl Environment {
 
         let reg = self.prefix().join("user.reg");
         let mut text = std::fs::read_to_string(&reg).map_err(|e| Error::Layer(reg.clone(), e))?;
-        let keep = unique_dlls(&done);
+        // The runtime's own modules only: Wine has no builtin of the driver's
+        // libraries to prefer them over, and `remove_d3d` clears only these.
+        let keep: Vec<String> = unique_dlls(&done)
+            .into_iter()
+            .filter(|dll| rt.dlls.contains(&dll.as_str()))
+            .collect();
         for dll in &keep {
             // "native" and not "native,builtin": a fallback to Wine's own
             // implementation would hide a DXVK that failed to load behind a
@@ -253,6 +336,7 @@ impl Environment {
         }
         for rel in &superseded {
             if let Some(dll) = module_of(rel)
+                && rt.dlls.contains(&dll.as_str())
                 && !keep.contains(&dll)
             {
                 text = text::set_value(&text, OVERRIDES, &dll, None);
@@ -333,7 +417,7 @@ impl Environment {
     /// Rewrites the Direct3D manifests after the layers' directories were
     /// renamed, so each path names where the file now is.
     pub(crate) fn respell_d3d_manifests(&self) -> Result<(), Error> {
-        for rt in [&DXVK, &VKD3D] {
+        for rt in RUNTIMES {
             let files = self.d3d_manifest(rt);
             if files.is_empty() {
                 continue;
@@ -373,6 +457,53 @@ impl Environment {
             .filter(|(name, _)| rt.dlls.contains(&name.as_str()))
             .collect()
     }
+
+    /// The variables a program started in this environment needs for the
+    /// runtimes installed in it.
+    ///
+    /// DXVK reports an NVIDIA card as an AMD one unless `DXVK_ENABLE_NVAPI`
+    /// says nvapi is there to answer for it. `NVIDIA_WINE_DLL_DIR` is where
+    /// NVIDIA's libraries look for the rest of the driver when no driver
+    /// store names it, as Proton's `proton` script explains where it sets it.
+    pub fn launch_env(&self) -> Vec<(&'static str, std::ffi::OsString)> {
+        let nvapi = self.d3d(&NVAPI);
+        let mut vars = Vec::new();
+        if nvapi.iter().any(|s| NVAPI.dlls.contains(&s.dll.as_str())) {
+            vars.push(("DXVK_ENABLE_NVAPI", "1".into()));
+        }
+        let driver = nvapi
+            .iter()
+            .filter(|s| NVAPI.from_driver.contains(&s.dll.as_str()))
+            .find_map(|s| {
+                std::fs::read_link(&s.path)
+                    .ok()?
+                    .parent()
+                    .map(Path::to_path_buf)
+            });
+        if let Some(dir) = driver {
+            vars.push(("NVIDIA_WINE_DLL_DIR", dir.into_os_string()));
+        }
+        vars
+    }
+}
+
+/// What a build is called, as its release named it: the directory it wraps
+/// itself in, or, for an archive with no such directory - dxvk-nvapi packs
+/// `x64/` at its top - the archive's own name.
+fn build_name(root: &Path, dir: &Path, archive: Option<&Path>) -> String {
+    let named = match archive {
+        Some(archive) if root == dir => archive,
+        _ => root,
+    };
+    let name = named
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "unknown".into());
+    [".tar.gz", ".tgz", ".tar.xz", ".tar.zst", ".tar"]
+        .iter()
+        .find_map(|ext| name.strip_suffix(ext))
+        .map(String::from)
+        .unwrap_or(name)
 }
 
 /// The module name inside a manifest path: `Windows/System32/d3d11.dll` -> `d3d11`.
@@ -553,13 +684,157 @@ mod tests {
         for must in ["d3d12", "d3d12core"] {
             assert!(VKD3D.dlls.contains(&must), "{must} missing from VKD3D");
         }
-        // The two must not overlap, or removing one would strip the other's
-        // overrides out of user.reg.
-        for d in DXVK.dlls {
-            assert!(!VKD3D.dlls.contains(d), "{d} claimed by both runtimes");
+        for must in ["nvapi", "nvapi64", "nvofapi64"] {
+            assert!(NVAPI.dlls.contains(&must), "{must} missing from NVAPI");
         }
-        // Their manifests must differ for the same reason.
-        assert_ne!(DXVK.key, VKD3D.key);
+        // No two may overlap, or removing one would strip the other's
+        // overrides out of user.reg. Their manifests must differ for the
+        // same reason.
+        for (i, a) in RUNTIMES.iter().enumerate() {
+            for b in &RUNTIMES[i + 1..] {
+                for d in a.dlls.iter().chain(a.from_driver) {
+                    assert!(
+                        !b.dlls.contains(d) && !b.from_driver.contains(d),
+                        "{d} claimed by both {} and {}",
+                        a.key,
+                        b.key
+                    );
+                }
+                assert_ne!(a.key, b.key);
+            }
+        }
+    }
+
+    #[test]
+    fn an_archive_with_no_directory_of_its_own_is_named_after_itself() {
+        let tree = Path::new("/cache/unpack/d3d-1-2/build");
+        // dxvk-nvapi packs x64/ at the top of its archive.
+        assert_eq!(
+            build_name(tree, tree, Some(Path::new("/dl/dxvk-nvapi-v0.9.3.tar.gz"))),
+            "dxvk-nvapi-v0.9.3"
+        );
+        // DXVK wraps itself in dxvk-<version>/, and that name wins.
+        assert_eq!(
+            build_name(
+                &tree.join("dxvk-2.7"),
+                tree,
+                Some(Path::new("/dl/whatever.tar.gz"))
+            ),
+            "dxvk-2.7"
+        );
+        // A directory the user names is named after itself.
+        let dir = Path::new("/opt/vkd3d-proton-3.0.1");
+        assert_eq!(build_name(dir, dir, None), "vkd3d-proton-3.0.1");
+    }
+
+    /// An environment and a dxvk-nvapi build laid out as its release is,
+    /// with a driver directory holding the libraries NVIDIA ships for Wine.
+    fn nvapi_fixture(test: &str) -> (crate::env::Environment, PathBuf, PathBuf) {
+        let work = std::env::temp_dir().join(format!("raven-nvapi-{test}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&work);
+        let build = work.join("dxvk-nvapi-v0.9.3");
+        for (arch, dlls) in [
+            ("x64", &["nvapi64", "nvofapi64"][..]),
+            ("x32", &["nvapi"][..]),
+        ] {
+            std::fs::create_dir_all(build.join(arch)).unwrap();
+            for dll in dlls {
+                std::fs::write(build.join(arch).join(format!("{dll}.dll")), "lib").unwrap();
+            }
+        }
+        let driver = work.join("driver");
+        std::fs::create_dir_all(&driver).unwrap();
+        for dll in ["nvngx", "_nvngx", "nvngx_dlssg"] {
+            std::fs::write(driver.join(format!("{dll}.dll")), "driver").unwrap();
+        }
+        let env = crate::env::Environment {
+            name: test.into(),
+            manifest: crate::env::Manifest {
+                base: "none".into(),
+            },
+            root: work.join("env"),
+        };
+        std::fs::create_dir_all(env.prefix()).unwrap();
+        std::fs::write(env.prefix().join("user.reg"), "WINE REGISTRY Version 2\n").unwrap();
+        (env, build, driver)
+    }
+
+    #[test]
+    fn nvapi_links_the_drivers_libraries_and_overrides_only_its_own() {
+        let (env, build, driver) = nvapi_fixture("install");
+        let done = env
+            .install_tree(&NVAPI, &build, None, Some(&driver))
+            .unwrap();
+        let mut dlls: Vec<_> = done.iter().map(|s| s.dll.as_str()).collect();
+        dlls.sort();
+        assert_eq!(dlls, ["_nvngx", "nvapi", "nvapi64", "nvngx", "nvofapi64"]);
+
+        // Linked, so a driver update reaches them; and only the two DLSS
+        // loads from System32, not every library the driver ships.
+        let ngx = env.upper().join("windows/system32/nvngx.dll");
+        assert_eq!(std::fs::read_link(&ngx).unwrap(), driver.join("nvngx.dll"));
+        assert!(
+            !env.upper()
+                .join("windows/system32/nvngx_dlssg.dll")
+                .exists()
+        );
+        assert!(env.upper().join("windows/syswow64/nvapi.dll").is_file());
+
+        let mut over: Vec<_> = env
+            .d3d_overrides(&NVAPI)
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect();
+        over.sort();
+        assert_eq!(over, ["nvapi", "nvapi64", "nvofapi64"]);
+        let reg = std::fs::read_to_string(env.prefix().join("user.reg")).unwrap();
+        assert!(
+            !reg.contains("nvngx"),
+            "no override for the driver's libraries"
+        );
+
+        assert_eq!(env.d3d_build(&NVAPI).as_deref(), Some("dxvk-nvapi-v0.9.3"));
+        let vars = env.launch_env();
+        assert!(vars.contains(&("DXVK_ENABLE_NVAPI", "1".into())));
+        assert!(vars.contains(&("NVIDIA_WINE_DLL_DIR", driver.clone().into_os_string())));
+
+        // Installing again replaces the links rather than writing through
+        // them into the driver's own files.
+        env.install_tree(&NVAPI, &build, None, Some(&driver))
+            .unwrap();
+        assert_eq!(std::fs::read(driver.join("nvngx.dll")).unwrap(), b"driver");
+
+        assert_eq!(env.remove_d3d(&NVAPI).unwrap(), 5);
+        assert!(ngx.symlink_metadata().is_err());
+        assert!(
+            driver.join("nvngx.dll").is_file(),
+            "removing a link leaves its target"
+        );
+        assert!(env.launch_env().is_empty());
+        let _ = std::fs::remove_dir_all(env.root.parent().unwrap());
+    }
+
+    #[test]
+    fn without_the_driver_nvapi_still_installs_and_is_enabled() {
+        let (env, build, _driver) = nvapi_fixture("nodriver");
+        let done = env.install_tree(&NVAPI, &build, None, None).unwrap();
+        assert_eq!(done.len(), 3);
+        assert_eq!(env.launch_env(), [("DXVK_ENABLE_NVAPI", "1".into())]);
+        let _ = std::fs::remove_dir_all(env.root.parent().unwrap());
+    }
+
+    #[test]
+    fn a_driver_library_raven_did_not_link_is_left_alone() {
+        let (env, build, driver) = nvapi_fixture("foreign");
+        let theirs = env.upper().join("windows/system32/nvngx.dll");
+        std::fs::create_dir_all(theirs.parent().unwrap()).unwrap();
+        std::fs::write(&theirs, "someone else's").unwrap();
+        assert!(matches!(
+            env.install_tree(&NVAPI, &build, None, Some(&driver)),
+            Err(Error::D3dWouldOverwrite(p)) if p == theirs
+        ));
+        assert_eq!(std::fs::read(&theirs).unwrap(), b"someone else's");
+        let _ = std::fs::remove_dir_all(env.root.parent().unwrap());
     }
 
     #[test]
@@ -694,7 +969,7 @@ mod tests {
             root: work.join("env"),
         };
         assert!(matches!(
-            env.install_tree(&DXVK, &dir, true),
+            env.install_tree(&DXVK, &dir, Some(&archive), None),
             Err(Error::D3dLink(p)) if p.ends_with("x32/d3d11.dll")
         ));
         // Refused while planning, so not even the x64 library was copied.

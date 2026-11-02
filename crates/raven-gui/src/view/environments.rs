@@ -67,6 +67,14 @@ fn card(e: &EnvRow) -> Element<'_, Message> {
                 .color(p.text_muted),
         );
     }
+    if let Some(v) = &e.nvapi {
+        runtimes = runtimes.push(
+            text(v.clone())
+                .size(t.sz(11))
+                .font(t.regular)
+                .color(p.text_muted),
+        );
+    }
     for (letter, device) in &e.attachments {
         runtimes = runtimes.push(
             text(format!("{letter}: {}", device.display()))

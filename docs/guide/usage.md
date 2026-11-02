@@ -143,6 +143,44 @@ politeness: CachyOS's Proton and Valve's both carry these two projects as
 **unpatched upstream submodules**. What a Proton distribution forks is Wine.
 There is no distinct "CachyOS DXVK" to prefer.
 
+### DLSS and Reflex on an NVIDIA card
+
+DXVK reports an NVIDIA card to games as an AMD one, so they offer neither DLSS
+nor Reflex. Both go through NVIDIA's NVAPI, which Wine does not have.
+**dxvk-nvapi** provides it on top of DXVK and vkd3d-proton, and installs the same
+way:
+
+```bash
+raven env nvapi games --from ~/Downloads/dxvk-nvapi-v0.9.3.tar.gz
+```
+
+A dxvk-nvapi archive has no directory of its own around `x64/`, so the build is
+recorded under the archive's name.
+
+DLSS also loads `nvngx.dll` and `_nvngx.dll` from `System32`. The NVIDIA driver
+ships them for Wine, in `/usr/lib/nvidia/wine` on Arch, and Raven links them
+there from the driver's directory instead of copying them, so a driver update
+reaches the environment without reinstalling. It looks in
+`/usr/lib/nvidia/wine`, `/usr/lib64/nvidia/wine` and
+`/usr/lib/x86_64-linux-gnu/nvidia/wine`. If the driver is elsewhere, the install
+says so and only Reflex can work.
+
+Proton enables nvapi by default in the same way, except that it copies the two
+driver files and its own opt-out is `PROTON_DISABLE_NVAPI=1`.
+
+Once it is installed, every program in the environment starts with
+`DXVK_ENABLE_NVAPI=1`, which makes DXVK report the card as what it is, and
+`NVIDIA_WINE_DLL_DIR` pointing at the driver's directory, where NVIDIA's
+libraries look for the rest of the driver. A value you set yourself is kept, so
+a game that misbehaves with nvapi can be started without it:
+
+```bash
+DXVK_ENABLE_NVAPI=0 raven run games -- wine game.exe
+```
+
+Under Raven this has been checked down to the variables a Windows program sees;
+no game has shown DLSS through it yet.
+
 ## Why the second launch is faster
 
 The first program you run in an environment starts a **session**: Raven mounts

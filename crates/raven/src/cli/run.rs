@@ -48,6 +48,13 @@ pub fn run(name: &str, argv: Vec<String>, cwd: Option<PathBuf>) -> Result<()> {
     let mut cmd = Command::new(&argv[0]);
     cmd.args(&argv[1..]);
     cmd.env("WINEPREFIX", e.prefix());
+    // What the user set wins: `DXVK_ENABLE_NVAPI=0 raven run …` keeps a game
+    // that misbehaves with nvapi away from it.
+    for (var, value) in e.launch_env() {
+        if std::env::var_os(var).is_none() {
+            cmd.env(var, value);
+        }
+    }
     // Tested inside the namespace, which is the only place the answer is
     // true, and skipped rather than fatal: a directory that is not there is
     // no reason to refuse to start the program. Setting it anyway makes

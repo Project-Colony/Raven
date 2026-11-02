@@ -176,7 +176,7 @@ complete, and so is recovery when something is left holding an environment.
 | `raven env create` / `list` / `destroy` | environments, cheap and disposable |
 | `raven env status` / `stop` / `start` | who holds a running environment's mount, releasing it, and bringing one up before it is needed |
 | `raven env attach` / `detach` | a real block device wired in as a raw drive |
-| `raven env dxvk` / `vkd3d` | Direct3D on Vulkan, from a build you supply |
+| `raven env dxvk` / `vkd3d` / `nvapi` | Direct3D on Vulkan, and NVIDIA's DLSS and Reflex on top of it, from a build you supply |
 | `raven env default` / `reproject` | which environment is used by default; re-run the projection |
 | `raven binfmt` | what to install so the kernel recognises `.exe` |
 | `raven launch` / `run` / `exec` | running a program, at three levels of explicitness |
@@ -192,7 +192,7 @@ Measured against the real Windows 11 base:
   to the prefix, and no `X:` left anywhere.
 - After a full cycle the base holds **143 886 files, none modified**.
 
-**200 tests pass** (`cargo test`, both crates) and `clippy -D warnings` is
+**204 tests pass** (`cargo test`, both crates) and `clippy -D warnings` is
 clean. The ones carrying the design: base immutability under a real write (checked against a sabotaged mount,
 so it can fail), layer precedence with two read-only layers, finding and
 stopping the processes that hold a live mount - through an upper path

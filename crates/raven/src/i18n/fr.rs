@@ -39,6 +39,8 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("help_env_dxvk_long", "Installer, retirer ou décrire DXVK : Direct3D 8 à 11 sur Vulkan.\n\nRaven ne télécharge rien : indiquez avec `--from` une version que vous avez déjà, comme `base deploy` prend une ISO que vous avez déjà. Sans option, la commande décrit ce qui est installé."),
     ("help_env_vkd3d", "Installer, retirer ou décrire vkd3d-proton : Direct3D 12 sur Vulkan"),
     ("help_env_vkd3d_long", "Installer, retirer ou décrire vkd3d-proton : Direct3D 12 sur Vulkan.\n\nUn moteur distinct de DXVK, et non une version plus récente : DXVK n'implémente pas du tout Direct3D 12. Les deux s'installent côte à côte."),
+    ("help_env_nvapi", "Installer, retirer ou décrire dxvk-nvapi : DLSS et Reflex sur les cartes NVIDIA"),
+    ("help_env_nvapi_long", "Installer, retirer ou décrire dxvk-nvapi : DLSS et Reflex sur les cartes NVIDIA.\n\nIl a besoin de DXVK ; les jeux Direct3D 12 ont aussi besoin de vkd3d-proton. Les fichiers nvngx.dll et _nvngx.dll du pilote NVIDIA, que DLSS charge, sont liés depuis le dossier du pilote, et chaque programme démarre ensuite avec DXVK_ENABLE_NVAPI=1, sauf si vous le définissez vous-même."),
     ("help_arg_from", "Une version extraite, ou son archive de publication"),
     ("help_arg_remove", "Découvrir à nouveau le vrai Windows en supprimant ce qui a été installé"),
     ("help_env_detach", "Détacher un périphérique rattaché. Le périphérique lui-même n'est pas touché"),
@@ -175,6 +177,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("d3d_none", "{name} : {runtime} n'est pas installé"),
     ("d3d_build_unrecorded", "{runtime}, version non consignée"),
     ("d3d_no_override", "attention : {dll} est installée mais n'a pas de surcharge de DLL"),
+    ("nvapi_no_driver", "attention : aucun nvngx.dll du pilote NVIDIA n'a été trouvé dans /usr/lib/nvidia/wine, /usr/lib64/nvidia/wine ou /usr/lib/x86_64-linux-gnu/nvidia/wine, DLSS ne pourra donc pas se charger. Reflex n'en a pas besoin. Réinstallez une fois que le pilote le fournit."),
     // Lancer un programme, et sa session.
     ("could_not_run", "impossible d'exécuter {program}"),
     ("could_not_mount", "impossible de monter la superposition"),

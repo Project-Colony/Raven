@@ -155,6 +155,13 @@ enum EnvCmd {
         #[arg(long)]
         remove: bool,
     },
+    Nvapi {
+        name: String,
+        #[arg(long, value_name = "PATH", conflicts_with = "remove")]
+        from: Option<PathBuf>,
+        #[arg(long)]
+        remove: bool,
+    },
     Detach {
         name: String,
         #[arg(long, default_value = "d")]

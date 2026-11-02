@@ -211,7 +211,7 @@ crates/raven/src/
 ├── env.rs         the environment model: create, run, recover, destroy
 ├── session.rs     the anchor holding a namespace open, and joining it
 ├── attach.rs      the real block devices an environment may see
-├── d3d.rs         installing DXVK and vkd3d-proton into a prefix
+├── d3d.rs         installing DXVK, vkd3d-proton and dxvk-nvapi into a prefix
 ├── desktop.rs     handing the links a program opens to the user's session
 ├── launch.rs      binfmt registration and environment resolution
 ├── layer.rs       case normalisation, and the shadow masks
