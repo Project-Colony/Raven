@@ -15,7 +15,7 @@
 //! Raven is Linux-only, so this implements the XDG rules directly rather than
 //! taking a dependency to abstract over platforms that will never be targeted.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::Error;
 
@@ -51,6 +51,35 @@ pub fn bases_dir() -> Result<PathBuf, Error> {
 /// The three layers and the Wine prefix belonging to one environment.
 pub fn environment_dir(name: &str) -> Result<PathBuf, Error> {
     Ok(data_dir()?.join("environments").join(check_name(name)?))
+}
+
+/// `~/.local/share/applications/` - where desktop entries go, Wine's among
+/// them.
+pub(crate) fn applications_dir() -> Result<PathBuf, Error> {
+    Ok(xdg("XDG_DATA_HOME", ".local/share")?.join("applications"))
+}
+
+/// The user's desktop, as `~/.config/user-dirs.dirs` names it: where Wine puts
+/// the entry for a shortcut a program places on Windows' desktop.
+pub(crate) fn desktop_dir() -> Result<PathBuf, Error> {
+    let home = std::env::var_os("HOME").ok_or(Error::NoHome)?;
+    let dirs = std::fs::read_to_string(xdg("XDG_CONFIG_HOME", ".config")?.join("user-dirs.dirs"))
+        .unwrap_or_default();
+    Ok(desktop_from(&dirs, Path::new(&home)))
+}
+
+/// `XDG_DESKTOP_DIR` out of a `user-dirs.dirs`, with `$HOME` expanded, or
+/// `~/Desktop` when it is not set.
+fn desktop_from(dirs: &str, home: &Path) -> PathBuf {
+    dirs.lines()
+        .find_map(|l| l.trim().strip_prefix("XDG_DESKTOP_DIR="))
+        .map(|v| v.trim().trim_matches('"'))
+        .map(|v| match v.strip_prefix("$HOME") {
+            Some(rest) => home.join(rest.trim_start_matches('/')),
+            None => PathBuf::from(v),
+        })
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| home.join("Desktop"))
 }
 
 /// An environment's runtime state: its mount point and its session record.
@@ -106,6 +135,23 @@ pub(crate) fn check_name(name: &str) -> Result<&str, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_desktop_is_read_from_user_dirs_as_wine_finds_it() {
+        let home = Path::new("/home/u");
+        let dirs = "# written by xdg-user-dirs-update\nXDG_DOWNLOAD_DIR=\"$HOME/T\u{e9}l\u{e9}chargements\"\nXDG_DESKTOP_DIR=\"$HOME/Bureau\"\n";
+        assert_eq!(desktop_from(dirs, home), home.join("Bureau"));
+        assert_eq!(
+            desktop_from("XDG_DESKTOP_DIR=\"/data/desk\"\n", home),
+            Path::new("/data/desk")
+        );
+        // Not set, or set to something relative: the spec's default.
+        assert_eq!(desktop_from("", home), home.join("Desktop"));
+        assert_eq!(
+            desktop_from("XDG_DESKTOP_DIR=\"desk\"", home),
+            home.join("Desktop")
+        );
+    }
 
     #[test]
     fn names_that_escape_their_directory_are_refused() {

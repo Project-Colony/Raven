@@ -496,8 +496,22 @@ pub fn anchor(name: &str) -> ! {
     }
     println!("ready {pid}");
     let _ = std::io::stdout().flush();
+    // Wine writes a desktop entry whenever a program in here creates a
+    // shortcut or registers a file type or link scheme, and the entry starts
+    // Wine outside the session (`desktop::reroute`). Looked for every two
+    // seconds rather than watched: a few `stat`s, and no watch to keep on
+    // menu folders that appear while the session runs. An installer that
+    // registers a sign-in scheme is done long before the browser comes back.
+    let helper = helper().ok();
+    let mut seen = crate::desktop::Seen::new();
+    if let Some(helper) = &helper {
+        crate::desktop::reroute(&e.prefix(), &e.name, helper, None);
+    }
     loop {
-        std::thread::sleep(std::time::Duration::from_secs(3600));
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        if let Some(helper) = &helper {
+            crate::desktop::reroute(&e.prefix(), &e.name, helper, Some(&mut seen));
+        }
     }
 }
 

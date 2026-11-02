@@ -56,6 +56,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("help_run", "Exécuter un programme dans un environnement"),
     ("help_run_name", "L'environnement où l'exécuter"),
     ("help_run_argv", "La commande, après `--`. Le plus souvent un simple `wine <programme.exe>`"),
+    ("help_run_cwd", "Le dossier où la lancer, tel qu'on le voit dans l'environnement, où C: est monté"),
     ("help_exec", "Monter une pile de couches et y exécuter une commande, sans environnement"),
     ("help_exec_long", "Monter une pile de couches et y exécuter une commande, sans environnement.\n\nLa primitive sur laquelle repose `run`. Utile pour essayer une pile avant d'en faire un environnement."),
     ("help_exec_lower", "Une couche en lecture seule. Répétez l'option ; la PREMIÈRE l'emporte quand des couches se recouvrent"),

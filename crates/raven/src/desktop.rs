@@ -20,9 +20,15 @@
 //! A `file:` link stays with `xdg-open` inside the environment: its path may be
 //! under C:, and C: exists only in the environment's mount namespace, so a
 //! program outside could not open it.
+//!
+//! The other direction goes through desktop entries. Wine's `winemenubuilder`
+//! writes one for each shortcut a program creates and for each file type and
+//! link scheme it registers, and their command runs Wine outside the
+//! environment. [`reroute`] makes them run through Raven instead.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::SystemTime;
 
 use crate::{Error, registry::text};
 
@@ -159,15 +165,7 @@ fn quietly(cmd: &mut Command) -> bool {
 /// is followed. A value the user set themselves is left alone; only an absent
 /// one, or one Raven wrote, is (re)written.
 pub fn reconcile(prefix: &Path, helper: &Path) -> Result<(), Error> {
-    // The window does not answer `open-uri`. One that had to run its own
-    // anchor, with no CLI beside it, would name itself and refuse the verb,
-    // and the link would go nowhere. The CLI may have any name: Colony keeps
-    // the release asset as `raven-linux`.
-    if helper
-        .file_name()
-        .and_then(|n| n.to_str())
-        .is_some_and(|n| n.starts_with("raven-gui"))
-    {
+    if is_the_window(helper) {
         return Ok(());
     }
     // A quote cannot be one quoted argument in the registry's text, and
@@ -183,6 +181,19 @@ pub fn reconcile(prefix: &Path, helper: &Path) -> Result<(), Error> {
         text::write_atomic(&reg, &new)?;
     }
     Ok(())
+}
+
+/// Whether `helper` is the window rather than the CLI.
+///
+/// The window answers neither `open-uri` nor `run`. One that had to run its
+/// own anchor, with no CLI beside it, would name itself, refuse the verb, and
+/// the link would go nowhere. The CLI may have any name: Colony keeps the
+/// release asset as `raven-linux`.
+fn is_the_window(helper: &Path) -> bool {
+    helper
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.starts_with("raven-gui"))
 }
 
 /// `text` with `Browsers` and `Mailers` naming `helper`, wherever they are
@@ -229,6 +240,214 @@ fn lines_setting<'a>(text: &'a str, key: &str) -> Vec<&'a str> {
             inside && line.to_ascii_lowercase().starts_with(&name)
         })
         .collect()
+}
+
+/// Makes the desktop entries Wine wrote for the environment `name`, whose
+/// prefix is `prefix`, start through `helper`, the Raven binary. Returns how
+/// many it changed.
+///
+/// `winemenubuilder` gives each entry `env "WINEPREFIX=<prefix>" wine …` as
+/// its command. Started from the desktop, that runs outside the environment:
+/// C: there is the empty mount point, and Wine, finding no session it can
+/// join, starts a second wineserver on the same prefix. A sign-in link coming
+/// back from the browser through a program's own scheme went that way.
+/// Rewritten, the entry runs `raven run <name>`, and the working directory
+/// Wine gave it, which exists only inside, moves to `--cwd`.
+///
+/// With `seen`, an entry is read once it has stayed the same for a whole
+/// pass and not again until it changes, so a session can call this every few
+/// seconds: Wine may still be writing an entry it has just created, and it
+/// marks one on the desktop executable a moment after closing it. Without,
+/// every entry is read now. Best effort: an entry that cannot be read or
+/// written is left as it was.
+pub fn reroute(prefix: &Path, name: &str, helper: &Path, seen: Option<&mut Seen>) -> usize {
+    let (Some(prefix), Some(cli)) = (prefix.to_str(), helper.to_str()) else {
+        return 0;
+    };
+    if is_the_window(helper) {
+        return 0;
+    }
+    let Ok(applications) = crate::paths::applications_dir() else {
+        return 0;
+    };
+    let desktop = crate::paths::desktop_dir().ok();
+    rewrite(
+        wine_entries(&applications, desktop.as_deref()),
+        prefix,
+        name,
+        cli,
+        seen,
+    )
+}
+
+/// What [`reroute`] last saw of each entry, and whether it has dealt with it
+/// as it was then.
+pub type Seen = std::collections::HashMap<PathBuf, (Stamp, bool)>;
+
+/// An entry's modification time, size and mode. Compared for equality only,
+/// never against the clock, so a home on a network filesystem whose server
+/// runs behind, or a desktop on vfat, is read when it should be.
+type Stamp = (Option<SystemTime>, u64, u32);
+
+fn stamp(file: &Path) -> Option<Stamp> {
+    use std::os::unix::fs::PermissionsExt;
+    let m = std::fs::metadata(file).ok()?;
+    Some((m.modified().ok(), m.len(), m.permissions().mode()))
+}
+
+/// [`reroute`] over `files`.
+fn rewrite(
+    files: Vec<PathBuf>,
+    prefix: &str,
+    name: &str,
+    cli: &str,
+    mut seen: Option<&mut Seen>,
+) -> usize {
+    let mut changed = 0;
+    for file in files {
+        let Some(before) = stamp(&file) else {
+            continue;
+        };
+        if let Some(seen) = seen.as_mut() {
+            match seen.get(&file) {
+                Some((s, true)) if *s == before => continue,
+                Some((s, false)) if *s == before => {}
+                _ => {
+                    seen.insert(file, (before, false));
+                    continue;
+                }
+            }
+        }
+        let outcome = rewrite_one(&file, &before, prefix, name, cli);
+        if outcome == Some(true) {
+            changed += 1;
+        }
+        if let (Some(seen), Some(after)) = (seen.as_mut(), stamp(&file)) {
+            // An entry that changed while it was read is looked at again.
+            seen.insert(file, (after, outcome.is_some()));
+        }
+    }
+    changed
+}
+
+/// Rewrites one entry. `Some(changed)`, or `None` when it changed while it
+/// was being read.
+fn rewrite_one(file: &Path, before: &Stamp, prefix: &str, name: &str, cli: &str) -> Option<bool> {
+    use std::os::unix::fs::PermissionsExt;
+    let Ok(text) = std::fs::read_to_string(file) else {
+        return Some(false);
+    };
+    let Some(new) = rerouted(&text, prefix, name, cli) else {
+        return Some(false);
+    };
+    // Wine writes an entry in place. Had it written this one again since it
+    // was read, replacing the file would throw its version away.
+    if stamp(file).as_ref() != Some(before) {
+        return None;
+    }
+    if text::write_atomic(file, &new).is_err() {
+        return Some(false);
+    }
+    // A launcher on the desktop has to stay executable to be trusted.
+    let _ = std::fs::set_permissions(file, std::fs::Permissions::from_mode(before.2));
+    Some(true)
+}
+
+/// Every desktop entry Wine may have written: `wine-*.desktop` and the
+/// `wine/` menu tree in `applications`, and the entries on the desktop.
+fn wine_entries(applications: &Path, desktop: Option<&Path>) -> Vec<PathBuf> {
+    fn entries(dir: &Path, deep: bool, keep: &dyn Fn(&str) -> bool, out: &mut Vec<PathBuf>) {
+        let Ok(list) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in list.flatten() {
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            if kind.is_dir() && deep {
+                entries(&path, deep, keep, out);
+            } else if kind.is_file()
+                && path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.ends_with(".desktop") && keep(n))
+            {
+                out.push(path);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    entries(applications, false, &|n| n.starts_with("wine-"), &mut out);
+    entries(&applications.join("wine"), true, &|_| true, &mut out);
+    if let Some(desktop) = desktop {
+        entries(desktop, false, &|_| true, &mut out);
+    }
+    out
+}
+
+/// `text` with its command going through `cli`, if it is an entry Wine wrote
+/// for `prefix`, or one Raven rewrote for `name` naming another binary.
+fn rerouted(text: &str, prefix: &str, name: &str, cli: &str) -> Option<String> {
+    let wine = format!("Exec=env \"WINEPREFIX={prefix}\" wine ");
+    let ours = format!(" run {} ", quoted(name));
+    let (old, exec, from_wine) = text.lines().find_map(|line| {
+        if let Some(command) = line.strip_prefix(&wine) {
+            let mut exec = format!("Exec={} run {}", quoted(cli), quoted(name));
+            if let Some(cwd) = text.lines().find_map(|l| l.strip_prefix("Path=")) {
+                exec.push_str(&format!(" --cwd {}", quoted(cwd)));
+            }
+            exec.push_str(&format!(" -- wine {command}"));
+            return Some((line, exec, true));
+        }
+        // Rewritten by a Raven that has since moved, or by a build that was
+        // only being tried: the binary it names may be gone.
+        let program = line.strip_prefix("Exec=\"")?;
+        let at = program.find(&ours)?;
+        if !program[..at].ends_with('"') {
+            return None;
+        }
+        let exec = format!("Exec={}{}", quoted(cli), &program[at..]);
+        (exec != line).then_some((line, exec, false))
+    })?;
+    let mut out = String::with_capacity(text.len() + exec.len());
+    let mut replaced = false;
+    for line in text.lines() {
+        if !replaced && line == old {
+            out.push_str(&exec);
+            replaced = true;
+        } else if from_wine && line.starts_with("Path=") {
+            // The launcher would change into it before starting Raven, and
+            // outside the environment it does not exist.
+            continue;
+        } else {
+            out.push_str(line);
+        }
+        out.push('\n');
+    }
+    Some(out)
+}
+
+/// `arg` as one quoted argument of a desktop entry's `Exec`.
+///
+/// The value is unescaped as a string first and split into arguments second,
+/// so a backslash takes four, and `"`, `` ` `` and `$` take two. `%` would
+/// start a field code.
+fn quoted(arg: &str) -> String {
+    let mut out = String::from("\"");
+    for c in arg.chars() {
+        match c {
+            '"' | '`' | '$' => {
+                out.push_str("\\\\");
+                out.push(c);
+            }
+            '\\' => out.push_str("\\\\\\\\"),
+            '%' => out.push_str("%%"),
+            _ => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 #[cfg(test)]
@@ -362,5 +581,176 @@ mod tests {
         let after = std::fs::read_to_string(dir.join("user.reg")).unwrap();
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(after, REG);
+    }
+
+    const PREFIX: &str = "/home/u/.local/share/Colony/Raven/environments/unreal/prefix";
+
+    /// A menu entry as winemenubuilder writes it for a Raven environment.
+    fn menu_entry() -> String {
+        format!(
+            "[Desktop Entry]\nName=Epic Games Launcher\nExec=env \"WINEPREFIX={PREFIX}\" wine \"C:\\\\\\\\users\\\\\\\\u\\\\\\\\Epic Games Launcher.lnk\"\nType=Application\nPath=/run/user/1000/raven/unreal/c/Program Files/Epic Games/\nIcon=F2A9_EpicGamesLauncher.0\n"
+        )
+    }
+
+    #[test]
+    fn a_menu_entry_starts_through_raven_in_its_own_directory() {
+        let out = rerouted(&menu_entry(), PREFIX, "unreal", "/usr/bin/raven").unwrap();
+        assert_eq!(
+            out,
+            "[Desktop Entry]\nName=Epic Games Launcher\nExec=\"/usr/bin/raven\" run \"unreal\" --cwd \"/run/user/1000/raven/unreal/c/Program Files/Epic Games/\" -- wine \"C:\\\\\\\\users\\\\\\\\u\\\\\\\\Epic Games Launcher.lnk\"\nType=Application\nIcon=F2A9_EpicGamesLauncher.0\n"
+        );
+    }
+
+    #[test]
+    fn a_link_scheme_handler_keeps_its_field_code() {
+        let entry = format!(
+            "[Desktop Entry]\nType=Application\nMimeType=x-scheme-handler/com.epicgames.launcher;\nExec=env \"WINEPREFIX={PREFIX}\" wine start %u\nNoDisplay=true\n"
+        );
+        let out = rerouted(&entry, PREFIX, "unreal", "/usr/bin/raven").unwrap();
+        assert!(
+            out.contains("\nExec=\"/usr/bin/raven\" run \"unreal\" -- wine start %u\n"),
+            "{out}"
+        );
+        assert!(out.contains("MimeType=x-scheme-handler/com.epicgames.launcher;\n"));
+    }
+
+    #[test]
+    fn entries_for_any_other_prefix_and_rerouted_ones_are_left_alone() {
+        let other = menu_entry().replace("environments/unreal", "environments/games");
+        assert_eq!(rerouted(&other, PREFIX, "unreal", "/usr/bin/raven"), None);
+        // A prefix whose path merely starts like this one is another one.
+        let longer = menu_entry().replace("/prefix\"", "/prefix2\"");
+        assert_eq!(rerouted(&longer, PREFIX, "unreal", "/usr/bin/raven"), None);
+        let done = rerouted(&menu_entry(), PREFIX, "unreal", "/usr/bin/raven").unwrap();
+        assert_eq!(rerouted(&done, PREFIX, "unreal", "/usr/bin/raven"), None);
+        assert_eq!(
+            rerouted("[Desktop Entry]\nExec=wine x\n", PREFIX, "unreal", "/r"),
+            None
+        );
+    }
+
+    #[test]
+    fn an_argument_survives_the_entrys_two_rounds_of_unescaping() {
+        assert_eq!(quoted("/opt/My Raven/raven"), "\"/opt/My Raven/raven\"");
+        assert_eq!(quoted("a\"b"), "\"a\\\\\"b\"");
+        assert_eq!(quoted("$HOME`x`"), "\"\\\\$HOME\\\\`x\\\\`\"");
+        assert_eq!(quoted("C:\\x"), "\"C:\\\\\\\\x\"");
+        assert_eq!(quoted("100%"), "\"100%%\"");
+    }
+
+    #[test]
+    fn only_what_wine_writes_is_looked_at() {
+        let root = std::env::temp_dir().join(format!("raven-entries-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let apps = root.join("applications");
+        let desk = root.join("Bureau");
+        for d in [apps.join("wine/Programs/Epic Games"), desk.clone()] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        for f in [
+            apps.join("wine-protocol-x.desktop"),
+            apps.join("firefox.desktop"),
+            apps.join("wine-protocol-x.desktop.raven-tmp"),
+            apps.join("wine/Programs/Epic Games/Launcher.desktop"),
+            desk.join("Launcher.desktop"),
+            desk.join("notes.txt"),
+        ] {
+            std::fs::write(f, "").unwrap();
+        }
+        let mut found = wine_entries(&apps, Some(&desk));
+        found.sort();
+        let mut want = vec![
+            apps.join("wine-protocol-x.desktop"),
+            apps.join("wine/Programs/Epic Games/Launcher.desktop"),
+            desk.join("Launcher.desktop"),
+        ];
+        want.sort();
+        assert_eq!(found, want);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_launcher_on_the_desktop_stays_executable_once_rewritten() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = std::env::temp_dir().join(format!("raven-reroute-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let launcher = root.join("Launcher.desktop");
+        std::fs::write(&launcher, menu_entry()).unwrap();
+        std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let cli = "/usr/bin/raven";
+        assert_eq!(
+            rewrite(vec![launcher.clone()], PREFIX, "unreal", cli, None),
+            1
+        );
+        let text = std::fs::read_to_string(&launcher).unwrap();
+        assert!(
+            text.contains("Exec=\"/usr/bin/raven\" run \"unreal\" --cwd"),
+            "{text}"
+        );
+        let mode = std::fs::metadata(&launcher).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o755);
+        assert_eq!(rewrite(vec![launcher], PREFIX, "unreal", cli, None), 0);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn during_a_session_an_entry_is_read_once_it_has_settled() {
+        let root = std::env::temp_dir().join(format!("raven-settle-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let entry = root.join("wine-protocol-x.desktop");
+        std::fs::write(&entry, menu_entry()).unwrap();
+        let cli = "/usr/bin/raven";
+        let mut seen = Seen::new();
+
+        // Just written: Wine may not be done with it.
+        assert_eq!(
+            rewrite(vec![entry.clone()], PREFIX, "unreal", cli, Some(&mut seen)),
+            0
+        );
+        // The same a pass later: now it is rewritten.
+        assert_eq!(
+            rewrite(vec![entry.clone()], PREFIX, "unreal", cli, Some(&mut seen)),
+            1
+        );
+        // And not read again until it changes.
+        assert!(seen.get(&entry).is_some_and(|(_, done)| *done));
+        assert_eq!(
+            rewrite(vec![entry.clone()], PREFIX, "unreal", cli, Some(&mut seen)),
+            0
+        );
+
+        // Wine writes it again: looked at again once it has settled.
+        std::fs::write(&entry, menu_entry() + "Comment=again\n").unwrap();
+        assert_eq!(
+            rewrite(vec![entry.clone()], PREFIX, "unreal", cli, Some(&mut seen)),
+            0
+        );
+        assert_eq!(
+            rewrite(vec![entry], PREFIX, "unreal", cli, Some(&mut seen)),
+            1
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_entry_naming_a_raven_that_moved_follows_it() {
+        let tried = rerouted(
+            &menu_entry(),
+            PREFIX,
+            "unreal",
+            "/tmp/build/target/debug/raven",
+        )
+        .unwrap();
+        let moved = rerouted(&tried, PREFIX, "unreal", "/usr/bin/raven").unwrap();
+        assert_eq!(
+            moved,
+            rerouted(&menu_entry(), PREFIX, "unreal", "/usr/bin/raven").unwrap()
+        );
+        // Another environment's is not this one's to fix.
+        assert_eq!(rerouted(&tried, PREFIX, "games", "/usr/bin/raven"), None);
     }
 }

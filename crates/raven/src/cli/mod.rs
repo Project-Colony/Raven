@@ -74,6 +74,8 @@ enum Commands {
     },
     Run {
         name: String,
+        #[arg(long, value_name = "DIR")]
+        cwd: Option<PathBuf>,
         #[arg(last = true, required = true)]
         argv: Vec<String>,
     },
@@ -286,7 +288,13 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Commands::Doctor => doctor::doctor(),
         Commands::Base(c) => base::base_cmd(c),
         Commands::Env(c) => env::env_cmd(c),
-        Commands::Run { name, argv } => run::run(&name, argv, None),
+        // Absolute before the join: `setns` moves the working directory to
+        // the mount namespace's root.
+        Commands::Run { name, cwd, argv } => run::run(
+            &name,
+            argv,
+            cwd.map(|d| std::path::absolute(&d).unwrap_or(d)),
+        ),
         Commands::Launch { exe, args } => run::launch(&exe, args),
         Commands::Binfmt => doctor::binfmt(),
         Commands::SessionAnchor { name } => raven::session::anchor(&name),
