@@ -197,19 +197,24 @@ EOS through its MSI package works: EOS's installer logged
 
 ## A sign-in link or web page does not open
 
-A program that opens a link - a launcher's "sign in with your browser", a help
-button - goes through Wine's `winebrowser`, and every session points that at
+A program that opens a web link, such as a launcher's "sign in with your
+browser", goes through Wine's `winebrowser`, and every session points that at
 `raven open-uri`, which asks your desktop to open the link in your browser.
-Two things stop it:
+Three things stop it:
 
-- **No desktop portal.** `raven open-uri` needs `xdg-desktop-portal` (with your
-  desktop's backend) and `busctl` or `gdbus`. Without them the link goes to
-  `xdg-open` inside the environment, where you are root, and a Chromium-based
-  browser refuses to start: `Running as root without --no-sandbox is not
-  supported`.
-- **Your own setting.** A `Browsers` value you put under
-  `HKCU\Software\Wine\WineBrowser` yourself is left alone. Delete it, and the
-  next session start writes Raven's.
+- No desktop portal that opens links. `raven open-uri` needs
+  `xdg-desktop-portal` with a backend that opens links, and `busctl` or
+  `gdbus`. GNOME and KDE have one; on Hyprland or a wlroots compositor, install
+  `xdg-desktop-portal-gtk`. Without it the link goes to `xdg-open` inside the
+  environment, where you are root, and a Chromium-based browser refuses to
+  start: `Running as root without --no-sandbox is not supported`.
+- A local file. A help button that opens a manual on C:, or any `file:`
+  link, stays inside the environment, because nothing outside can see C:. It
+  opens with `xdg-open` as root, so a Chromium-based default browser still
+  refuses it.
+- Your own setting. A `Browsers` value you put under
+  `HKCU\Software\Wine\WineBrowser` yourself is left alone, whatever its type.
+  Delete it, and the next session start writes Raven's.
 
 An environment created before this picks it up at its next session start
 (`raven env stop <name>` once, if one is running).
