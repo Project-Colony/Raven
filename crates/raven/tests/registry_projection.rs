@@ -107,6 +107,26 @@ fn the_os_version_key_does_not_cross() {
 }
 
 #[test]
+fn the_bases_build_is_read_though_its_key_does_not_cross() {
+    let bytes = hive_from(&format!(
+        "{SOFTWARE}\n[HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion]\n\"CurrentBuildNumber\"=\"26200\"\n"
+    ));
+    assert_eq!(hive::windows_build(&bytes), Some(26200));
+    let keys = hive::project(&bytes, r"HKLM\Software", &Rules::default()).unwrap();
+    assert!(
+        !keys.iter().any(|k| k.path.contains("Windows NT")),
+        "reading the build must not let the version key across"
+    );
+}
+
+#[test]
+fn a_hive_that_does_not_say_has_no_build() {
+    // The fixture's CurrentVersion key has no CurrentBuildNumber.
+    assert_eq!(hive::windows_build(&hive_from(SOFTWARE)), None);
+    assert_eq!(hive::windows_build(b"not a hive at all"), None);
+}
+
+#[test]
 fn machine_identity_does_not_cross() {
     assert!(!paths().iter().any(|p| p.contains("Cryptography")));
 }

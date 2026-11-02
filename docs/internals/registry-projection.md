@@ -92,6 +92,32 @@ array in their `registry-rules.toml`, close their programs, stop the environment
 and run `raven env reproject <name>`. This narrow exception does not allow the
 parent OS identity key or the machine's services.
 
+## The Windows version
+
+`HKLM\Software\Microsoft\Windows NT\CurrentVersion` itself does not cross, so
+the version a program is told is Wine's account, not the base's. Wine reads it
+from that key in the prefix, which `wineboot` fills with Windows 10, build
+19045, whatever the base is. Telling a Windows 11 base's programs they run on
+Windows 10 broke FiveM: on Windows 10 builds 18362 to 19627 it patches a flag
+next to `_fltused` in ntdll, assuming Microsoft's ntdll, and under Wine the
+write lands in read-only code (`CoreRT.dll+1C471`).
+
+`raven env create` therefore reads the base's `CurrentBuildNumber` and, for
+Windows 11 (build 22000 or later), runs `winecfg /v win11` before C: becomes
+the base. The environment then reports Wine's own Windows 11, build 22000. It
+stays Wine's account rather than the base's 26200: the calls that answer a
+program are Wine's, and Wine's table is what it stands behind. A Windows 10
+base keeps Wine's default.
+
+This is set once, at creation. `raven env reproject` leaves it alone, and so
+does Wine's own update, which does not overwrite an existing version, so a
+choice made later with `winecfg` stays. An environment created before this
+reports Windows 10 until it is set by hand:
+
+```bash
+raven run <name> -- wine winecfg /v win11
+```
+
 ## How it is written
 
 Two decisions that keep this maintainable.
