@@ -2650,15 +2650,16 @@ dependencies = [
 
 [[package]]
 name = "regf"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c58f645b9512345197fd9509bdd4a0c0843eeb8e2980e70a828f018f52bc7c4"
+checksum = "7f10c88593b4d54655e9954fdc04b6b6e6566467543f821418ad3f8ef30e3420"
 dependencies = [
  "bitflags 2.13.2",
  "byteorder",
  "chrono",
  "encoding_rs",
- "thiserror 1.0.69",
+ "tempfile",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3095,7 +3096,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.5",
  "windows-sys 0.61.2",
