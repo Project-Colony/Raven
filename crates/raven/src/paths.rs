@@ -59,6 +59,17 @@ pub(crate) fn applications_dir() -> Result<PathBuf, Error> {
     Ok(xdg("XDG_DATA_HOME", ".local/share")?.join("applications"))
 }
 
+/// `~/.local/bin/` - where a shortcut goes, so it runs by its name.
+///
+/// The directory systemd's `file-hierarchy` gives a user's own executables.
+/// Some distributions put it on `PATH` when it exists, others, Arch among
+/// them, leave that to the user. `XDG_BIN_HOME` is not in the XDG
+/// specification, but some systems set it, and a user who did means this
+/// directory.
+pub fn bin_dir() -> Result<PathBuf, Error> {
+    xdg("XDG_BIN_HOME", ".local/bin")
+}
+
 /// The user's desktop, as `~/.config/user-dirs.dirs` names it: where Wine puts
 /// the entry for a shortcut a program places on Windows' desktop.
 pub(crate) fn desktop_dir() -> Result<PathBuf, Error> {
@@ -92,6 +103,16 @@ pub fn runtime_dir(name: &str) -> Result<PathBuf, Error> {
         .map(PathBuf::from)
         .ok_or(Error::NoRuntimeDir)?;
     Ok(base.join("raven").join(check_name(name)?))
+}
+
+/// `~/.cache/Colony/Raven/logs/` - what each shortcut's program printed the
+/// last two times it started without a terminal.
+///
+/// On disk, not under the runtime directory: that one is a small tmpfs in
+/// memory, which also holds every session's record, and a program that never
+/// stops printing would fill it. A log costs nothing but a look when deleted.
+pub fn logs_dir() -> Result<PathBuf, Error> {
+    Ok(cache_dir()?.join("logs"))
 }
 
 /// Where an environment's C: is mounted while it runs.

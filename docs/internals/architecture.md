@@ -213,6 +213,8 @@ crates/raven/src/
 ├── attach.rs      the real block devices an environment may see
 ├── d3d.rs         installing DXVK, vkd3d-proton and dxvk-nvapi into a prefix
 ├── desktop.rs     links a program opens, and Wine's desktop entries, routed to the right side
+├── shortcut.rs    a command and a menu entry that start one program
+├── icon.rs        a program's icon, read out of its .exe as a PNG
 ├── launch.rs      binfmt registration and environment resolution
 ├── layer.rs       case normalisation, and the shadow masks
 ├── prefix.rs      the Wine prefix pieces an environment keeps

@@ -433,7 +433,7 @@ fn rerouted(text: &str, prefix: &str, name: &str, cli: &str) -> Option<String> {
 /// The value is unescaped as a string first and split into arguments second,
 /// so a backslash takes four, and `"`, `` ` `` and `$` take two. `%` would
 /// start a field code.
-fn quoted(arg: &str) -> String {
+pub(crate) fn quoted(arg: &str) -> String {
     let mut out = String::from("\"");
     for c in arg.chars() {
         match c {

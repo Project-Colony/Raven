@@ -175,6 +175,18 @@ enum EnvCmd {
     Default {
         name: Option<String>,
     },
+    Shortcut {
+        name: String,
+        command: Option<String>,
+        #[arg(long, value_name = "TITLE", requires = "argv", value_parser = clap::builder::NonEmptyStringValueParser::new())]
+        title: Option<String>,
+        #[arg(long, value_name = "DIR", requires = "argv")]
+        cwd: Option<PathBuf>,
+        #[arg(long, requires = "command", conflicts_with = "argv")]
+        remove: bool,
+        #[arg(last = true, requires = "command")]
+        argv: Vec<String>,
+    },
 }
 
 /// The whole command tree, worded in `lang`.

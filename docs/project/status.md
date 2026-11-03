@@ -164,7 +164,7 @@ programs tested you cannot know what you have.
 
 ## Built
 
-Twenty commands, counting each leaf subcommand once, and a window over the
+Twenty-three commands, counting each leaf subcommand once, and a window over the
 same library. The path from an installation image to `./program.exe` is
 complete, and so is recovery when something is left holding an environment.
 
@@ -178,6 +178,7 @@ complete, and so is recovery when something is left holding an environment.
 | `raven env attach` / `detach` | a real block device wired in as a raw drive |
 | `raven env dxvk` / `vkd3d` / `nvapi` | Direct3D on Vulkan, and NVIDIA's DLSS and Reflex on top of it, from a build you supply |
 | `raven env default` / `reproject` | which environment is used by default; re-run the projection |
+| `raven env shortcut` | a command and a menu entry, with the program's icon, that start one program |
 | `raven binfmt` | what to install so the kernel recognises `.exe` |
 | `raven launch` / `run` / `exec` | running a program, at three levels of explicitness |
 | `raven-gui` | a window over the same library: environments, bases, diagnostics, and Preferences for theme, accent, text size, accessibility and language |
@@ -192,7 +193,7 @@ Measured against the real Windows 11 base:
   to the prefix, and no `X:` left anywhere.
 - After a full cycle the base holds **143 886 files, none modified**.
 
-**213 tests pass** (`cargo test`, both crates) and `clippy -D warnings` is
+**245 tests pass** (`cargo test`, both crates) and `clippy -D warnings` is
 clean. The ones carrying the design: base immutability under a real write (checked against a sabotaged mount,
 so it can fail), layer precedence with two read-only layers, finding and
 stopping the processes that hold a live mount - through an upper path

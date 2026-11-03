@@ -48,6 +48,59 @@ raven run games -- wine 'C:\Windows\System32\notepad.exe'
 Anything the program writes lands in the environment. The base finishes
 byte-identical.
 
+## A command and a menu entry for a program
+
+`raven run` takes the whole command line every time. A shortcut gives a
+program a command of its own and an entry in the applications menu, as an
+installer would:
+
+```bash
+raven env shortcut games mygame -- wine 'C:\Games\MyGame\MyGame.exe'
+```
+
+After that, `mygame` in a terminal, or **MyGame** in the menu, starts the
+program in `games`. What follows `--` is the command line `raven run` takes,
+and arguments given to the command are added after it, so `mygame -windowed`
+passes `-windowed` to the program. The menu shows the program's file name
+without `.exe` unless `--title` names it. When Raven finds the program in the
+environment, it starts in its own directory, `C:\Games\MyGame` here, as a
+Windows shortcut starts it; `--cwd` names another, as for `raven run`. Raven
+warns when it does not find the program.
+
+Three files make a shortcut:
+
+- `~/.local/bin/mygame`, a shell script. Raven says so if `~/.local/bin` is
+  not on your `PATH`.
+- `~/.local/share/applications/raven-shortcut-mygame.desktop`, the menu entry.
+- `~/.local/share/Colony/Raven/icons/mygame.png`, the program's icon, read out
+  of its `.exe`. A program with no icon Raven can read shows Raven's.
+
+The script and the menu entry each carry a line marking them as Raven's, so a
+file of yours with the same name is never replaced or deleted. A name another
+program already answers to anywhere on your `PATH` is refused, since one would
+hide the other, and so are `wine` and `wineserver`, which Raven itself runs by
+name. A shortcut of the same name in another environment has to be removed
+there first.
+
+Started from a terminal, the program prints there as usual, and
+`mygame > out.txt` goes to `out.txt`. Started from the menu, or anywhere with no
+terminal at all, the command writes what it prints to
+`~/.cache/Colony/Raven/logs/mygame.log`, in a directory only you can read, and
+keeps the previous start's as `mygame.log.1`, so the reason for a crash is still
+there after the next start.
+
+```bash
+raven env shortcut games                  # list the shortcuts of games
+raven env shortcut games mygame --remove  # delete the three files
+```
+
+A program whose installer puts a shortcut in the Start menu does not need one:
+Wine turns that shortcut into a menu entry, and Raven makes the entry start in
+the environment. A shortcut is for a program that was copied in, such as a
+portable build or a game's own launcher. Destroying an environment leaves its
+shortcuts, and says so; `raven env shortcut <name>` still lists and removes
+them.
+
 ## Making `./program.exe` work
 
 The package already did this: it registered `.exe` with the kernel and masked

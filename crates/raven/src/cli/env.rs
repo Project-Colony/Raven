@@ -64,6 +64,9 @@ pub fn env_cmd(cmd: EnvCmd) -> Result<()> {
         EnvCmd::Destroy { name } => {
             env::Environment::destroy(&name)?;
             out!("{}", tf("env_destroyed", &[("name", &name)]));
+            if raven::shortcut::list(&name).is_ok_and(|all| !all.is_empty()) {
+                out!("{}", tf("env_destroyed_shortcuts", &[("name", &name)]));
+            }
             Ok(())
         }
         EnvCmd::Status { name } => {
@@ -185,6 +188,14 @@ pub fn env_cmd(cmd: EnvCmd) -> Result<()> {
             }
             Ok(())
         }
+        EnvCmd::Shortcut {
+            name,
+            command,
+            title,
+            cwd,
+            remove,
+            argv,
+        } => shortcut_cmd(&name, command, title, cwd, remove, argv),
         EnvCmd::Stop { name } => {
             let e = env::Environment::open(&name)?;
             let stopped = e.stop()?;
@@ -196,6 +207,118 @@ pub fn env_cmd(cmd: EnvCmd) -> Result<()> {
             Ok(())
         }
     }
+}
+
+/// Make, remove or list the shortcuts of one environment.
+fn shortcut_cmd(
+    name: &str,
+    command: Option<String>,
+    title: Option<String>,
+    cwd: Option<PathBuf>,
+    remove: bool,
+    argv: Vec<String>,
+) -> Result<()> {
+    use raven::shortcut::{self, IconFrom};
+    let Some(command) = command else {
+        let all = shortcut::list(name)?;
+        if all.is_empty() {
+            let dir = raven::paths::bin_dir()?;
+            out!(
+                "{}",
+                tf("shortcut_none", &[("name", &name), ("dir", &dir.display())])
+            );
+        }
+        let width = all.iter().map(|s| s.name.len()).max().unwrap_or(0);
+        for s in &all {
+            out!("  {:<width$}  {}", s.name, s.runs);
+        }
+        return Ok(());
+    };
+    if remove {
+        let removed = shortcut::remove(name, &command)?;
+        match removed.entry_kept {
+            None => out!("{}", tf("shortcut_removed", &[("command", &command)])),
+            Some(entry) => out!(
+                "{}",
+                tf(
+                    "shortcut_removed_kept_entry",
+                    &[("command", &command), ("entry", &entry.display())]
+                )
+            ),
+        }
+        return Ok(());
+    }
+    if argv.is_empty() {
+        anyhow::bail!(
+            "{}",
+            tf(
+                "shortcut_needs_argv",
+                &[("command", &command), ("name", &name)]
+            )
+        );
+    }
+    let e = env::Environment::open(name)?;
+    // Absolute now: the command runs from wherever the user happens to be.
+    let cwd = cwd.map(|d| std::path::absolute(&d).unwrap_or(d));
+    let made = shortcut::make(&e, &command, &argv, cwd.as_deref(), title.as_deref())?;
+    let key = if made.replaced {
+        "shortcut_updated"
+    } else {
+        "shortcut_made"
+    };
+    out!(
+        "{}",
+        tf(
+            key,
+            &[
+                ("command", &command),
+                ("runs", &made.shortcut.runs),
+                ("name", &name)
+            ]
+        )
+    );
+    let menu = match made.icon {
+        IconFrom::Program => "shortcut_menu",
+        IconFrom::Unreadable => "shortcut_menu_no_icon",
+        IconFrom::NotFound(_) | IconFrom::NoProgram => "shortcut_menu_raven_icon",
+    };
+    out!("{}", tf(menu, &[("title", &made.title)]));
+    if let IconFrom::NotFound(program) = &made.icon {
+        out!(
+            "{}",
+            tf(
+                "shortcut_program_not_found",
+                &[("program", program), ("name", &name)]
+            )
+        );
+    }
+    if let Ok(log) = shortcut::log_file(&command) {
+        out!("{}", tf("shortcut_log", &[("log", &log.display())]));
+    }
+    if !made.on_path {
+        let dir = made
+            .shortcut
+            .command
+            .parent()
+            .map(|d| d.display().to_string())
+            .unwrap_or_default();
+        out!(
+            "{}",
+            tf(
+                "shortcut_not_on_path",
+                &[
+                    ("dir", &dir),
+                    ("command", &command),
+                    ("path", &made.shortcut.command.display())
+                ]
+            )
+        );
+    }
+    out!(
+        "{}",
+        tf("shortcut_undo", &[("name", &name), ("command", &command)])
+    );
+    Ok(())
 }
 
 /// Install, remove or report one Direct3D-on-Vulkan runtime.
