@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/Project-Colony/Raven/compare/v0.6.0...v0.7.0) (2026-11-03)
+
+
+### Features
+
+* make a command and a menu entry for a program with `raven env shortcut` ([#56](https://github.com/Project-Colony/Raven/issues/56)) ([3d40d65](https://github.com/Project-Colony/Raven/commit/3d40d656934bb39dcd0469e9e5c1dbcc91ae2726))
+
 ## [0.6.0](https://github.com/Project-Colony/Raven/compare/v0.5.8...v0.6.0) (2026-11-02)
 
 
