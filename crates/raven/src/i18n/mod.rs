@@ -221,6 +221,13 @@ pub fn error_message_in(lang: Lang, error: &Error) -> String {
             f("error_d3d_would_overwrite", &[("path", &path.display())])
         }
         Error::D3dLink(path) => f("error_d3d_link", &[("path", &path.display())]),
+        Error::BadShortcutName(name) => f("error_bad_shortcut_name", &[("name", &q(name))]),
+        Error::ShortcutTaken(path) => f("error_shortcut_taken", &[("path", &path.display())]),
+        Error::NoSuchShortcut { env, name } => f(
+            "error_no_such_shortcut",
+            &[("command", &q(name)), ("quoted", &q(env)), ("name", env)],
+        ),
+        Error::ShortcutFile(path, _) => f("error_shortcut_file", &[("path", &path.display())]),
     }
 }
 
@@ -366,6 +373,13 @@ mod tests {
             Error::WineChanged("games".into()),
             Error::D3dWouldOverwrite(p()),
             Error::D3dLink(p()),
+            Error::BadShortcutName("-x".into()),
+            Error::ShortcutTaken(p()),
+            Error::NoSuchShortcut {
+                env: "games".into(),
+                name: "mygame".into(),
+            },
+            Error::ShortcutFile(p(), io()),
         ];
         for e in &all {
             match e {
@@ -397,7 +411,11 @@ mod tests {
                 | Error::SessionHolds(_)
                 | Error::WineChanged(_)
                 | Error::D3dWouldOverwrite(_)
-                | Error::D3dLink(_) => {}
+                | Error::D3dLink(_)
+                | Error::BadShortcutName(_)
+                | Error::ShortcutTaken(_)
+                | Error::NoSuchShortcut { .. }
+                | Error::ShortcutFile(..) => {}
             }
         }
         all

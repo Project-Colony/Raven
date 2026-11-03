@@ -205,6 +205,7 @@ everything sits under `Colony/Raven/`:
 
 ~/.local/share/Colony/Raven/     what Raven produced and cannot re-derive
 ├── bases/<id>/                  a deployed Windows
+├── icons/<command>.png          a shortcut's icon, read out of its program
 └── environments/<name>/
     ├── environment.toml         which base it runs against
     ├── registry-rules.toml      what crosses from the base's registry
@@ -220,7 +221,17 @@ $XDG_RUNTIME_DIR/raven/<name>/   runtime state; never survives a reboot
 ├── c/                           the active mount
 ├── session.pid                  the session anchor's pid, which launches join
 └── session.lock                 present only while a session is starting
+
+$XDG_RUNTIME_DIR/raven-logs/     what each shortcut's program printed
+└── <command>.log, .log.1        its last start, and the one before
 ```
+
+A shortcut also writes two files outside `Colony/Raven/`, because that is where
+a shell and a desktop look for them: `~/.local/bin/<command>` (or
+`$XDG_BIN_HOME/<command>`) and
+`~/.local/share/applications/raven-shortcut-<command>.desktop`. The logs sit
+beside `raven/` rather than in it, because every name in `raven/` is an
+environment's.
 
 A base is data, not cache, despite being reproducible from an ISO: reproducing
 it requires an ISO the user may no longer have, and the rule is that deleting

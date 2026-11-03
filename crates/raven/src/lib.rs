@@ -10,6 +10,7 @@ pub mod d3d;
 pub mod desktop;
 pub mod env;
 pub mod i18n;
+pub mod icon;
 pub mod launch;
 pub mod layer;
 pub mod mount;
@@ -17,6 +18,7 @@ pub mod paths;
 pub mod prefix;
 pub mod registry;
 pub mod session;
+pub mod shortcut;
 
 /// Failures that are Raven's own, as opposed to the kernel's.
 ///
@@ -54,6 +56,10 @@ pub enum Error {
     WineChanged(String),
     D3dWouldOverwrite(std::path::PathBuf),
     D3dLink(std::path::PathBuf),
+    BadShortcutName(String),
+    ShortcutTaken(std::path::PathBuf),
+    NoSuchShortcut { env: String, name: String },
+    ShortcutFile(std::path::PathBuf, #[source] std::io::Error),
 }
 
 impl std::fmt::Display for Error {

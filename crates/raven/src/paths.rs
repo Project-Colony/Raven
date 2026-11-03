@@ -59,6 +59,16 @@ pub(crate) fn applications_dir() -> Result<PathBuf, Error> {
     Ok(xdg("XDG_DATA_HOME", ".local/share")?.join("applications"))
 }
 
+/// `~/.local/bin/` - where a shortcut goes, so it runs by its name.
+///
+/// The directory systemd's `file-hierarchy` gives a user's own executables,
+/// and the one distributions put on `PATH` when it exists. `XDG_BIN_HOME` is
+/// not in the XDG specification, but some systems set it, and a user who
+/// did means this directory.
+pub fn bin_dir() -> Result<PathBuf, Error> {
+    xdg("XDG_BIN_HOME", ".local/bin")
+}
+
 /// The user's desktop, as `~/.config/user-dirs.dirs` names it: where Wine puts
 /// the entry for a shortcut a program places on Windows' desktop.
 pub(crate) fn desktop_dir() -> Result<PathBuf, Error> {
@@ -92,6 +102,19 @@ pub fn runtime_dir(name: &str) -> Result<PathBuf, Error> {
         .map(PathBuf::from)
         .ok_or(Error::NoRuntimeDir)?;
     Ok(base.join("raven").join(check_name(name)?))
+}
+
+/// `$XDG_RUNTIME_DIR/raven-logs/` - what each shortcut's program printed the
+/// last two times it started.
+///
+/// Beside `raven/` rather than in it, where every name is an environment's.
+/// Under the runtime directory, which only the user can enter, and which
+/// empties at logout: a log is for the start that just failed.
+pub fn logs_dir() -> Result<PathBuf, Error> {
+    let base = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .ok_or(Error::NoRuntimeDir)?;
+    Ok(base.join("raven-logs"))
 }
 
 /// Where an environment's C: is mounted while it runs.
