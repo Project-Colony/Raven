@@ -64,6 +64,9 @@ pub fn env_cmd(cmd: EnvCmd) -> Result<()> {
         EnvCmd::Destroy { name } => {
             env::Environment::destroy(&name)?;
             out!("{}", tf("env_destroyed", &[("name", &name)]));
+            if raven::shortcut::list(&name).is_ok_and(|all| !all.is_empty()) {
+                out!("{}", tf("env_destroyed_shortcuts", &[("name", &name)]));
+            }
             Ok(())
         }
         EnvCmd::Status { name } => {
@@ -215,7 +218,7 @@ fn shortcut_cmd(
     remove: bool,
     argv: Vec<String>,
 ) -> Result<()> {
-    use raven::shortcut::{self, OnPath};
+    use raven::shortcut::{self, IconFrom};
     let Some(command) = command else {
         let all = shortcut::list(name)?;
         if all.is_empty() {
@@ -232,8 +235,17 @@ fn shortcut_cmd(
         return Ok(());
     };
     if remove {
-        shortcut::remove(name, &command)?;
-        out!("{}", tf("shortcut_removed", &[("command", &command)]));
+        let removed = shortcut::remove(name, &command)?;
+        match removed.entry_kept {
+            None => out!("{}", tf("shortcut_removed", &[("command", &command)])),
+            Some(entry) => out!(
+                "{}",
+                tf(
+                    "shortcut_removed_kept_entry",
+                    &[("command", &command), ("entry", &entry.display())]
+                )
+            ),
+        }
         return Ok(());
     }
     if argv.is_empty() {
@@ -265,43 +277,42 @@ fn shortcut_cmd(
             ]
         )
     );
-    let menu = if made.icon {
-        "shortcut_menu"
-    } else {
-        "shortcut_menu_no_icon"
+    let menu = match made.icon {
+        IconFrom::Program => "shortcut_menu",
+        IconFrom::Unreadable => "shortcut_menu_no_icon",
+        IconFrom::NotFound(_) | IconFrom::NoProgram => "shortcut_menu_raven_icon",
     };
     out!("{}", tf(menu, &[("title", &made.title)]));
+    if let IconFrom::NotFound(program) = &made.icon {
+        out!(
+            "{}",
+            tf(
+                "shortcut_program_not_found",
+                &[("program", program), ("name", &name)]
+            )
+        );
+    }
     if let Ok(log) = shortcut::log_file(&command) {
         out!("{}", tf("shortcut_log", &[("log", &log.display())]));
     }
-    match &made.on_path {
-        OnPath::Found => {}
-        OnPath::NotOnPath => {
-            let dir = made
-                .shortcut
-                .command
-                .parent()
-                .map(|d| d.display().to_string())
-                .unwrap_or_default();
-            out!(
-                "{}",
-                tf(
-                    "shortcut_not_on_path",
-                    &[
-                        ("dir", &dir),
-                        ("command", &command),
-                        ("path", &made.shortcut.command.display())
-                    ]
-                )
-            );
-        }
-        OnPath::Shadowed(other) => out!(
+    if !made.on_path {
+        let dir = made
+            .shortcut
+            .command
+            .parent()
+            .map(|d| d.display().to_string())
+            .unwrap_or_default();
+        out!(
             "{}",
             tf(
-                "shortcut_shadowed",
-                &[("other", &other.display()), ("command", &command)]
+                "shortcut_not_on_path",
+                &[
+                    ("dir", &dir),
+                    ("command", &command),
+                    ("path", &made.shortcut.command.display())
+                ]
             )
-        ),
+        );
     }
     out!(
         "{}",

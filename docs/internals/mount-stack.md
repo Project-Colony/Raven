@@ -215,23 +215,21 @@ everything sits under `Colony/Raven/`:
     └── prefix/                  the Wine prefix; dosdevices/c: → the mount
 
 ~/.cache/Colony/Raven/           deleting it costs only time
-└── unpack/d3d-<pid>-<time>/     a DXVK or vkd3d archive, while it installs
+├── unpack/d3d-<pid>-<time>/     a DXVK or vkd3d archive, while it installs
+└── logs/<command>.log, .log.1   what a shortcut's program printed, last start and the one before
 
 $XDG_RUNTIME_DIR/raven/<name>/   runtime state; never survives a reboot
 ├── c/                           the active mount
 ├── session.pid                  the session anchor's pid, which launches join
 └── session.lock                 present only while a session is starting
-
-$XDG_RUNTIME_DIR/raven-logs/     what each shortcut's program printed
-└── <command>.log, .log.1        its last start, and the one before
 ```
 
 A shortcut also writes two files outside `Colony/Raven/`, because that is where
 a shell and a desktop look for them: `~/.local/bin/<command>` (or
 `$XDG_BIN_HOME/<command>`) and
-`~/.local/share/applications/raven-shortcut-<command>.desktop`. The logs sit
-beside `raven/` rather than in it, because every name in `raven/` is an
-environment's.
+`~/.local/share/applications/raven-shortcut-<command>.desktop`. The logs are
+on disk. The runtime directory is a small tmpfs in memory that also holds every
+session's record, and a program that never stops printing would fill it.
 
 A base is data, not cache, despite being reproducible from an ISO: reproducing
 it requires an ISO the user may no longer have, and the rule is that deleting

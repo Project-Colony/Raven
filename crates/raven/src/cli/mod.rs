@@ -178,7 +178,7 @@ enum EnvCmd {
     Shortcut {
         name: String,
         command: Option<String>,
-        #[arg(long, value_name = "NAME", requires = "argv")]
+        #[arg(long, value_name = "TITLE", requires = "argv", value_parser = clap::builder::NonEmptyStringValueParser::new())]
         title: Option<String>,
         #[arg(long, value_name = "DIR", requires = "argv")]
         cwd: Option<PathBuf>,

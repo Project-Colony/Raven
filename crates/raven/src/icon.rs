@@ -16,32 +16,33 @@ const RT_ICON: u32 = 3;
 /// `RT_GROUP_ICON`: the list of an icon's images.
 const RT_GROUP_ICON: u32 = 14;
 const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
-/// Larger than any icon Windows draws. A bitmap claiming more is not one.
+/// Larger than any icon Windows draws. An image claiming more is not one.
 const MAX_SIDE: usize = 1024;
+/// A PNG image is copied as it is, and the desktop decodes it each time it
+/// draws the menu: four times what a 256-pixel RGBA image takes unpacked.
+const MAX_PNG: usize = 4 << 20;
 
-/// A program's icon, encoded as PNG.
-pub struct Icon {
-    pub png: Vec<u8>,
-    pub width: u32,
-    pub height: u32,
-}
-
-/// The largest image of the first icon in the PE file `pe`, or `None` when it
-/// has none that can be read.
-pub fn from_exe(pe: &[u8]) -> Option<Icon> {
+/// The first icon in the PE file `pe`, as a PNG: its largest image that can be
+/// read, or `None` when it has none.
+pub fn from_exe(pe: &[u8]) -> Option<Vec<u8>> {
     let resources = Resources::of(pe)?;
     let group = resources.first(RT_GROUP_ICON)?;
-    let image = resources.find(RT_ICON, largest(group)?)?;
-    to_png(image)
+    // A 16-bit bitmap or a damaged image is no reason to show no icon when a
+    // smaller one of the same group reads. Each try walks the directory
+    // again, and a group can list 65535 images: a real one lists a dozen.
+    by_size(group)
+        .into_iter()
+        .take(16)
+        .find_map(|id| to_png(resources.find(RT_ICON, id)?))
 }
 
-/// The resource ID of the largest, then deepest, image a group lists.
+/// The resource IDs of the images a group lists, largest then deepest first.
 ///
 /// A group is a `GRPICONDIR`: six bytes, the count at offset 4, then one
 /// 14-byte entry per image. A width of 0 means 256.
-fn largest(group: &[u8]) -> Option<u32> {
-    let count = usize::from(u16_at(group, 4)?);
-    (0..count)
+fn by_size(group: &[u8]) -> Vec<u32> {
+    let count = u16_at(group, 4).map_or(0, usize::from);
+    let mut images: Vec<((u32, u16), u32)> = (0..count)
         .filter_map(|i| {
             let entry = 6 + i * 14;
             let width = match *group.get(entry)? {
@@ -52,27 +53,26 @@ fn largest(group: &[u8]) -> Option<u32> {
             let id = u16_at(group, entry + 12)?;
             Some(((width, bits), u32::from(id)))
         })
-        .max_by_key(|&(size, _)| size)
-        .map(|(_, id)| id)
+        .collect();
+    images.sort_by_key(|&(size, _)| std::cmp::Reverse(size));
+    images.into_iter().map(|(_, id)| id).collect()
 }
 
 /// One image as PNG: as it is when it is one already, decoded from a bitmap
 /// otherwise.
-fn to_png(image: &[u8]) -> Option<Icon> {
+fn to_png(image: &[u8]) -> Option<Vec<u8>> {
     if image.starts_with(PNG_SIGNATURE) {
         // The IHDR chunk comes first: its length and type, then the size.
-        return Some(Icon {
-            png: image.to_vec(),
-            width: u32_be(image, 16)?,
-            height: u32_be(image, 20)?,
-        });
+        let side = |at| {
+            u32_be(image, at)
+                .and_then(|v| usize::try_from(v).ok())
+                .is_some_and(|v| (1..=MAX_SIDE).contains(&v))
+        };
+        let sane = image.len() <= MAX_PNG && image.get(12..16)? == b"IHDR" && side(16) && side(20);
+        return sane.then(|| image.to_vec());
     }
     let (width, height, rgba) = bitmap(image)?;
-    Some(Icon {
-        png: png(width, height, &rgba),
-        width,
-        height,
-    })
+    Some(png(width, height, &rgba))
 }
 
 /// An icon image stored as a bitmap: its size and its pixels as RGBA, top row
@@ -106,17 +106,18 @@ fn bitmap(b: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
         24 | 32 => 0,
         _ => return None,
     };
-    let palette = header;
-    let pixels = palette + colours * 4;
     let stride = (w * bits).div_ceil(32) * 4;
-    let mask = pixels + stride * h;
     let mask_stride = w.div_ceil(32) * 4;
+    // Both cut out before the loop: a bitmap shorter than it says it is fails
+    // here, before its pixels are allocated.
+    let palette = b.get(header..header + colours * 4)?;
+    let pixels = b.get(header + colours * 4..)?;
+    let (colour, mask) = (pixels.get(..stride * h)?, &pixels[stride * h..]);
 
     let mut rgba = vec![0u8; w * h * 4];
     let mut has_alpha = false;
     for y in 0..h {
-        let start = pixels + (h - 1 - y) * stride;
-        let row = b.get(start..start + stride)?;
+        let row = &colour[(h - 1 - y) * stride..][..stride];
         for x in 0..w {
             let pixel = match bits {
                 32 => [row[x * 4 + 2], row[x * 4 + 1], row[x * 4], row[x * 4 + 3]],
@@ -125,8 +126,7 @@ fn bitmap(b: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
                     let per_byte = 8 / bits;
                     let shift = 8 - bits * (x % per_byte + 1);
                     let index = usize::from(row[x / per_byte] >> shift) & ((1 << bits) - 1);
-                    let entry = palette + index.min(colours - 1) * 4;
-                    let c = b.get(entry..entry + 4)?;
+                    let c = &palette[index.min(colours - 1) * 4..][..4];
                     [c[2], c[1], c[0], 255]
                 }
             };
@@ -136,10 +136,10 @@ fn bitmap(b: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     }
     if !has_alpha {
         for y in 0..h {
-            let start = mask + (h - 1 - y) * mask_stride;
+            let start = (h - 1 - y) * mask_stride;
             // A mask cut short leaves the rest opaque rather than the icon
             // unreadable.
-            let row = b.get(start..start + mask_stride);
+            let row = mask.get(start..start + mask_stride);
             for x in 0..w {
                 let clear = row.is_some_and(|r| r[x / 8] >> (7 - x % 8) & 1 == 1);
                 rgba[(y * w + x) * 4 + 3] = if clear { 0 } else { 255 };
@@ -152,6 +152,7 @@ fn bitmap(b: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
 /// `rgba`, `width` by `height`, as a PNG: 8-bit RGBA, no filtering, and the
 /// zlib stream in stored blocks.
 pub(crate) fn png(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
+    debug_assert!(width > 0 && height > 0 && rgba.len() == (width * height * 4) as usize);
     let row = width as usize * 4;
     let mut raw = Vec::with_capacity((row + 1) * height as usize);
     for line in rgba.chunks(row) {
@@ -284,7 +285,8 @@ impl<'a> Resources<'a> {
             .iter()
             .find(|s| rva >= s.address && rva - s.address < s.size.max(s.raw_size))?;
         let into = rva - s.address;
-        (into < s.raw_size).then(|| (s.raw + into) as usize)
+        // In usize: a hostile PointerToRawData near u32::MAX overflows a u32.
+        (into < s.raw_size).then(|| s.raw as usize + into as usize)
     }
 
     /// The entries of the directory `dir` bytes into the resources: each one's
@@ -357,13 +359,18 @@ fn u32_be(b: &[u8], at: usize) -> Option<u32> {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
 
     /// A 64-bit PE file whose only section holds a resource directory with
     /// one icon group, listing `images` as `RT_ICON` 1, 2, … with the given
     /// group widths.
-    pub(crate) fn exe_with_icon(images: &[(u8, &[u8])]) -> Vec<u8> {
+    fn exe_with_icon(images: &[(u8, &[u8])]) -> Vec<u8> {
+        exe(images, false)
+    }
+
+    /// The same, as a 32-bit PE file, whose optional header is shorter.
+    fn exe(images: &[(u8, &[u8])], pe32: bool) -> Vec<u8> {
         const SECTION_RVA: u32 = 0x1000;
         const SECTION_RAW: usize = 0x200;
         let mut rsrc = Vec::new();
@@ -393,7 +400,12 @@ pub(crate) mod tests {
         group.extend_from_slice(&[0, 0, 1, 0]);
         group.extend_from_slice(&(n as u16).to_le_bytes());
         for (i, (width, image)) in images.iter().enumerate() {
-            group.extend_from_slice(&[*width, *width, 0, 0, 1, 0, 32, 0]);
+            // The depth a group states is a hint; this one is the bitmap's.
+            let bits = image
+                .get(14)
+                .copied()
+                .filter(|_| !image.starts_with(PNG_SIGNATURE));
+            group.extend_from_slice(&[*width, *width, 0, 0, 1, 0, bits.unwrap_or(32), 0]);
             group.extend_from_slice(&(image.len() as u32).to_le_bytes());
             group.extend_from_slice(&(i as u16 + 1).to_le_bytes());
         }
@@ -434,15 +446,18 @@ pub(crate) mod tests {
         pe[0x3c..0x40].copy_from_slice(&0x40u32.to_le_bytes());
         pe[0x40..0x44].copy_from_slice(b"PE\0\0");
         let coff = 0x44;
+        // The fixed part of the optional header, then 16 data directories.
+        let (magic, fixed) = if pe32 { (0x10bu16, 96) } else { (0x20b, 112) };
+        let optional_size = fixed + 16 * 8;
         pe[coff + 2..coff + 4].copy_from_slice(&1u16.to_le_bytes());
-        pe[coff + 16..coff + 18].copy_from_slice(&240u16.to_le_bytes());
+        pe[coff + 16..coff + 18].copy_from_slice(&(optional_size as u16).to_le_bytes());
         let optional = coff + 20;
-        pe[optional..optional + 2].copy_from_slice(&0x20bu16.to_le_bytes());
-        pe[optional + 108..optional + 112].copy_from_slice(&16u32.to_le_bytes());
-        let resource_dir = optional + 112 + 16;
+        pe[optional..optional + 2].copy_from_slice(&magic.to_le_bytes());
+        pe[optional + fixed - 4..optional + fixed].copy_from_slice(&16u32.to_le_bytes());
+        let resource_dir = optional + fixed + 16;
         pe[resource_dir..resource_dir + 4].copy_from_slice(&SECTION_RVA.to_le_bytes());
         pe[resource_dir + 4..resource_dir + 8].copy_from_slice(&(rsrc.len() as u32).to_le_bytes());
-        let section = optional + 240;
+        let section = optional + optional_size;
         pe[section..section + 5].copy_from_slice(b".rsrc");
         pe[section + 8..section + 12].copy_from_slice(&(rsrc.len() as u32).to_le_bytes());
         pe[section + 12..section + 16].copy_from_slice(&SECTION_RVA.to_le_bytes());
@@ -535,12 +550,47 @@ pub(crate) mod tests {
         let small = bitmap_image(1, 1, 32, &[], &[1, 2, 3, 255], &[0, 0, 0, 0]);
         let exe = exe_with_icon(&[(16, &small), (0, &inner), (32, &small)]);
         let icon = from_exe(&exe).expect("an icon");
-        assert_eq!(
-            (icon.width, icon.height),
-            (256, 256),
-            "0 means 256, the largest"
-        );
-        assert_eq!(icon.png, inner);
+        assert_eq!(icon, inner, "0 means 256, the largest");
+    }
+
+    #[test]
+    fn a_png_image_that_is_not_an_icon_is_refused() {
+        let small = bitmap_image(1, 1, 32, &[], &[1, 2, 3, 255], &[0, 0, 0, 0]);
+        let mut huge = png(1, 1, &[0; 4]);
+        huge[16..20].copy_from_slice(&65535u32.to_be_bytes());
+        let mut untyped = png(1, 1, &[0; 4]);
+        untyped[12..16].copy_from_slice(b"tEXt");
+        for bad in [huge, untyped] {
+            // Refused, so the next largest image is used instead.
+            let exe = exe_with_icon(&[(0, &bad), (1, &small)]);
+            assert_eq!(pixels(&from_exe(&exe).unwrap()).0, 1);
+        }
+    }
+
+    #[test]
+    fn an_unreadable_largest_image_falls_back_to_a_smaller_one() {
+        // 16 bits a pixel is not read; the 1-pixel 32-bit image is.
+        let deep = bitmap_image(48, 48, 16, &[], &[0; 48 * 96], &[0; 48 * 4]);
+        let small = bitmap_image(1, 1, 32, &[], &[1, 2, 3, 255], &[0, 0, 0, 0]);
+        let icon = from_exe(&exe_with_icon(&[(48, &deep), (1, &small)])).unwrap();
+        assert_eq!(pixels(&icon).2, [3, 2, 1, 255]);
+    }
+
+    #[test]
+    fn a_32_bit_file_is_read_too() {
+        let small = bitmap_image(1, 1, 32, &[], &[1, 2, 3, 255], &[0, 0, 0, 0]);
+        let icon = from_exe(&exe(&[(1, &small)], true)).unwrap();
+        assert_eq!(pixels(&icon).2, [3, 2, 1, 255]);
+    }
+
+    #[test]
+    fn a_section_placed_past_four_gigabytes_is_not_followed() {
+        // PointerToRawData near u32::MAX once overflowed into a panic.
+        let small = bitmap_image(1, 1, 32, &[], &[1, 2, 3, 255], &[0, 0, 0, 0]);
+        let mut exe = exe_with_icon(&[(1, &small)]);
+        let section = 0x44 + 20 + 112 + 128;
+        exe[section + 20..section + 24].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(from_exe(&exe).is_none());
     }
 
     #[test]
@@ -549,7 +599,7 @@ pub(crate) mod tests {
         let rows = [255, 0, 0, 128, 0, 0, 255, 255];
         let image = bitmap_image(1, 2, 32, &[], &rows, &[0; 8]);
         let icon = from_exe(&exe_with_icon(&[(1, &image)])).unwrap();
-        let (w, h, rgba) = pixels(&icon.png);
+        let (w, h, rgba) = pixels(&icon);
         assert_eq!((w, h), (1, 2));
         assert_eq!(rgba, [255, 0, 0, 255, 0, 0, 255, 128]);
     }
@@ -561,7 +611,25 @@ pub(crate) mod tests {
         let mask = [0b0100_0000, 0, 0, 0];
         let image = bitmap_image(2, 1, 24, &[], &rows, &mask);
         let icon = from_exe(&exe_with_icon(&[(2, &image)])).unwrap();
-        assert_eq!(pixels(&icon.png).2, [0, 255, 0, 255, 255, 255, 255, 0]);
+        assert_eq!(pixels(&icon).2, [0, 255, 0, 255, 255, 255, 255, 0]);
+    }
+
+    #[test]
+    fn a_32_bit_bitmap_with_no_alpha_at_all_uses_its_mask() {
+        // Icons made before Windows XP leave every alpha at zero.
+        let rows = [10, 20, 30, 0, 40, 50, 60, 0];
+        let mask = [0b0100_0000, 0, 0, 0];
+        let image = bitmap_image(2, 1, 32, &[], &rows, &mask);
+        let icon = from_exe(&exe_with_icon(&[(2, &image)])).unwrap();
+        assert_eq!(pixels(&icon).2, [30, 20, 10, 255, 60, 50, 40, 0]);
+    }
+
+    #[test]
+    fn a_mask_cut_short_leaves_the_rest_opaque() {
+        let rows = [10, 20, 30, 40, 50, 60, 0, 0];
+        let image = bitmap_image(2, 1, 24, &[], &rows, &[]);
+        let icon = from_exe(&exe_with_icon(&[(2, &image)])).unwrap();
+        assert_eq!(pixels(&icon).2, [30, 20, 10, 255, 60, 50, 40, 255]);
     }
 
     #[test]
@@ -572,9 +640,27 @@ pub(crate) mod tests {
         let image = bitmap_image(3, 1, 4, &palette, &rows, &[0; 4]);
         let icon = from_exe(&exe_with_icon(&[(3, &image)])).unwrap();
         assert_eq!(
-            pixels(&icon.png).2,
+            pixels(&icon).2,
             [0, 128, 255, 255, 0, 0, 0, 255, 0, 128, 255, 255]
         );
+    }
+
+    #[test]
+    fn one_and_eight_bit_bitmaps_are_read_through_their_palette() {
+        // 1 bit, 3 by 1: 1, 0, 1.
+        let two = [[0, 0, 0, 0], [255, 255, 255, 0]];
+        let image = bitmap_image(3, 1, 1, &two, &[0b1010_0000, 0, 0, 0], &[0; 4]);
+        let icon = from_exe(&exe_with_icon(&[(3, &image)])).unwrap();
+        assert_eq!(
+            pixels(&icon).2,
+            [255, 255, 255, 255, 0, 0, 0, 255, 255, 255, 255, 255]
+        );
+        // 8 bits, 2 by 1: index 2, then index 9, past the three colours the
+        // palette has, which is read as its last.
+        let three = [[1, 1, 1, 0], [2, 2, 2, 0], [3, 3, 3, 0]];
+        let image = bitmap_image(2, 1, 8, &three, &[2, 9, 0, 0], &[0; 4]);
+        let icon = from_exe(&exe_with_icon(&[(2, &image)])).unwrap();
+        assert_eq!(pixels(&icon).2, [3, 3, 3, 255, 3, 3, 3, 255]);
     }
 
     #[test]

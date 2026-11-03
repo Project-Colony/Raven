@@ -10,7 +10,7 @@ pub mod d3d;
 pub mod desktop;
 pub mod env;
 pub mod i18n;
-pub mod icon;
+pub(crate) mod icon;
 pub mod launch;
 pub mod layer;
 pub mod mount;
@@ -42,7 +42,10 @@ pub enum Error {
     Manifest(std::path::PathBuf, String),
     Hive(String),
     NoDefaultEnvironment,
-    EnvironmentBusy { name: String, holders: String },
+    EnvironmentBusy {
+        name: String,
+        holders: String,
+    },
     StillHeld(String, String),
     BadLetter(char),
     NotABlockDevice(std::path::PathBuf),
@@ -58,8 +61,20 @@ pub enum Error {
     D3dLink(std::path::PathBuf),
     BadShortcutName(String),
     ShortcutTaken(std::path::PathBuf),
-    NoSuchShortcut { env: String, name: String },
+    ShortcutElsewhere {
+        command: String,
+        env: String,
+    },
+    ShortcutConflict {
+        command: String,
+        other: Option<std::path::PathBuf>,
+    },
+    NoSuchShortcut {
+        env: String,
+        command: String,
+    },
     ShortcutFile(std::path::PathBuf, #[source] std::io::Error),
+    NotUtf8(std::path::PathBuf),
 }
 
 impl std::fmt::Display for Error {

@@ -223,11 +223,28 @@ pub fn error_message_in(lang: Lang, error: &Error) -> String {
         Error::D3dLink(path) => f("error_d3d_link", &[("path", &path.display())]),
         Error::BadShortcutName(name) => f("error_bad_shortcut_name", &[("name", &q(name))]),
         Error::ShortcutTaken(path) => f("error_shortcut_taken", &[("path", &path.display())]),
-        Error::NoSuchShortcut { env, name } => f(
+        Error::ShortcutElsewhere { command, env } => f(
+            "error_shortcut_elsewhere",
+            &[
+                ("command", &q(command)),
+                ("quoted", &q(env)),
+                ("name", env),
+                ("cmd", command),
+            ],
+        ),
+        Error::ShortcutConflict { command, other } => match other {
+            Some(other) => f(
+                "error_shortcut_conflict",
+                &[("command", &q(command)), ("other", &other.display())],
+            ),
+            None => f("error_shortcut_loops", &[("command", &q(command))]),
+        },
+        Error::NoSuchShortcut { env, command } => f(
             "error_no_such_shortcut",
-            &[("command", &q(name)), ("quoted", &q(env)), ("name", env)],
+            &[("command", &q(command)), ("quoted", &q(env)), ("name", env)],
         ),
         Error::ShortcutFile(path, _) => f("error_shortcut_file", &[("path", &path.display())]),
+        Error::NotUtf8(path) => f("error_not_utf8", &[("path", &path.display())]),
     }
 }
 
@@ -375,11 +392,24 @@ mod tests {
             Error::D3dLink(p()),
             Error::BadShortcutName("-x".into()),
             Error::ShortcutTaken(p()),
+            Error::ShortcutElsewhere {
+                command: "mygame".into(),
+                env: "work".into(),
+            },
+            Error::ShortcutConflict {
+                command: "steam".into(),
+                other: Some(p()),
+            },
+            Error::ShortcutConflict {
+                command: "game".into(),
+                other: None,
+            },
             Error::NoSuchShortcut {
                 env: "games".into(),
-                name: "mygame".into(),
+                command: "mygame".into(),
             },
             Error::ShortcutFile(p(), io()),
+            Error::NotUtf8(p()),
         ];
         for e in &all {
             match e {
@@ -414,8 +444,11 @@ mod tests {
                 | Error::D3dLink(_)
                 | Error::BadShortcutName(_)
                 | Error::ShortcutTaken(_)
+                | Error::ShortcutElsewhere { .. }
+                | Error::ShortcutConflict { .. }
                 | Error::NoSuchShortcut { .. }
-                | Error::ShortcutFile(..) => {}
+                | Error::ShortcutFile(..)
+                | Error::NotUtf8(_) => {}
             }
         }
         all

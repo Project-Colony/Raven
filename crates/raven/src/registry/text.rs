@@ -24,21 +24,39 @@ use crate::Error;
 /// crash would cost all of it. This is the same temp-file-then-rename dance
 /// wineserver itself performs to save these files.
 pub fn write_atomic(reg: &Path, updated: &str) -> Result<(), Error> {
-    let mut name = reg.file_name().unwrap_or_default().to_os_string();
+    replace(reg, updated.as_bytes(), 0o644).map_err(|e| Error::Layer(reg.to_path_buf(), e))
+}
+
+/// Writes `file` whole with `mode`, or leaves what was there: a temporary
+/// file beside it, renamed over it.
+///
+/// The temporary file's name starts with a dot, so a desktop or a menu
+/// showing that directory does not show it for the moment it exists, and it
+/// is created fresh, never opened through a link someone left at that name.
+pub(crate) fn replace(file: &Path, contents: &[u8], mode: u32) -> std::io::Result<()> {
+    use std::io::Write as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let dir = file.parent().unwrap_or(Path::new("."));
+    std::fs::create_dir_all(dir)?;
+    let mut name = std::ffi::OsString::from(".");
+    name.push(file.file_name().unwrap_or_default());
     name.push(".raven-tmp");
-    let tmp = reg.with_file_name(name);
+    let tmp = dir.join(name);
+    let _ = std::fs::remove_file(&tmp);
     let result = (|| {
-        use std::io::Write as _;
-        let mut f = std::fs::File::create(&tmp)?;
-        f.write_all(updated.as_bytes())?;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(mode)
+            .open(&tmp)?;
+        f.write_all(contents)?;
         f.sync_all()?;
-        std::fs::rename(&tmp, reg)
+        std::fs::rename(&tmp, file)
     })();
-    if let Err(e) = result {
+    if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
-        return Err(Error::Layer(reg.to_path_buf(), e));
     }
-    Ok(())
+    result
 }
 
 /// Adds, replaces or removes one value in one section. `None` removes it.

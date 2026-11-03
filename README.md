@@ -97,7 +97,7 @@ physically cannot be.
   executable like any other, resolved to the environment it belongs to.
 - **Gives a program a command and a menu entry.** `raven env shortcut` writes a
   command to `~/.local/bin` and an applications menu entry with the program's
-  own icon, and each start keeps what the program printed in a log.
+  own icon. Started from the menu, the program's output goes to a log.
 
 ## Installation
 

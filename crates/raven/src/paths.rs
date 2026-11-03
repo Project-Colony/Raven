@@ -61,10 +61,11 @@ pub(crate) fn applications_dir() -> Result<PathBuf, Error> {
 
 /// `~/.local/bin/` - where a shortcut goes, so it runs by its name.
 ///
-/// The directory systemd's `file-hierarchy` gives a user's own executables,
-/// and the one distributions put on `PATH` when it exists. `XDG_BIN_HOME` is
-/// not in the XDG specification, but some systems set it, and a user who
-/// did means this directory.
+/// The directory systemd's `file-hierarchy` gives a user's own executables.
+/// Some distributions put it on `PATH` when it exists, others, Arch among
+/// them, leave that to the user. `XDG_BIN_HOME` is not in the XDG
+/// specification, but some systems set it, and a user who did means this
+/// directory.
 pub fn bin_dir() -> Result<PathBuf, Error> {
     xdg("XDG_BIN_HOME", ".local/bin")
 }
@@ -104,17 +105,14 @@ pub fn runtime_dir(name: &str) -> Result<PathBuf, Error> {
     Ok(base.join("raven").join(check_name(name)?))
 }
 
-/// `$XDG_RUNTIME_DIR/raven-logs/` - what each shortcut's program printed the
-/// last two times it started.
+/// `~/.cache/Colony/Raven/logs/` - what each shortcut's program printed the
+/// last two times it started without a terminal.
 ///
-/// Beside `raven/` rather than in it, where every name is an environment's.
-/// Under the runtime directory, which only the user can enter, and which
-/// empties at logout: a log is for the start that just failed.
+/// On disk, not under the runtime directory: that one is a small tmpfs in
+/// memory, which also holds every session's record, and a program that never
+/// stops printing would fill it. A log costs nothing but a look when deleted.
 pub fn logs_dir() -> Result<PathBuf, Error> {
-    let base = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .ok_or(Error::NoRuntimeDir)?;
-    Ok(base.join("raven-logs"))
+    Ok(cache_dir()?.join("logs"))
 }
 
 /// Where an environment's C: is mounted while it runs.
