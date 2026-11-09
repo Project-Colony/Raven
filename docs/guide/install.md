@@ -12,7 +12,7 @@ either way.
 
 | | |
 |---|---|
-| Rust 1.88+ | to build |
+| Rust 1.99+ | to build |
 | `wine` | the NT-to-Linux bridge - not optional, not replaceable |
 | `wimlib` | deploys a Windows base from an ISO without a VM |
 | a kernel allowing unprivileged user namespaces | how Raven mounts without root |

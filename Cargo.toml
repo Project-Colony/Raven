@@ -10,7 +10,7 @@ version = "0.7.0" # x-release-please-version
 license = "GPL-3.0-or-later"
 repository = "https://github.com/Project-Colony/Raven"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.99"
 
 # Every dependency is declared once, here, at its full current version, and the
 # crates inherit it with `dep.workspace = true`. Features stay with the crate
@@ -24,12 +24,12 @@ clap = "4.6.7"
 colony-ui = "0.1.6"
 iced = "0.14.0"
 nt-hive = "0.3.0"
-regf = "0.1.0"
-rustix = "1.1.5"
+regf = "0.2.0"
+rustix = "1.1.6"
 serde = "1.0.229"
 thiserror = "2.0.21"
-tokio = "1.53.3"
-toml = "1.1.8"
+tokio = "1.54.1"
+toml = "1.2.1"
 
 # The organisation's release profile (Project-Colony-Resources,
 # design/releases.md, "Release profile"), shared by both binaries so they are
