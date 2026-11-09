@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/Project-Colony/Raven/compare/v0.7.0...v0.7.1) (2026-11-09)
+
+
+### Fixes
+
+* **deps:** update dependencies and Rust to 1.99 ([#60](https://github.com/Project-Colony/Raven/issues/60)) ([75490f6](https://github.com/Project-Colony/Raven/commit/75490f6fe3b1c5d29dc969caa80d39dd1107d46b))
+
 ## [0.7.0](https://github.com/Project-Colony/Raven/compare/v0.6.0...v0.7.0) (2026-11-03)
 
 
