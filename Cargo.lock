@@ -2644,9 +2644,9 @@ dependencies = [
 
 [[package]]
 name = "regf"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f10c88593b4d54655e9954fdc04b6b6e6566467543f821418ad3f8ef30e3420"
+checksum = "a084d6c54fe09b88d7bed3975c7f43e195c265d4ccba7fdbf69ba571ade6b358"
 dependencies = [
  "bitflags 2.13.2",
  "byteorder",
@@ -2654,6 +2654,7 @@ dependencies = [
  "encoding_rs",
  "tempfile",
  "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]
