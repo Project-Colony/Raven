@@ -12,14 +12,9 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-/// The binary under test, next to the integration test that cargo just built.
+/// The binary under test, as cargo built it for this integration test.
 fn raven_bin() -> PathBuf {
-    let mut p = std::env::current_exe().expect("test binary has a path");
-    p.pop();
-    if p.ends_with("deps") {
-        p.pop();
-    }
-    p.join("raven")
+    PathBuf::from(env!("CARGO_BIN_EXE_raven"))
 }
 
 /// The library's own check, not a copy of it: the CI runners taught us that a
