@@ -2538,7 +2538,7 @@ checksum = "f2d43a8c8c74056248124068fde0df374d1ddf9039e747d190f01c36faeaab08"
 
 [[package]]
 name = "raven"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -2552,7 +2552,7 @@ dependencies = [
 
 [[package]]
 name = "raven-gui"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "colony-ui",
  "iced",
