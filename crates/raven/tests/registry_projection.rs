@@ -13,6 +13,7 @@ use regf::reg_import::RegImporter;
 /// Builds a hive from a `.reg` description, the way a real one would be laid out.
 fn hive_from(reg: &str) -> Vec<u8> {
     RegImporter::from_string(reg)
+        .expect("regf should parse valid .reg text")
         .build_hive()
         .expect("regf should build a hive from valid .reg text")
 }
